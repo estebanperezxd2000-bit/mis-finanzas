@@ -1,0 +1,291 @@
+'use strict';
+// tests/estilos.test.js — Paso 5 (estilos inline → clases): guardia de lo ya convertido.
+// Corre con:  node --test tests/estilos.test.js   (o todo: npm test)
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const RAIZ = path.join(__dirname, '..');
+const CSS = fs.readFileSync(path.join(RAIZ, 'css', 'styles.css'), 'utf8');
+const leer = f => fs.readFileSync(path.join(RAIZ, f), 'utf8');
+
+// Archivos ya convertidos: { archivo, prefijos de clase propios, style="" que se permiten (texto exacto o RegExp: display:none que JS conmuta, o valores calculados) }
+const CONVERTIDOS = [
+  { f: 'js/core/diferencial.js', prefijos: ['diferencial-'], permitidos: ['display:none;'] },
+  { f: 'js/core/split.js', prefijos: ['split-'], permitidos: [] },
+  // búsqueda global: solo quedan el color del tipo y el fondo del ícono, que salen del resultado
+  { f: 'js/core/busqueda-global.js', prefijos: ['busqueda-'], permitidos: [/^(background|color):\$\{/] },
+  { f: 'js/modules/configuracion.js', prefijos: ['cat-chip'], permitidos: [] },
+  { f: 'js/modules/gastos.js', prefijos: ['gasto-', 'badge-xs', 'row-name-13'], permitidos: [] },
+  // inicio: solo queda el display:none del tooltip de la proyección, que JS conmuta (showTT)
+  { f: 'js/modules/inicio.js', prefijos: ['inicio-'], permitidos: ['display:none;'] },
+  // sueltos de 1-6 estilos
+  { f: 'js/modules/mesada.js', prefijos: ['badge-xs'], permitidos: [] },
+  { f: 'js/core/wrapped-gate.js', prefijos: ['wrapped-gate-'], permitidos: [] },
+  { f: 'js/core/core-state.js', prefijos: ['ico-inline'], permitidos: [] },
+  { f: 'js/core/pin-bio.js', prefijos: ['pin-fila', 'btn-flex1', 'btn-block', 'btn-peligro'], permitidos: [] },
+  { f: 'js/core/gastos-fijos-progress.js', prefijos: ['fijos-progress'], permitidos: [] },
+  // feed de actividad: solo quedan el fondo del ícono y el color del monto, que salen de cada movimiento
+  { f: 'js/modules/actividad_reciente.js', prefijos: ['feed-'], permitidos: [/^(background|color):\$\{/] },
+  // cuentas: solo quedan valores calculados: tamaño/colores del ícono de cada cuenta (elegidos por el usuario), el fondo/color de cada
+  // opción de la cuadrícula de íconos y las variables --cuenta/--cuenta-rgb de cada tarjeta del selector
+  { f: 'js/modules/cuentas.js', prefijos: ['cuenta-', 'gasto-item-', 'gasto-nombre-fila', 'badge-xs', 'ico-inline', 'nc-icon-opt'],
+    permitidos: [/^width:\$\{/, /^background:\$\{/, /^color:\$\{/, '${vars}'] },
+  // analisis: solo quedan los anchos/alturas de las barras (porcentaje calculado) y el display:none del tooltip del patrimonio, que JS conmuta
+  { f: 'js/modules/analisis.js', prefijos: ['an-', 'presup-bar-fill', 'presup-input'], armadas: ['an-t-', 'an-bg-'], permitidos: [/^width:\$\{/, /^height:\$\{/, 'display:none;'] },
+  // spotify: solo quedan 3 display:none (avatares y aviso del selector de persona) que el JS conmuta
+  { f: 'js/modules/spotify.js', prefijos: ['sp-', 'badge-xs', 'row-name-13', 'cuenta-flecha'], permitidos: ['display:none;'] },
+  // prestado: solo queda el color/fondo del avatar de cada persona (lo elige el usuario)
+  { f: 'js/modules/prestado.js', prefijos: ['pr-', 'badge-xs', 'ico-inline', 'cuenta-flecha', 'cuenta-svg-mid'], permitidos: [/^color:\$\{/] },
+  // nu: solo queda el ancho (porcentaje calculado) de las barras de progreso de la meta; los colores por estado son clases nu-fill-/nu-estado-
+  { f: 'js/modules/nu.js', prefijos: ['nu-', 'cajita-meta-fill'], armadas: ['nu-estado-', 'nu-fill-'], permitidos: [/^width:\$\{/] },
+  // alcancia: solo quedan 4 display:none que JS conmuta (bloque de origen dividido, grupo de deudor, desglose del historial); `sinCss`: ganchos
+  // de JS que ya existían y no tienen regla. Colores por tipo/diferencia = clases alc-c-* y alc-dif-*
+  { f: 'js/modules/alcancia.js', prefijos: ['alc-'], armadas: ['alc-c-', 'alc-dif-'], sinCss: ['alc-hist-chevron', 'alc-dep-monto'], permitidos: ['display:none;'] },
+  // tarjetas: solo quedan los anchos de barra (porcentaje calculado) y el cursor del fragmento de atributos _tcAttrs (se inserta en etiquetas ajenas, no puede llevar class)
+  { f: 'js/modules/tarjetas_credito.js', prefijos: ['tc-', 'badge-xs'], permitidos: [/^width:\$\{/, 'cursor:pointer;'] },
+  // encargos: quedan el display:none del avatar del selector de persona (JS lo conmuta) y el cursor del fragmento de atributos _encAttrs (se inserta en etiquetas ajenas)
+  { f: 'js/modules/encargos.js', prefijos: ['enc-'], permitidos: ['display:none;', 'cursor:pointer;'] },
+  // personas: quedan solo valores calculados — el ancho de las barras de progreso, el color elegido por el usuario para cada avatar (color/fondo/borde con ${color}) y el fondo de cada muestra de la paleta
+  { f: 'js/modules/personas.js', prefijos: ['pe-'], permitidos: [/^width:\$\{/, /^(color|background):\$\{/] },
+  // plata comprometida: quedan 11 display:none que JS conmuta (selects ocultos, bloques de origen/destino, ingreso libre y recordatorios), el estilo inicial de #cp-balance-preview
+  // (el JS lo reemplaza o lo vacía con cssText; una clase no se vaciaría) y el ancho calculado de la barra de comprometido
+  { f: 'js/modules/plata_comprometida.js', prefijos: ['cp-'], armadas: ['cp-tbg-', 'cp-tc-', 'cp-c-'], permitidos: ['display:none;', "font-size:12px;font-family:'DM Mono',monospace;min-height:18px;padding:8px 0;", /^width:\$\{/] },
+  // index.html: quedan 110 style="". 98 son display:none que JS conmuta (style.display=''); 1 min-height y 1 avatar que JS vacía con ''; y el PRIMER PINTADO
+  // (#fb-loading-screen, #fb-login-screen, #pin-screen, #toast-container: styles.css es async y eso se ve antes de que llegue; ver comentario del <head>)
+  { f: 'index.html', prefijos: ['ix-'], permitidos: ['display:none;', 'display:flex;', 'display:flex', 'display:contents;', 'min-height:148px;', 'visibility:hidden;',
+    'background:rgba(96,176,240,.15);color:var(--blue);border-color:rgba(96,176,240,.3);',
+    /^display:none;position:absolute;inset:0;background:rgba\(0,0,0,\.75\)/, /^background:var\(--bg2\);border:1px solid var\(--border2\);border-radius:var\(--radius\);padding:22px/,
+    /^font-size:15px;font-weight:600;margin-bottom:8px;$/, /^font-size:13px;color:var\(--text2\);margin-bottom:18px;line-height:1\.5;$/, 'display:flex;gap:8px;', /^flex:1;padding:10px;border-radius:var\(--radius-sm\);font-size:13px;font-weight:500;/] },
+  // movimientos: detalle de un movimiento, sin ningún style="" (el color del monto sale de mdet-c-accent/red/amber)
+  { f: 'js/core/movimientos.js', prefijos: ['mdet-', 'badge-xs'], permitidos: [] },
+  // wrapped: su CSS vive en el <style> que inyecta el propio archivo (cssEn). Solo queda el retraso de animación de cada punto de la línea,
+  // un valor distinto por punto (i*0.09s) que no puede ser una clase.
+  { f: 'js/modules/wrapped.js', prefijos: ['wrapped-'], cssEn: ['js/modules/wrapped.js'], permitidos: [/^animation-delay:\$\{/] },
+];
+
+CONVERTIDOS.forEach(({ f, prefijos, permitidos, cssEn = [], armadas = [], sinCss = [] }) => {
+  const css = CSS + cssEn.map(leer).join('\n');
+  const src = leer(f);
+  test(`${f} — no queda ningún style="" estático (solo lo permitido: display:none que JS conmuta o valores calculados)`, () => {
+    const usados = [...src.matchAll(/style=\\?"([^"]*)"/g)].map(m => m[1]);
+    const extra = usados.filter(v => !permitidos.some(p => (p instanceof RegExp ? p.test(v) : p === v)));
+    assert.deepEqual(extra, [], 'estilo inline nuevo: muévelo a una clase en css/styles.css');
+  });
+  test(`${f} — toda clase ${prefijos.join('/')}* que usa existe en styles.css`, () => {
+    const re = new RegExp(`\\b((?:${prefijos.map(p => p.replace('-', '\\-')).join('|')})[a-z0-9-]*)`, 'g');
+    // solo lo que está dentro de class="…" / className = '…' (los ids de DOM con el mismo prefijo no cuentan)
+    const trozos = [...src.matchAll(/class=\\?"([^"]*)"|className\s*=\s*'([^']*)'/g)].map(m => m[1] || m[2]).join(' ');
+    // `armadas`: prefijos de clases que el código completa con una variable (p. ej. an-t-${tono}); se verifican aparte, valor por valor
+    const clases = [...new Set([...trozos.matchAll(re)].map(m => m[1]))].filter(c => !armadas.includes(c) && !sinCss.includes(c));
+    assert.ok(clases.length > 0);
+    const faltan = clases.filter(c => !new RegExp('\\.' + c.replace(/-/g, '\\-') + '(?![\\w-])').test(css));
+    assert.deepEqual(faltan, []);
+  });
+});
+
+test('el resumen vacío del diferencial se colapsa (antes lo hacía [style*="min-height"]:empty sobre el style inline)', () => {
+  assert.match(CSS, /\.diferencial-resumen:empty\{min-height:0;?\}/);
+});
+
+test('wrapped: el mood de cada slide se lee de la clase de color del número grande (antes leía el style inline)', () => {
+  const w = leer('js/modules/wrapped.js');
+  assert.match(w, /_moodRegex = \/\(\?:\^\|\[\\s"\]\)\(c-purple\|c-blue\|c-amber\|c-red\|c-green\)/);
+  // todo color que se le pasa a _wrappedSlideBignum tiene clase en _wrappedColorClase
+  const mapa = /const mapa = \{([^}]*)\}/.exec(w)[1];
+  const usados = new Set([...w.matchAll(/_wrappedSlideBignum\([\s\S]*?'(var\(--[a-z]+\))'\s*,\s*\{/g)].map(m => m[1]));
+  assert.ok(usados.size >= 5);
+  usados.forEach(c => assert.ok(mapa.includes(`'${c}'`), `color sin clase en wrapped: ${c}`));
+});
+
+test('analisis: los tonos que arma el código (an-t-X, an-bg-X) existen todos en styles.css', () => {
+  const css = leer('css/styles.css'), src = leer('js/modules/analisis.js');
+  // los tonos posibles salen de los arreglos/ternarios que arman `tono`
+  const tonos = ['red', 'amber', 'accent', 'blue', 'purple', 'text2'];
+  tonos.forEach(t => { ['an-t-', 'an-bg-'].forEach(p => assert.ok(new RegExp('\\.' + p + t + '(?![\\w-])').test(css), `falta .${p}${t}`)); });
+  // y el código no usa un tono que no esté en la lista
+  const usados = new Set([...src.matchAll(/'(red|amber|accent|blue|purple|text2)'/g)].map(m => m[1]));
+  usados.forEach(t => assert.ok(tonos.includes(t), t));
+});
+
+test('spotify: los colores de cV() (c-green, c-red, sp-t-neu) existen en styles.css', () => {
+  const css = leer('css/styles.css');
+  ['c-green', 'c-red', 'sp-t-neu'].forEach(c => assert.ok(new RegExp('\\.' + c + '(?![\\w-])').test(css), c));
+  assert.match(leer('js/modules/spotify.js'), /const cV=\(v\)=>v>0\?'c-green':v<0\?'c-red':'sp-t-neu'/);
+});
+
+test('prestado: las clases de color de los tipos de extra (clase: en _extTipos) existen en styles.css', () => {
+  const css = leer('css/styles.css'), src = leer('js/modules/prestado.js');
+  const clases = [...src.matchAll(/color: 'var\(--[a-z0-9]+\)', clase: '([a-z0-9-]+)'/g)].map(m => m[1]);
+  assert.ok(clases.length === 4, 'debe haber 4 tipos de extra con clase');
+  clases.forEach(c => assert.ok(new RegExp('\\.' + c + '(?![\\w-])').test(css), c));
+});
+
+test('nu: los estados que arma el código (nu-estado-X, nu-fill-X) existen en styles.css y no queda estadoColors', () => {
+  const css = leer('css/styles.css'), src = leer('js/modules/nu.js');
+  ['ok', 'warn', 'late'].forEach(e => ['nu-estado-', 'nu-fill-'].forEach(p => assert.ok(new RegExp('\\.' + p + e + '(?![\\w-])').test(css), p + e)));
+  assert.doesNotMatch(src, /estadoColors/);
+  assert.match(src, /const estado\s*=\s*p\.diferencia\s*>=\s*0\s*\?\s*'ok'\s*:\s*\(p\.diferencia\s*>\s*-\(p\.cuotaMensual\*0\.5\)\s*\?\s*'warn'\s*:\s*'late'\)/);
+});
+
+test('alcancia: las clases de color que arma el código (alc-c-X, alc-dif-X) existen en styles.css', () => {
+  const css = leer('css/styles.css');
+  ['alc-c-accent', 'alc-c-amber', 'alc-c-red', 'alc-c-text3', 'alc-dif-0', 'alc-dif-pos', 'alc-dif-neg'].forEach(c => assert.ok(new RegExp('\\.' + c + '(?![\\w-])').test(css), c));
+  const src = leer('js/modules/alcancia.js');
+  // los mapas de color que alimentan class=\"…\" son clases (el hint.style.color y el fill del SVG sí siguen usando var(--x), por CSSOM/atributo SVG)
+  for (const nombre of ['tipoColor', 'difColor', 'difMsgColor']) {
+    const linea = src.split('\n').find(l => l.includes('const ' + nombre));
+    assert.ok(linea && !/var\(--/.test(linea), nombre);
+  }
+});
+
+test('plata comprometida: las clases por tipo (cp-tbg-X, cp-tc-X) y los colores que arma el código existen en styles.css', () => {
+  const css = leer('css/styles.css'), src = leer('js/modules/plata_comprometida.js');
+  ['reposicion', 'gasto', 'abono_deuda', 'otro'].forEach(t => ['cp-tbg-', 'cp-tc-'].forEach(p => {
+    assert.ok(new RegExp('\\.' + p + t + '(?![\\w-])').test(css), p + t);
+    assert.ok(new RegExp("k:'" + t + "'").test(src), 'falta k:' + t + ' en _CP_TIPO_LABELS');
+  }));
+  ['cp-c-red', 'cp-c-amber', 'cp-c-text3'].forEach(c => assert.ok(new RegExp('\\.' + c + '(?![\\w-])').test(css), c));
+  assert.doesNotMatch(src, /ti\.(bg|border|color)\b/, 'los colores por tipo son clases, no ti.bg/border/color');
+});
+
+test('index.html: cada clase ix-* con min-height tiene su regla :empty (reemplaza a [style*="min-height"]:empty, que ya no ve el inline)', () => {
+  const css = leer('css/styles.css');
+  const reglas = [...css.matchAll(/(^|\n)([^{}\n]*\.(ix-[\w-]+)[^{}\n]*)\{([^}]*)\}/g)];
+  const conMin = reglas.filter(m => /min-height/.test(m[4]) && !/:empty/.test(m[2])).map(m => m[3]);
+  assert.ok(conMin.length >= 20, 'se esperaban ~29 clases con min-height; hay ' + conMin.length);
+  conMin.forEach(c => assert.ok(new RegExp('\\.' + c + ':empty\\{min-height:0 !important;\\}').test(css), c + ' sin :empty'));
+});
+
+test('index.html: el primer pintado (carga, login, PIN, toasts) conserva sus style="" porque styles.css es async', () => {
+  const html = leer('index.html');
+  assert.match(html, /<div[^>]*id="fb-loading-screen"[^>]*style="display:flex;?"|<div[^>]*style="display:flex;?"[^>]*id="fb-loading-screen"/);
+  assert.match(html, /id="fb-loading-screen"/);
+  // un style="" de más aquí es intencional: si alguien lo mueve a styles.css, la pantalla de carga se vería sin estilo hasta que llegue el CSS
+  const i = html.indexOf('id="pin-screen"');
+  assert.ok(html.slice(i, i + 4000).includes('style="'), 'pin-screen conserva su estilo inline');
+});
+
+test('styles.css es CSS válido de punta a punta: llaves balanceadas y sin comillas escapadas (\\\' o \\") heredadas de cadenas JS', () => {
+  const css = leer('css/styles.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  let d = 0; for (const c of css) { if (c === '{') d++; if (c === '}') d--; assert.ok(d >= 0, 'llave de cierre de más'); }
+  assert.equal(d, 0, 'llaves sin cerrar');
+  // una comilla escapada dentro de una declaración es CSS inválido y el navegador descarta también las reglas siguientes (pasó con .cp-dev-tag)
+  assert.doesNotMatch(css, /\\['"]/);
+});
+
+test('alcancia: el margen inferior de la fila "Duración" solo existe cuando hay racha (era un style condicional, no fijo)', () => {
+  const src = leer('js/modules/alcancia.js');
+  assert.match(src, /<div class="row\$\{rachaMsg \? ' alc-fila-mb8' : ''\}">/);
+  assert.doesNotMatch(src, /rachaMsg \? '' : ''/);
+});
+
+test('index.html: #gv_fuente_hint conserva visibility:hidden inline (styles.css lo usa como selector de atributo)', () => {
+  assert.match(leer('index.html'), /id="gv_fuente_hint"[^>]*style="visibility:hidden;"|style="visibility:hidden;"[^>]*id="gv_fuente_hint"/);
+});
+
+test('styles.css: un parser real (jsdom) lee tantas reglas como bloques de nivel superior (ninguna se pierde por un error de sintaxis)', { skip: (() => { try { require('jsdom'); return false; } catch { return 'jsdom no instalado'; } })() }, () => {
+  const { JSDOM } = require('jsdom');
+  const css = leer('css/styles.css');
+  const limpio = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  let d = 0, bloques = 0; for (const c of limpio) { if (c === '{') { if (d === 0) bloques++; d++; } if (c === '}') d--; }
+  const st = new JSDOM('<style></style>').window.document.querySelector('style'); st.textContent = css;
+  assert.equal(st.sheet.cssRules.length, bloques);
+});
+
+test('la app habla de tú en todo el texto (sin voseo) — index.html y js/', () => {
+  // Formas voseantes inequívocas (no coinciden con ninguna forma de «tú»): tenés, podés, administrás, creá, registrá…
+  const L = '[\\wáéíóúñÁÉÍÓÚÑ]'; // \b de JS no reconoce las tildes («registrándose» no es «registrá»)
+  const VOSEO = new RegExp(`(?<!${L})(vos|tenés|podés|querés|sabés|usás|guardás|administrás|agregás|tocás|gastás|llevás|recibís|registrás|ganás|perdés|recuperás|entregás|acabás|abrís|elegí|ingresá|seleccioná|registrá|creá|agregá|escribí|confirmá|borrá|cargá|esperá|contá|ponelo|ponés|fijate|acordate|eliminá|editá|mirá|poné|pegá|usá|hacé|marcá|activá|desactivá|aceptá|cancelá|continuá|revisá|probá|intentá|volvé|dejá|completá|elegilo|mandá|cobrá|pagá|prestá|sumá|restá|tocá|deslizá|asigná|indicá|volvé)(?!${L})`);
+  const archivos = ['index.html'];
+  const recorrer = d => fs.readdirSync(path.join(__dirname, '..', d), { withFileTypes: true }).forEach(e => {
+    const rel = d + '/' + e.name;
+    if (e.isDirectory()) recorrer(rel); else if (e.name.endsWith('.js')) archivos.push(rel);
+  });
+  recorrer('js');
+  const hallazgos = [];
+  for (const f of archivos) {
+    fs.readFileSync(path.join(__dirname, '..', f), 'utf8').split('\n').forEach((l, i) => {
+      const m = l.match(VOSEO); if (m) hallazgos.push(`${f}:${i + 1} «${m[0]}»`);
+    });
+  }
+  assert.deepEqual(hallazgos, [], 'voseo: usa tuteo (tienes, puedes, crea…)');
+});
+
+test('sin símbolos de texto decorativos (› ‹ ← → ↑ ↓ ↔ ÷ ✓ ⚠): iconos solo con SVG o Font Awesome', () => {
+  // Un símbolo de texto se puede seleccionar y copiar y no sigue la fuente de la app. Los comentarios no cuentan.
+  const SIMBOLOS = /[›‹←→↑↓↔÷✓✔✕⚠]/;
+  const archivos = ['index.html'];
+  const recorrer = d => fs.readdirSync(path.join(__dirname, '..', d), { withFileTypes: true }).forEach(e => {
+    const rel = d + '/' + e.name;
+    if (e.isDirectory()) recorrer(rel); else if (e.name.endsWith('.js')) archivos.push(rel);
+  });
+  recorrer('js');
+  const hallazgos = [];
+  for (const f of archivos) {
+    const sinComentarios = fs.readFileSync(path.join(__dirname, '..', f), 'utf8')
+      .replace(/<!--[\s\S]*?-->/g, m => m.replace(/[^\n]/g, ''))
+      .replace(/\/\*[\s\S]*?\*\//g, m => m.replace(/[^\n]/g, ''));
+    sinComentarios.split(/\r?\n/).forEach((l, i) => { // /\r?\n/: en archivos CRLF el `.` de JS no cruza el \r
+      const codigo = l.replace(/(^|\s)\/\/.*$/, '$1');
+      const m = codigo.match(SIMBOLOS);
+      if (m) hallazgos.push(`${f}:${i + 1} «${m[0]}»`);
+    });
+  }
+  assert.deepEqual(hallazgos, [], 'usa un SVG o una clase fa-solid fa-… en vez del símbolo de texto');
+});
+
+test('todo <svg> es decorativo (aria-hidden) o tiene nombre accesible (role / aria-label): el lector y «copiar» no leen «svg»', () => {
+  const archivos = ['index.html'];
+  const recorrer = d => fs.readdirSync(path.join(__dirname, '..', d), { withFileTypes: true }).forEach(e => {
+    const rel = d + '/' + e.name;
+    if (e.isDirectory()) recorrer(rel); else if (e.name.endsWith('.js')) archivos.push(rel);
+  });
+  recorrer('js');
+  const sueltos = [];
+  for (const f of archivos) {
+    const t = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+    (t.match(/<svg\b[^>]*>/g) || []).forEach(tag => { if (!/\baria-(hidden|label|labelledby)\b|\brole=/.test(tag)) sueltos.push(f + ': ' + tag.slice(0, 70)); });
+  }
+  assert.deepEqual(sueltos, [], 'agrega aria-hidden="true" al <svg> decorativo');
+});
+
+// Mejora 2: los círculos decorativos del héroe siguen el color de cada héroe (variable --hero-rgb), no un --accent fijo.
+test('héroes: ::before/::after usan --hero-rgb y cada variante de color la redefine', () => {
+  const regla = sel => (CSS.match(new RegExp('(?:^|\\n)' + sel.replace(/[.:]/g, '\\$&') + '\\{[^}]*\\}')) || [''])[0];
+  for (const pseudo of ['.hero::before', '.hero::after']) {
+    const r = regla(pseudo);
+    assert.ok(r, 'existe ' + pseudo);
+    assert.ok(/rgb\(var\(--hero-rgb\)\)/.test(r), pseudo + ' usa --hero-rgb');
+    assert.ok(!/var\(--accent\)/.test(r), pseudo + ' no usa --accent fijo');
+  }
+  const html = leer('index.html');
+  const variantes = new Set();
+  for (const m of html.matchAll(/class="hero (hero-[a-z]+)[" ]/g)) variantes.add(m[1]);
+  assert.ok(variantes.size >= 2, 'hay variantes de color en index.html');
+  for (const v of variantes) {
+    assert.ok(new RegExp('\\.hero\\.' + v + '\\{[^}]*--hero-rgb:\\d+,\\d+,\\d+').test(CSS), v + ' define --hero-rgb');
+  }
+});
+
+// Mejora 8: el botón de confirmar «Eliminar cuenta» es rojo (y atenuado mientras está deshabilitado). Lleva #del-account-actions
+// delante porque `#del-account-actions button` es más específico que `#del-account-confirm` y le pisaba el color.
+test('eliminar cuenta: el botón de confirmar es rojo con una regla que gana a la genérica', () => {
+  assert.ok(/#del-account-actions #del-account-confirm\{[^}]*background:var\(--red\)/.test(CSS));
+  assert.ok(/#del-account-actions #del-account-confirm:disabled\{[^}]*opacity:\.4/.test(CSS));
+  assert.ok(!/(^|\n)#del-account-confirm\{/.test(CSS), 'sin la regla suelta que perdía por especificidad');
+});
+
+// Mejora 9: en el detalle de TODA cuenta el orden es Encargos → Movimientos (título, filtros, lista en un solo bloque que se
+// oculta sin movimientos, dejando solo el estado vacío).
+test('detalle de cuenta: Encargos antes que el bloque de Movimientos, y el bloque se oculta sin movimientos', () => {
+  const html = leer('index.html');
+  for (const [enc, titulo] of [['det-cuenta-encargos', 'Movimientos registrados</div>'], ['det-nu-encargos', 'Movimientos registrados en Nu</div>']]) {
+    const iEnc = html.indexOf('id="' + enc + '"'), iBloque = html.indexOf('class="cuenta-movs-bloque"', iEnc);
+    assert.ok(iEnc > 0 && iBloque > iEnc, enc + ' va antes de su bloque de movimientos');
+    assert.ok(html.slice(iBloque, iBloque + 400).includes(titulo), 'el título vive dentro del bloque');
+  }
+  assert.ok(/\.cuenta-movs-bloque-vacio > \.sec-title[^{]*\{display:none/.test(CSS));
+  assert.ok(leer('js/modules/cuentas.js').includes("classList.toggle('cuenta-movs-bloque-vacio', !movs.length)"));
+});

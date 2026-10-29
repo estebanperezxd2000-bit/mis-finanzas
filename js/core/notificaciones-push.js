@@ -29,12 +29,12 @@
    ================================================================ */
 
 const _FCM_CONFIG = {
-  apiKey: 'AIzaSyAH4c4gt4IDdiEaNLzHcorGB3m0fBxMMB4',
-  authDomain: 'mis-finanzas-d5887.firebaseapp.com',
-  projectId: 'mis-finanzas-d5887',
-  storageBucket: 'mis-finanzas-d5887.firebasestorage.app',
-  messagingSenderId: '627629085197',
-  appId: '1:627629085197:web:c1be55dfc920d64444fb44',
+  apiKey: 'AIzaSyBNGhKxrd6nuUXamRytHEgrv3ggrafr4HU',
+  authDomain: 'mis-finanzas-z.firebaseapp.com',
+  projectId: 'mis-finanzas-z',
+  storageBucket: 'mis-finanzas-z.firebasestorage.app',
+  messagingSenderId: '469399538471',
+  appId: '1:469399538471:web:adaf95bc43b3355b087702',
 };
 
 const _FCM_VAPID_KEY = 'BHg62p-K530SMQ0Vx7EsZVpkG8NnXv_eD25AQz-w6gOL5MBdGGjCchPKnbuX2XFJXjoigwPWpxK39PtlvHRvsWw';
@@ -72,7 +72,7 @@ async function activarNotificaciones() {
       { merge: true }
     );
 
-    if (typeof toast === 'function') toast('Notificaciones activadas ✓', 'ok');
+    if (typeof toast === 'function') toast('Notificaciones activadas', 'ok');
   } catch (e) {
     console.error('Error activando notificaciones:', e);
     if (typeof toast === 'function') toast('No se pudo activar: ' + (e.message || e), 'err');

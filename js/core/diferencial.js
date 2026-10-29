@@ -5,7 +5,7 @@
    correspondía" (dijo) y "lo que realmente costó/recibiste" (real).
    margen = dijo - real. El margen se reparte en partes: cada parte
    es "alguien o algo se quedó con tanto", y opcionalmente puede ser
-   un INTERCAMBIO (la plata salió de tu bolsillo y la recuperás del
+   un INTERCAMBIO (la plata salió de tu bolsillo y la recuperas del
    encargo en otra cuenta).
 
    Los 4 sheets que muestran este bloque ("Salió plata", "Pague con
@@ -100,7 +100,7 @@ function diffReset(instId) {
   const real = document.getElementById(ids.real);
   const resumen = document.getElementById(ids.resumen);
   if (body) body.style.display = 'none';
-  if (icon) { icon.textContent = '›'; icon.style.transform = ''; }
+  if (icon) icon.style.transform = '';
   if (real) real.value = '';
   if (resumen) resumen.textContent = '';
   if (ids.miCuentaWrap) { const w = document.getElementById(ids.miCuentaWrap); if (w) w.style.display = 'none'; }
@@ -117,7 +117,7 @@ function diffToggle(instId) {
   if (!body) return;
   inst.abierto = body.style.display === 'none';
   body.style.display = inst.abierto ? '' : 'none';
-  if (icon) { icon.textContent = inst.abierto ? '‹' : '›'; icon.style.transform = inst.abierto ? 'rotate(90deg)' : ''; }
+  if (icon) icon.style.transform = inst.abierto ? 'rotate(180deg)' : '';
   if (inst.abierto) diffResumen(instId);
   if (inst.cfg.onToggle) inst.cfg.onToggle(inst.abierto);
 }
@@ -193,7 +193,7 @@ function diffRenderPartes(instId) {
       ${permiteIntercambio ? `
       <button type="button" ${Events.attr('diferencial:togglePagoYo', instId, i)}
         class="diferencial-pago-yo${pagoYo ? ' activo' : ''}">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v1H0zm0 3h16v5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2zm3 2a.5.5 0 0 0 0 1h1a.5.5 0 0 0 0-1zm2.5 0a.5.5 0 0 0 0 1h2a.5.5 0 0 0 0-1z"/></svg>
+        <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v1H0zm0 3h16v5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2zm3 2a.5.5 0 0 0 0 1h1a.5.5 0 0 0 0-1zm2.5 0a.5.5 0 0 0 0 1h2a.5.5 0 0 0 0-1z"/></svg>
         ${pagoYo ? '<i class="fa-solid fa-check diferencial-check"></i> Lo pagué yo (de mi cuenta)' : 'Lo pagué yo (de mi cuenta)'}
       </button>
       ${pagoYo ? `
@@ -208,7 +208,7 @@ function diffRenderPartes(instId) {
         </div>
       </div>
       <div class="diferencial-nota-intercambio">
-        ↔ Intercambio: yo pago ${b.monto > 0 ? fmt(b.monto) : '?'} de mi cuenta, y recupero ese monto del encargo a la cuenta que elijo.
+        Intercambio: yo pago ${b.monto > 0 ? fmt(b.monto) : '?'} de mi cuenta, y recupero ese monto del encargo a la cuenta que elijo.
       </div>` : ''}` : ''}
     </div>`;
   }).join('');
@@ -292,7 +292,7 @@ function diffResumen(instId) {
     if (b.monto > 0) {
       const salida = b.miCuentaSalida ? fuenteLabel(b.miCuentaSalida) : '?';
       const entrada = b.miCuentaEntrada ? fuenteLabel(b.miCuentaEntrada) : '?';
-      html += `<br><span class="diferencial-azul">↔ ${escHtml(b.nombre || 'Tú')}: sale ${fmt(b.monto)} de ${salida} · entra ${fmt(b.monto)} a ${entrada}</span>`;
+      html += `<br><span class="diferencial-azul">${escHtml(b.nombre || 'Tú')}: sale ${fmt(b.monto)} de ${salida} · entra ${fmt(b.monto)} a ${entrada}</span>`;
     }
   });
 
@@ -329,7 +329,7 @@ function diffValidarIntercambios(instId) {
     const saldo = getSaldoFuente(b.miCuentaSalida);
     if (b.monto > saldo + 0.5) {
       const nombre = b.nombre ? `"${escHtml(b.nombre)}"` : 'una persona';
-      return `No tenés ${fmt(b.monto)} en ${escHtml(fuenteLabel(b.miCuentaSalida))} para pagarle a ${nombre}. Disponible: ${fmt(saldo)}.`;
+      return `No tienes ${fmt(b.monto)} en ${escHtml(fuenteLabel(b.miCuentaSalida))} para pagarle a ${nombre}. Disponible: ${fmt(saldo)}.`;
     }
   }
   return null;
@@ -348,7 +348,7 @@ function diffValidarMiCuenta(instId) {
   if (!diffEstaAbierto(instId)) return null;
   const calc = diffCalcular(instId);
   if (!calc || !calc.real || calc.margen <= 0 || calc.sinAsignar <= 0.5) return null;
-  if (filas.some(r => !r.fuente)) return 'Elegí la cuenta en cada fila donde se reparte el sobrante';
+  if (filas.some(r => !r.fuente)) return 'Elige la cuenta en cada fila donde se reparte el sobrante';
   const total = filas.reduce((a, r) => a + r.monto, 0);
   if (Math.abs(total - calc.sinAsignar) > 0.5) {
     return `El sobrante es ${fmt(calc.sinAsignar)} y repartiste ${fmt(total)}. Tienen que coincidir.`;
@@ -500,13 +500,13 @@ function diffHtmlBloque(ids, opts) {
   <div id="${ids.wrap}" class="diferencial-wrap" style="display:none;">
     <div class="diferencial-cabecera" ${Events.attr('diferencial:toggle', opts.instId)}>
       <div class="diferencial-cabecera-izq">
-        <span class="diferencial-icono"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" class="diferencial-svg"><path d="M8 1a.5.5 0 0 1 .5.5V2h1a.75.75 0 0 1 0 1.5H8.5v1h.75a2.25 2.25 0 0 1 0 4.5H8.5V10h1a.75.75 0 0 1 0 1.5H8.5v.5a.5.5 0 0 1-1 0V11.5H6.75a.75.75 0 0 1 0-1.5H7.5V9H6.5A2.25 2.25 0 0 1 4.25 6.75v-.5A.75.75 0 0 1 5 5.5h2.5V4H6.5a.75.75 0 0 1 0-1.5H7.5V1.5A.5.5 0 0 1 8 1zM5.75 6.75A.75.75 0 0 0 6.5 7.5H7.5V6H6.5a.75.75 0 0 0-.75.75zM8.5 9v1.5h.25A.75.75 0 0 0 8.5 9z"/><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.2"/></svg></span>
+        <span class="diferencial-icono"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" class="diferencial-svg"><path d="M8 1a.5.5 0 0 1 .5.5V2h1a.75.75 0 0 1 0 1.5H8.5v1h.75a2.25 2.25 0 0 1 0 4.5H8.5V10h1a.75.75 0 0 1 0 1.5H8.5v.5a.5.5 0 0 1-1 0V11.5H6.75a.75.75 0 0 1 0-1.5H7.5V9H6.5A2.25 2.25 0 0 1 4.25 6.75v-.5A.75.75 0 0 1 5 5.5h2.5V4H6.5a.75.75 0 0 1 0-1.5H7.5V1.5A.5.5 0 0 1 8 1zM5.75 6.75A.75.75 0 0 0 6.5 7.5H7.5V6H6.5a.75.75 0 0 0-.75.75zM8.5 9v1.5h.25A.75.75 0 0 0 8.5 9z"/><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.2"/></svg></span>
         <div>
           <div class="diferencial-titulo">${titulo}</div>
           <div class="diferencial-subtitulo">${subtitulo}</div>
         </div>
       </div>
-      <div id="${ids.icon}" class="diferencial-chevron">›</div>
+      <div id="${ids.icon}" class="diferencial-chevron"><i class="fa-solid fa-chevron-down"></i></div>
     </div>
     <div id="${ids.body}" class="diferencial-cuerpo" style="display:none;">
       <div class="ig diferencial-ig">
@@ -537,11 +537,11 @@ function diffRenderHistorial(diferencial) {
   const d = diferencial;
   const benefs = (d.beneficiarios || []).filter(b => b.nombre).map(b => `${escHtml(b.nombre)} ${fmt(b.monto)}`).join(' · ');
   const miParte = (d.miCuentas && d.miCuentas.length > 1 && d.yoMeQuedo > 0)
-    ? `Yo → ${d.miCuentas.map(r => `${escHtml(fuenteLabel(r.cuenta))} ${fmt(r.monto)}`).join(' + ')}`
-    : (d.miCuenta && d.yoMeQuedo > 0 ? `Yo → ${escHtml(fuenteLabel(d.miCuenta))} ${fmt(d.yoMeQuedo)}` : (d.yoMeQuedo > 0 ? `Yo ${fmt(d.yoMeQuedo)}` : ''));
+    ? `Yo: ${d.miCuentas.map(r => `${escHtml(fuenteLabel(r.cuenta))} ${fmt(r.monto)}`).join(' + ')}`
+    : (d.miCuenta && d.yoMeQuedo > 0 ? `Yo: ${escHtml(fuenteLabel(d.miCuenta))} ${fmt(d.yoMeQuedo)}` : (d.yoMeQuedo > 0 ? `Yo ${fmt(d.yoMeQuedo)}` : ''));
   const todas = [benefs, miParte].filter(Boolean).join(' · ');
   return `<div class="diferencial-badge">
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" class="diferencial-svg"><path d="M8 1a.5.5 0 0 1 .5.5V2h1a.75.75 0 0 1 0 1.5H8.5v1h.75a2.25 2.25 0 0 1 0 4.5H8.5V10h1a.75.75 0 0 1 0 1.5H8.5v.5a.5.5 0 0 1-1 0V11.5H6.75a.75.75 0 0 1 0-1.5H7.5V9H6.5A2.25 2.25 0 0 1 4.25 6.75v-.5A.75.75 0 0 1 5 5.5h2.5V4H6.5a.75.75 0 0 1 0-1.5H7.5V1.5A.5.5 0 0 1 8 1zM5.75 6.75A.75.75 0 0 0 6.5 7.5H7.5V6H6.5a.75.75 0 0 0-.75.75zM8.5 9v1.5h.25A.75.75 0 0 0 8.5 9z"/><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.2"/></svg> Margen ${fmt(d.margen)} (real: ${fmt(d.real)})${todas ? ' · ' + todas : ''}
+    <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" class="diferencial-svg"><path d="M8 1a.5.5 0 0 1 .5.5V2h1a.75.75 0 0 1 0 1.5H8.5v1h.75a2.25 2.25 0 0 1 0 4.5H8.5V10h1a.75.75 0 0 1 0 1.5H8.5v.5a.5.5 0 0 1-1 0V11.5H6.75a.75.75 0 0 1 0-1.5H7.5V9H6.5A2.25 2.25 0 0 1 4.25 6.75v-.5A.75.75 0 0 1 5 5.5h2.5V4H6.5a.75.75 0 0 1 0-1.5H7.5V1.5A.5.5 0 0 1 8 1zM5.75 6.75A.75.75 0 0 0 6.5 7.5H7.5V6H6.5a.75.75 0 0 0-.75.75zM8.5 9v1.5h.25A.75.75 0 0 0 8.5 9z"/><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.2"/></svg> Margen ${fmt(d.margen)} (real: ${fmt(d.real)})${todas ? ' · ' + todas : ''}
   </div>`;
 }
 

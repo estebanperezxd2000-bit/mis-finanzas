@@ -92,8 +92,8 @@ function _injectScreen(){
     <!-- Lista -->
     <div class="cp-sec-cab">
       <div class="sec-title cp-mt0">Ingresos comprometidos</div>
-      <button type="button" ${Events.attr('cp:abrirNuevo')} class="cp-btn-nuevo">
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      <button type="button" ${Events.attr('cp:abrirNuevo')} class="btn-chip btn-chip-amber">
+        <svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Nuevo
       </button>
     </div>
@@ -102,7 +102,7 @@ function _injectScreen(){
     <!-- Tip -->
     <div class="cp-ayuda-caja">
       <div class="cp-ayuda-cap">¿Cómo funciona?</div>
-      <div class="cp-ayuda-txt">Registrá aquí ingresos que todavía no te han llegado pero que ya sabés que van a tener destino. Cuando la plata llegue de verdad, tocás <b class="cp-c-text2">Recibir</b> y la app te guía a distribuirla sin enredos.</div>
+      <div class="cp-ayuda-txt">Registra aquí ingresos que todavía no te han llegado pero que ya sabes que van a tener destino. Cuando la plata llegue de verdad, tocas <b class="cp-c-text2">Recibir</b> y la app te guía a distribuirla sin enredos.</div>
     </div>
   `;
   main.appendChild(screen);
@@ -118,7 +118,7 @@ function _injectMasItem(){
   item.setAttribute('data-screen', 'comprometida');
   item.innerHTML = `
     <div class="mas-item-icon cp-ico-amber">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
         <rect x="2" y="6" width="20" height="13" rx="2"/>
         <path d="M2 10h20"/>
         <path d="M12 14v2M8 14h2M14 14h2"/>
@@ -154,7 +154,7 @@ function _injectSheet(){
     <div class="sheet">
       <div class="sheet-handle"></div>
       <div class="sheet-title" id="cp-sheet-title">Nuevo ingreso comprometido</div>
-      <div class="cp-form-intro">Registrá plata que todavía no llegó pero que ya tiene destino.<br>Los saldos <b class="cp-c-text">no se tocan</b> hasta que vos confirmes que llegó.</div>
+      <div class="cp-form-intro">Registra plata que todavía no llegó pero que ya tiene destino.<br>Los saldos <b class="cp-c-text">no se tocan</b> hasta que tú confirmes que llegó.</div>
 
       <div class="ig">
         <label class="il" for="cp-desc">¿Qué plata es? <span class="cp-c-red">*</span></label>
@@ -177,10 +177,10 @@ function _injectSheet(){
       <div class="cp-dest-cab-wrap">
         <div class="cp-dest-cab">
           <div class="il cp-mt0">¿A dónde va esta plata?</div>
-          <button type="button" ${Events.attr('cp:agregarDestino')} class="cp-btn-add-dest">+ Agregar destino</button>
+          <button type="button" ${Events.attr('cp:agregarDestino')} class="btn-chip btn-chip-accent btn-chip-sm"><svg aria-hidden="true" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Agregar destino</button>
         </div>
         <div id="cp-destinos-list"></div>
-        <div id="cp-balance-preview" style="font-size:12px;font-family:'DM Mono',monospace;min-height:18px;padding:8px 0;"></div>
+        <div id="cp-balance-preview" class="cp-balance-prev"></div>
       </div>
 
       <button type="button" class="btn btn-primary cp-btn-guardar-amber" ${Events.attr('cp:guardar')}>Guardar</button>
@@ -331,7 +331,7 @@ function _injectSheet(){
     <div class="sheet">
       <div class="sheet-handle"></div>
       <div class="sheet-title">¡Llegó la plata! <i class="fa-solid fa-star cp-star"></i></div>
-      <div class="cp-rev-intro">Revisá el plan y confirma qué se va a hacer con cada parte.</div>
+      <div class="cp-rev-intro">Revisa el plan y confirma qué se va a hacer con cada parte.</div>
 
       <div id="cp-recibir-desc-card" class="cp-rev-ing">
         <div class="cp-rev-cap">Ingreso</div>
@@ -344,7 +344,7 @@ function _injectSheet(){
 
       <div id="cp-recibir-sobrante-wrap" class="cp-sobrante" style="display:none;">
         <div class="cp-sob-cab">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(200,240,96,.8)" stroke-width="2.5" stroke-linecap="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+          <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(200,240,96,.8)" stroke-width="2.5" stroke-linecap="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
           <div class="cp-sob-cap">Ingreso libre</div>
         </div>
         <div class="cp-sob-monto" id="cp-recibir-sobrante">$0</div>
@@ -479,13 +479,10 @@ function _cpRenderLista(){
   if(statLibre) statLibre.textContent = fmt(totalLibre);
 
   if(!items.length){
-    el.innerHTML = `<div class="cp-vacio-caja">
-      <div class="cp-vacio-ico">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="1.7" stroke-linecap="round"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/><path d="M6 6V4M18 6V4"/></svg>
-      </div>
-      <div class="cp-vacio-tit">Sin ingresos registrados</div>
-      <div class="cp-vacio-txt">Tocá <b class="cp-c-text2">Nuevo</b> para registrar plata que va a llegar.</div>
-    </div>`;
+    el.innerHTML = emptyState(
+      `<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="1.8" stroke-linecap="round"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/><path d="M6 6V4M18 6V4"/></svg>`,
+      'Sin ingresos registrados',
+      'Toca <b class="cp-c-text2">Nuevo</b> para registrar plata que va a llegar.');
     return;
   }
 
@@ -569,7 +566,7 @@ function _cpRenderLista(){
         <div class="cp-item-btns">
           <button type="button" ${raw(Events.attr('cp:abrirRecibir', item.id))}
             class="cp-btn-recibir">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+            <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
             ¡Llegó!
           </button>
           <button type="button" ${raw(Events.attr('cp:marcarPagos', item.id))}
@@ -583,7 +580,7 @@ function _cpRenderLista(){
           </button>
           <button type="button" ${raw(Events.attr('cp:eliminar', item.id))}
             class="cp-btn-borrar">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
+            <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
           </button>
         </div>
       </div>`;
@@ -696,10 +693,7 @@ function _cpAbrirEditar(id){
   _cpDestinosTmp = JSON.parse(JSON.stringify(item.destinos||[]));
   document.getElementById('cp-sheet-title').textContent = 'Editar ingreso';
   document.getElementById('cp-desc').value = item.desc||'';
-  if(typeof window._moneyDigits !== 'undefined' && window.fmtInput)
-    document.getElementById('cp-monto-total').value = fmtInput(item.montoTotal||0);
-  else
-    document.getElementById('cp-monto-total').value = String(item.montoTotal||0).replace('.',',');
+  document.getElementById('cp-monto-total').value = fmtInput(item.montoTotal||0);
   document.getElementById('cp-fecha-llegada').value = item.fechaLlegada||'';
   _cpPoblarCuentas('cp-cuenta-destino', false);
   document.getElementById('cp-cuenta-destino').value = item.cuentaDestino||'';
@@ -714,14 +708,14 @@ function _cpCancelSheet(){
 
 function _cpGuardar(){
   const desc = (document.getElementById('cp-desc').value||'').trim();
-  if(!desc){ toast('Escribí de qué plata es','err'); return; }
+  if(!desc){ toast('Escribe de qué plata es','err'); return; }
 
   const montoStr = document.getElementById('cp-monto-total').value||'';
   const monto = typeof parseMoney === 'function' ? parseMoney(montoStr) : parseFloat(montoStr.replace(/\./g,'').replace(',','.'));
-  if(!monto || monto <= 0){ toast('Ingresá el monto total','err'); return; }
+  if(!monto || monto <= 0){ toast('Ingresa el monto total','err'); return; }
 
   const fecha = document.getElementById('cp-fecha-llegada').value;
-  if(!fecha){ toast('Indicá cuándo llega','err'); return; }
+  if(!fecha){ toast('Indica cuándo llega','err'); return; }
 
   const cuentaDestino = document.getElementById('cp-cuenta-destino').value||'';
 
@@ -973,11 +967,11 @@ function _cpdSetYaPague(val){
 function _cpdConfirmar(){
   const tipo  = document.getElementById('cpd-tipo').value;
   const desc  = (document.getElementById('cpd-desc').value||'').trim();
-  if(!desc){ toast('Describí para qué es','err'); return; }
+  if(!desc){ toast('Describe para qué es','err'); return; }
 
   const montoStr = document.getElementById('cpd-monto').value||'';
   const monto = typeof parseMoney === 'function' ? parseMoney(montoStr) : parseFloat(montoStr.replace(/\./g,'').replace(',','.'));
-  if(!monto || monto <= 0){ toast('Ingresá el monto','err'); return; }
+  if(!monto || monto <= 0){ toast('Ingresa el monto','err'); return; }
 
   const personaId = document.getElementById('cpd-persona') ? document.getElementById('cpd-persona').value : '';
   const cuentaId  = document.getElementById('cpd-cuenta')  ? document.getElementById('cpd-cuenta').value  : '';
@@ -993,7 +987,7 @@ function _cpdConfirmar(){
       gastoCajita = document.getElementById('cpd-gasto-cajita') ? document.getElementById('cpd-gasto-cajita').value : '';
     } else {
       gastoTcId = document.getElementById('cpd-gasto-tc') ? document.getElementById('cpd-gasto-tc').value : '';
-      if(!gastoTcId){ toast('Elegí una tarjeta de crédito','err'); return; }
+      if(!gastoTcId){ toast('Elige una tarjeta de crédito','err'); return; }
       gastoTcCajita = document.getElementById('cpd-gasto-tc-cajita') ? document.getElementById('cpd-gasto-tc-cajita').value : '';
     }
   }
@@ -1075,16 +1069,16 @@ function _cpRenderDestinosTmp(){
   if(!el) return;
 
   const _tipoIcon = {
-    reposicion:  `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.7"/></svg>`,
-    gasto:       `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>`,
-    abono_deuda: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M11 7H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-5"/><path d="M10 14L20 4"/><path d="M15 4h5v5"/></svg>`,
-    otro:        `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/></svg>`,
+    reposicion:  `<svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.7"/></svg>`,
+    gasto:       `<svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>`,
+    abono_deuda: `<svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M11 7H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-5"/><path d="M10 14L20 4"/><path d="M15 4h5v5"/></svg>`,
+    otro:        `<svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/></svg>`,
   };
 
   if(!_cpDestinosTmp.length){
     el.innerHTML = `<div class="cp-sd-caja">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-      <div class="cp-sd-txt">Sin destinos — todo queda libre para vos.</div>
+      <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      <div class="cp-sd-txt">Sin destinos — todo queda libre para ti.</div>
     </div>`;
   } else {
     el.innerHTML = _cpDestinosTmp.map((d,i)=>{
@@ -1124,7 +1118,7 @@ function _cpRenderDestinosTmp(){
         <div class="cp-sd-der">
           <div class="cp-tipo-monto cp-tc-${ti.k}">${fmt(d.monto)}</div>
           <button type="button" ${raw(Events.attr('cp:quitarDestino', i))} class="cp-btn-x" title="Quitar">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
       </div>`;
@@ -1226,7 +1220,7 @@ function _cpAbrirRecibir(id){
               subLabel = html`Pendiente · Se cargará a ${tcNombre}`;
               extraInfo = html`<div class="cp-int-caja-tc">
                 <i class="fa-solid fa-credit-card cp-int-tc-ico"></i>
-                <span class="cp-int-tc-txt">Se cargará a ${tcNombre}${cajDestLabel ? html` · plata → "${cajDestLabel}"` : ''}</span>
+                <span class="cp-int-tc-txt">Se cargará a ${tcNombre}${cajDestLabel ? html` · plata a "${cajDestLabel}"` : ''}</span>
               </div>`;
             }
           } else if(d.gastoOrigen==='cajita' && d.gastoCajita){
@@ -1306,7 +1300,7 @@ function _cpAbrirRecibir(id){
               <span class="cp-rec-it-monto">${fmt(d.monto)}</span>
             </div>`;
           }).join(''))}
-          <div class="cp-rec-nota"><i class="fa-solid fa-circle-info cp-rec-nota-ico"></i>Cuando llegue la fecha de pago, usá la plata de esas cajitas.</div>
+          <div class="cp-rec-nota"><i class="fa-solid fa-circle-info cp-rec-nota-ico"></i>Cuando llegue la fecha de pago, usa la plata de esas cajitas.</div>
         </div>`;
     } else {
       recWrap.style.display = 'none';
@@ -1399,7 +1393,7 @@ function _cpConfirmarRecibir(){
               if(!S.movimientos) S.movimientos = [];
               // _esReposicionCP:true → excluido del análisis de tendencia (es plata del ingreso comprometido, no tuya)
               S.movimientos.push({id:uid(), tipo:'entrada', fuente:destCajita, monto:d.monto, fecha, desc:'Para pagar TC ('+d.desc+'): '+item.desc, clase:'neutro', _esReposicionCP:true, _cpItemId:item.id});
-              if(window.logCambio) logCambio('Plata para pagar TC → '+_cpFuenteLabel(destCajita), fmt(d.monto)+' por "'+d.desc+'"', d.monto, 'ingreso');
+              if(window.logCambio) logCambio('Plata para pagar TC en '+_cpFuenteLabel(destCajita), fmt(d.monto)+' por "'+d.desc+'"', d.monto, 'ingreso');
             }
           }
         } else if(d.gastoOrigen === 'cajita' && d.gastoCajita){
@@ -1446,7 +1440,7 @@ function _cpConfirmarRecibir(){
           desc:'Ingreso libre: '+item.desc, clase:'ingreso', _esSobrante:true, _cpItemId:item.id});
         if(window.logCambio) logCambio(
           '<i class="fa-solid fa-sack-dollar cp-ico-r4"></i>¡Ingreso libre de "'+item.desc+'"!',
-          fmt(ganancia)+' → '+_cpFuenteLabel(sobranteCuenta),
+          fmt(ganancia)+' en '+_cpFuenteLabel(sobranteCuenta),
           ganancia, 'ingreso'
         );
       }
@@ -1464,7 +1458,7 @@ function _cpConfirmarRecibir(){
   _cpRecibirId = null;
 
   if(errores.length){
-    toast('Recibido con errores menores en: '+escHtml(errores.join(', ')),'err');
+    toast('Recibido con errores menores en: '+escHtml(errores.join(', ')),'warn');
   } else {
     const gananciaMsg = ganancia > 0.99
       ? ` · <b>+${fmt(ganancia)}</b> libres`
@@ -1504,7 +1498,7 @@ function _cpMarcarPagos(id){
     div.innerHTML = `<div class="sheet">
       <div class="sheet-handle"></div>
       <div class="sheet-title">Marcar estado de pagos</div>
-      <div class="cp-sub-intro">Tocá cada ítem para cambiar su estado.</div>
+      <div class="cp-sub-intro">Toca cada ítem para cambiar su estado.</div>
       <div id="cp-marcar-list"></div>
       <button type="button" class="btn btn-primary cp-btn-guardar-acc" ${Events.attr('cp:guardarMarcados')}>Guardar</button>
       <button type="button" class="btn btn-ghost" data-close-sheet="cp-marcar" ${Events.attr('cp:cerrarMarcar')}>Cancelar</button>
@@ -1673,13 +1667,13 @@ async function _cpEliminar(id){
   // Construir mensaje de advertencia con el detalle de lo que se revertirá
   let advertencia = '¿Eliminar «' + item.desc + '»?';
   if(yaRecibido){
-    advertencia += '\n\n<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="cp-svg-warn"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Este ingreso ya fue marcado como recibido. Al eliminarlo se revertirán todos los movimientos generados (reposiciones en cuentas, entradas en cajitas) y las compras de TC asociadas.';
+    advertencia += '\n\n<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="cp-svg-warn"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Este ingreso ya fue marcado como recibido. Al eliminarlo se revertirán todos los movimientos generados (reposiciones en cuentas, entradas en cajitas) y las compras de TC asociadas.';
   } else {
     if(hayAdelantos){
-      advertencia += '\n\n<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="cp-svg-warn"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Hay plata adelantada de tus cuentas. Al eliminar se revertirán esos descuentos y quedarán como si nunca se hubieron hecho.';
+      advertencia += '\n\n<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="cp-svg-warn"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Hay plata adelantada de tus cuentas. Al eliminar se revertirán esos descuentos y quedarán como si nunca se hubieron hecho.';
     }
     if(hayTcMarcada){
-      advertencia += '\n\n<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="cp-svg-warn"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Hay gastos marcados como cargados a TC. Al eliminar se revertirá la deuda sumada a la tarjeta.';
+      advertencia += '\n\n<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="cp-svg-warn"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Hay gastos marcados como cargados a TC. Al eliminar se revertirá la deuda sumada a la tarjeta.';
     }
     if(!hayAdelantos && !hayTcMarcada){
       advertencia += '\n\nEste ingreso no ha generado movimientos — se puede eliminar sin efectos secundarios.';
@@ -1741,7 +1735,7 @@ async function _cpEliminar(id){
         return;
       }
       if(nivel==='viejo'){
-        advertencia += '\n\n<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="cp-svg-warn"><path d="M12 8v4"/><path d="M12 16h.01"/><circle cx="12" cy="12" r="10"/></svg> Esto ya tiene tiempo y puede estar mezclado con operaciones más recientes de las cuentas involucradas — revertirlo hoy ajusta esos saldos actuales, no recalcula el historial completo.';
+        advertencia += '\n\n<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="cp-svg-warn"><path d="M12 8v4"/><path d="M12 16h.01"/><circle cx="12" cy="12" r="10"/></svg> Esto ya tiene tiempo y puede estar mezclado con operaciones más recientes de las cuentas involucradas — revertirlo hoy ajusta esos saldos actuales, no recalcula el historial completo.';
       }
     }
   }
@@ -1881,7 +1875,7 @@ async function _cpEliminar(id){
   save();
   if(typeof refresh==='function') refresh();
   _cpRenderLista();
-  toast('Ingreso eliminado y efectos revertidos <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="cp-svg-warn"><polyline points="20 6 9 17 4 12"/></svg>','ok');
+  toast('Ingreso eliminado y efectos revertidos <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="cp-svg-warn"><polyline points="20 6 9 17 4 12"/></svg>','ok');
 };
 
 /* ── INTEGRACIÓN CON renderAttencion — ver js/core/hook-global.js ── */
@@ -1930,10 +1924,10 @@ async function _cpEliminar(id){
         const diasG = Math.round((new Date(d.fechaPago+'T00:00:00') - new Date(hoyStr+'T00:00:00'))/86400000);
         let txtG = '', tipoG = '';
         const cajLabelG = typeof _cpFuenteLabel==='function'?_cpFuenteLabel(d.gastoCajita):d.gastoCajita;
-        if(diasG < 0){ txtG = html`Vencido: "${d.desc}" de "${item.desc}" debía pagarse el ${d.fechaPago} — tenés ${fmt(d.monto)} en ${cajLabelG}`; tipoG='red'; }
-        else if(diasG === 0){ txtG = html`¡Hoy hay que pagar "${d.desc}"! Tenés ${fmt(d.monto)} guardado`; tipoG='amber'; }
-        else if(diasG === 1){ txtG = html`Mañana vence "${d.desc}" — tenés ${fmt(d.monto)} en ${cajLabelG}`; tipoG='amber'; }
-        else if(diasG <= 3){ txtG = html`En ${diasG} días vence "${d.desc}" (${d.fechaPago}) — tenés ${fmt(d.monto)} guardado`; tipoG='amber'; }
+        if(diasG < 0){ txtG = html`Vencido: "${d.desc}" de "${item.desc}" debía pagarse el ${d.fechaPago} — tienes ${fmt(d.monto)} en ${cajLabelG}`; tipoG='red'; }
+        else if(diasG === 0){ txtG = html`¡Hoy hay que pagar "${d.desc}"! Tienes ${fmt(d.monto)} guardado`; tipoG='amber'; }
+        else if(diasG === 1){ txtG = html`Mañana vence "${d.desc}" — tienes ${fmt(d.monto)} en ${cajLabelG}`; tipoG='amber'; }
+        else if(diasG <= 3){ txtG = html`En ${diasG} días vence "${d.desc}" (${d.fechaPago}) — tienes ${fmt(d.monto)} guardado`; tipoG='amber'; }
         if(txtG){
           sec.style.display = '';
           const chipG = document.createElement('div');

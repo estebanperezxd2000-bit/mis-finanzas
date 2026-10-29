@@ -213,8 +213,7 @@ async function guardarChequeoNu(){
   inputs.forEach(inp=>{
     const raw=(inp.value||'').replace(/\./g,'').replace(',','.');
     const val=parseFloat(raw);
-    // Un campo money-input se rellena con "0,00" apenas se toca (focusin) y nada lo limpia al salir,
-    // así que 0 significa "no anoté nada", no "esta cajita tiene $0". Antes se guardaba como lectura
+    // Un campo vacío o en 0 significa "no anoté nada", no "esta cajita tiene $0". Antes se guardaba como lectura
     // real: ponía la cajita en 0 (solo con aviso si se alejaba más de max($1.000, 2%)) y ensuciaba
     // S.chequeosNu. Si de verdad quedó vacía, se registra el retiro como movimiento (lo dice el aviso).
     if(!raw||isNaN(val)||val<=0)return;
@@ -349,7 +348,6 @@ function confirmarCambioTasaNu(){
   if(el)el.value=nuTasaATexto(tasaEditada);
   S.nuRate=tasaEditada;
   save();refresh();
-  _renderTasaHistorialTag();
   closeSheet('confirmar-tasa-nu');
   if(window.toast)toast('Tasa actualizada a '+tasaEditada+'% desde '+fechaEditada,'ok',4000);
   _tasaNuPendiente=null;
@@ -515,11 +513,11 @@ function _renderMetaAportes(){
   const el = document.getElementById('meta_aportes_list');
   if(!el) return;
   el.innerHTML = html`${_metaAportesTemp.map((ap,i)=>html`
-    <div class="prest-split-row nu-aporte-fila">
-      <input type="text" value="${ap.desc||''}" placeholder="Ej: Papá, Mamá" class="meta-aporte-desc nu-aporte-desc" data-idx="${i}">
-      <input type="text" inputmode="decimal" value="${ap.monto?fmtInput(ap.monto):''}" placeholder="$0" class="money-input meta-aporte-monto nu-aporte-monto" data-idx="${i}">
-      <button class="prest-split-del" ${raw(Events.attr('nu:metaAporteEliminar', i))}>
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    <div class="split-fila">
+      <input type="text" value="${ap.desc||''}" placeholder="Ej: Papá, Mamá" class="split-desc meta-aporte-desc" data-idx="${i}">
+      <input type="text" inputmode="decimal" value="${ap.monto?fmtInput(ap.monto):''}" placeholder="$0" class="money-input split-monto meta-aporte-monto" data-idx="${i}">
+      <button type="button" class="split-quitar" aria-label="Quitar aporte" ${raw(Events.attr('nu:metaAporteEliminar', i))}>
+        <svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>`)}`;
   // Reemplaza los oninput="_metaAportesTemp[i]..." inline (CSP los bloquea).
@@ -615,23 +613,11 @@ function quitarMetaCajita(){
   save();
   closeSheet('meta-cajita');
   refresh();
-  toast('Meta eliminada','info');
+  toast('Meta eliminada','ok');
 }
 
 // Sección "Préstamo con origen dividido" (togglePrestSplit / _renderPrestSplit /
 // _updatePrestSplitResumen) migrada a js/modules/prestado.js — ver docs/prestado.md.
-
-// Muestra un resumen corto ("9,25% hasta 05 jul · 9,30% desde 06 jul") de los últimos
-// cambios de tasa registrados.
-function _renderTasaHistorialTag(){
-  const tag=document.getElementById('nuTasaHistorialTag');
-  if(!tag)return;
-  const hist=(S.historialTasasNu||[]).slice().sort((a,b)=>a.fecha<b.fecha?-1:1);
-  if(!hist.length){tag.textContent='';return;}
-  const fmtFecha=f=>{const d=_fechaSafe(f);return d.toLocaleDateString('es-CO',{day:'2-digit',month:'short'}).replace('.','');};
-  const partes=hist.slice(-3).map(h=>String(h.tasa).replace('.',',')+'% desde '+fmtFecha(h.fecha));
-  tag.textContent=partes.join(' · ');
-}
 
 function addCajita(){
   if(!nuTasaConfigurada()){
@@ -672,7 +658,7 @@ async function deleteCajita(id){
   // apuntando a una cajita fantasma (mismo espíritu que eliminarTC con tcMovimientos).
   if(tcVinculadas.length) tcVinculadas.forEach(x=>{x.cajitaId=null;});
   save();refresh();
-  toast('Cajita eliminada','info');
+  toast('Cajita eliminada','ok');
   if(window.logCambio)logCambio('Eliminaste cajita "'+nombreEl+'"','',0,'eliminar');
 }
 
@@ -840,8 +826,8 @@ function abrirCobrarCDT(cajitaId,cdtId,esVencimientoAuto){
     const d=v-k.val;
     const abs=Math.abs(d).toFixed(2);
     if(Math.abs(d)<0.01){diff.innerHTML='<i class="fa-solid fa-check nu-ico-r4"></i>Coincide exacto con el estimado';diff.style.color='var(--accent)';}
-    else if(d>0){diff.textContent='↑ +$'+abs.replace('.',',') +' más que el estimado';diff.style.color='var(--purple)';}
-    else{diff.textContent='↓ −$'+abs.replace('.',',')+' menos que el estimado';diff.style.color='var(--text3)';}
+    else if(d>0){diff.textContent='+$'+abs.replace('.',',') +' más que el estimado';diff.style.color='var(--purple)';}
+    else{diff.textContent='−$'+abs.replace('.',',')+' menos que el estimado';diff.style.color='var(--text3)';}
   };
   openSheet('cobrar-cdt');
 }
@@ -959,10 +945,10 @@ function renderCajitas(){
     const hasMeta=!!(c.meta&&c.meta.objetivo);
     const metaPct=hasMeta?Math.min(100,(k.val/c.meta.objetivo)*100):0;
     // Badges indicadores
-    const cdtBadge=hasCDTs?html`<span class="nu-badge-cdt"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>${cdts.length===1?fmt(totalCDT):cdts.length+' CDTs'}</span>`:'';
+    const cdtBadge=hasCDTs?html`<span class="nu-badge-cdt"><svg aria-hidden="true" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>${cdts.length===1?fmt(totalCDT):cdts.length+' CDTs'}</span>`:'';
     const metaBadge=hasMeta?html`<span class="nu-badge-meta">${metaPct.toFixed(0)}%</span>`:'';
     return html`<div class="cajita-row-hover nu-cajita-fila" id="cajita-row-${c.id}" ${raw(Events.attr('nu:abrirDetalleCajita', c.id))}>
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--nu-light)" stroke-width="2" stroke-linecap="round" class="nu-no-shrink"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg>
+      <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--nu-light)" stroke-width="2" stroke-linecap="round" class="nu-no-shrink"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg>
       <div class="nu-cajita-cuerpo">
         <div class="nu-cajita-nombre">${c.nombre}</div>
         ${interesHoy>0.1?html`<div class="nu-cajita-dia">+${fmt(interesHoy)}/día</div>`:''}
@@ -971,7 +957,7 @@ function renderCajitas(){
       <div class="nu-cajita-der">
         <div class="nu-cajita-saldo">${fmt(k.val)}</div>
       </div>
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2.5" stroke-linecap="round" class="nu-no-shrink"><polyline points="9 18 15 12 9 6"/></svg>
+      <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2.5" stroke-linecap="round" class="nu-no-shrink"><polyline points="9 18 15 12 9 6"/></svg>
     </div>`;
   })}`;
   if(cajitas.length>=MAX){msg.innerHTML=html`<div class="cajita-limit-msg">Límite alcanzado (${MAX}/${MAX})</div>`;btn.style.display='none';}
@@ -1130,7 +1116,7 @@ function abrirSubMeta(){
   if(!p){
     // Sin meta — mostrar formulario rápido
     el.innerHTML=html`<div class="card nu-meta-vacia">
-      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" class="nu-mb12"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      <svg aria-hidden="true" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" class="nu-mb12"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
       <div class="nu-meta-vacia-titulo">Sin meta configurada</div>
       <div class="nu-meta-vacia-txt">Define un objetivo de ahorro para esta cajita y lleva el seguimiento mes a mes.</div>
       <button type="button" class="btn btn-primary" ${raw(Events.attr('nu:abrirMetaCajita', c.id))}>Configurar meta</button>
@@ -1186,7 +1172,7 @@ function abrirSubCDTs(){
   let contenido='';
   if(!cdts.length){
     contenido=html`<div class="card nu-cdt-vacio">
-      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--purple)" stroke-width="1.5" stroke-linecap="round" class="nu-mb12"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+      <svg aria-hidden="true" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--purple)" stroke-width="1.5" stroke-linecap="round" class="nu-mb12"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
       <div class="nu-meta-vacia-titulo">Sin CDTs activos</div>
       <div class="nu-meta-vacia-txt">Bloquea parte del saldo de esta cajita como CDT y gana intereses mientras esperas el vencimiento.</div>
     </div>`;
@@ -1218,11 +1204,11 @@ function abrirSubCDTs(){
           <button type="button" class="btn btn-ghost btn-sm nu-flex1" ${raw(Events.attr('nu:editarCDT', c.id, cdt.id))}>Editar</button>
           ${vencido
             ? html`<button type="button" class="btn btn-sm nu-btn-cobrar" ${raw(Events.attr('nu:abrirCobrarCDT', c.id, cdt.id))}>
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" class="nu-ico-chk"><polyline points="20 6 9 17 4 12"/></svg>
+            <svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" class="nu-ico-chk"><polyline points="20 6 9 17 4 12"/></svg>
             Cobrar CDT
           </button>`
             : html`<button type="button" class="btn btn-sm nu-btn-reinvertir" ${raw(Events.attr('nu:liberarCDTManual', c.id, cdt.id))}>
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" class="nu-ico-chk"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/><circle cx="12" cy="16" r="1" fill="currentColor"/></svg>
+            <svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" class="nu-ico-chk"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/><circle cx="12" cy="16" r="1" fill="currentColor"/></svg>
             Cerrar CDT
           </button>`}
         </div>
@@ -1231,7 +1217,7 @@ function abrirSubCDTs(){
   }
   contenido=html`${contenido}<button type="button" class="btn btn-ghost ${cdts.length?'nu-mt4':'nu-mt0'}" ${raw(Events.attr('nu:abrirCrearCDT', c.id))}>
     <span class="nu-btn-crear-ico">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       ${cdts.length?'Agregar otro CDT':'Crear CDT'}
     </span>
   </button>
@@ -1309,7 +1295,7 @@ function _nuMovRenderCajitas() {
   if (!wrap) return;
   const cajitas = S.cajitas || [];
   if (!cajitas.length) {
-    wrap.innerHTML = '<div class="nu-sel-vacio">No tenés cajitas. Creá una primero desde la pantalla de Nu.</div>';
+    wrap.innerHTML = '<div class="nu-sel-vacio">No tienes cajitas. Crea una primero desde la pantalla de Nu.</div>';
     return;
   }
   wrap.innerHTML = html`${cajitas.map(c => {
@@ -1339,7 +1325,7 @@ function _nuMovRenderCajitas() {
       this.style.background = 'rgba(192,96,240,.08)';
       const selId = _nuMovCajitaSel.split(':')[1];
       const chkEl = document.getElementById('_nuMovCheck_'+selId);
-      if (chkEl) chkEl.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--nu-light)" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>';
+      if (chkEl) chkEl.innerHTML = '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--nu-light)" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>';
       _nuMovActualizarPreview();
     });
   });
@@ -1381,10 +1367,10 @@ function confirmarNuMovimiento() {
   const nota = document.getElementById('nuMovNota')?.value.trim() || '';
   const esApertura = _nuMovTipo === 'entrada' && (document.getElementById('nuMovEsApertura')?.checked || false);
 
-  if (!_nuMovCajitaSel) { toast('Seleccioná una cajita', 'err'); return; }
-  if (!v) { toast('Ingresá el monto', 'err'); return; }
+  if (!_nuMovCajitaSel) { toast('Selecciona una cajita', 'err'); return; }
+  if (!v) { toast('Ingresa el monto', 'err'); return; }
   if (!esApertura && !desc) {
-    toast(_nuMovTipo === 'entrada' ? 'Describí de dónde viene la plata' : 'Describí en qué se gastó', 'err');
+    toast(_nuMovTipo === 'entrada' ? 'Describe de dónde viene la plata' : 'Describe en qué se gastó', 'err');
     return;
   }
 

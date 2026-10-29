@@ -57,26 +57,32 @@ function renderAnalisis(){
   const balance=ingresosEstimados-gastosTotalMes;
   const _rendNu=_bal.ingresos.rendimientos||0; // intereses de cajitas y CDT incluidos en los ingresos del mes
   const _hayIngresos=ingresosEstimados-_rendNu>0; // sin ingresos operativos no hay balance que evaluar, aunque haya intereses
+  const _cero=Math.abs(balance)<0.005;        // el cero exacto no es ni ahorro ni déficit: se queda neutro
   const hero=document.getElementById('analisis-balance-hero');
   if(hero){
-    const esPositivo=balance>=0;
+    // Un estado por escenario: color (clase an-hero-pos/neg/neu), signo del monto y mensaje dicen lo mismo.
+    //   sin ingresos y sin gastos → neutro · sin ingresos y con gastos → rojo · ingresos > gastos → verde
+    //   ingresos = gastos → neutro · gastos > ingresos → rojo
     const sinIngresos=!_hayIngresos;
-    const claseTono=sinIngresos?'an-t-muted':esPositivo?'c-green':'c-red';
-    const bgColor=sinIngresos?'rgba(255,255,255,.04)':esPositivo?'rgba(200,240,96,.07)':'rgba(240,104,104,.07)';
-    const borderColor=sinIngresos?'var(--border2)':esPositivo?'rgba(200,240,96,.25)':'rgba(240,104,104,.25)';
+    const sinMovs=sinIngresos&&gastosTotalMes<0.005;
+    const estado=sinMovs?'neu':sinIngresos?'neg':_cero?'neu':balance>0?'pos':'neg';
+    const claseTono={pos:'c-green',neg:'c-red',neu:'an-t-muted'}[estado];
     const mes2d=MESES_NOMBRE[mesNum]+' '+anio;
-    const emoji=sinIngresos?'':esPositivo?'↑':' ↓';
-    let mensaje='';
-    const moduloMesadaActivo=!!(S.modulos&&S.modulos.mesada);
-    if(sinIngresos) mensaje=moduloMesadaActivo?'Registra tus ingresos en Mesada para ver el balance.':'Total gastado este mes.';
-    else if(esPositivo) mensaje='¡Vas bien! Gastaste menos de lo que entraste.';
-    else mensaje='Ojo: gastaste más de lo que entraste este mes.';
-    hero.style.cssText='border-radius:var(--radius);padding:20px;margin-bottom:10px;background:'+bgColor+';border:1px solid '+borderColor+';';
-    hero.innerHTML=`
-      <div class="an-hero-lbl ${claseTono}">${emoji} Balance de ${mes2d}</div>
-      <div class="an-hero-monto ${claseTono}">${sinIngresos?fmt(gastosTotalMes*-1):(balance>=0?'+':'')+fmt(balance)}</div>
+    const flecha=trazo=>`<svg aria-hidden="true" class="an-hero-flecha" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">${trazo}</svg>`;
+    const icono=estado==='pos'?flecha('<line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>')
+      :estado==='neg'?flecha('<line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>'):'';
+    let mensaje, monto;
+    if(sinMovs){ mensaje='Aún no hay ingresos ni gastos que cuenten para este mes.'; monto=fmt(0); }
+    else if(sinIngresos){ mensaje=`Has gastado ${fmt(gastosTotalMes)} y aún no registras ingresos este mes. Registra tus ingresos para ver el balance del mes.`; monto=fmt(gastosTotalMes*-1); }
+    else if(_cero){ mensaje='Por ahora has gastado todo lo que has recibido este mes.'; monto=fmt(0); }
+    else if(balance>0){ mensaje='Por ahora vas bien: has gastado menos de lo que has recibido este mes.'; monto='+'+fmt(balance); }
+    else { mensaje='Por ahora has gastado más de lo que has recibido este mes.'; monto=fmt(balance); }
+    hero.className='ix-analisis-balance-hero '+{pos:'an-hero-pos',neg:'an-hero-neg',neu:'an-hero-neu'}[estado];
+    hero.innerHTML=html`
+      <div class="an-hero-lbl ${claseTono}">${raw(icono)} Balance de ${mes2d}</div>
+      <div class="an-hero-monto ${claseTono}">${monto}</div>
       <div class="an-hero-msg">${mensaje}</div>
-      ${_rendNu>0.5?`<div class="an-hero-rend">Incluye ${fmt(_rendNu)} de rendimientos de Nu <span class=\"an-opaco\">(intereses de cajitas y CDT)</span></div>`:''}
+      ${(!sinIngresos&&_rendNu>0.5)?raw(`<div class="an-hero-rend">Incluye ${fmt(_rendNu)} de rendimientos de Nu <span class="an-opaco">(intereses de cajitas y CDT)</span></div>`):''}
     `;
   }
 
@@ -188,7 +194,7 @@ function renderAnalisis(){
           <div class="an-fila-sb an-fila-sb-5">
             <div class="an-flex-8">
               <span class="an-medal">${medal}</span>
-              <span class="an-rank-nombre${esMesActual?' an-rank-nombre-act':''}">${label}${esMesActual?' ← este mes':''}</span>
+              <span class="an-rank-nombre${esMesActual?' an-rank-nombre-act':''}">${label}${esMesActual?' (este mes)':''}</span>
             </div>
             <span class="an-rank-monto">${fmt(total)}</span>
           </div>
@@ -216,11 +222,12 @@ function renderAnalisis(){
   if(elTasaAhorro&&elAhorrado){
     if(_hayIngresos){
       const tasa=balance/ingresosEstimados*100;
-      const esPos=balance>=0;
-      elTasaAhorro.textContent=(esPos?'+':'')+tasa.toFixed(1)+'%';
-      elTasaAhorro.style.color=esPos?'var(--accent)':'var(--red)';
+      const esPos=!_cero&&balance>0;
+      const tonoAhorro=_cero?'var(--text3)':esPos?'var(--accent)':'var(--red)';
+      elTasaAhorro.textContent=(esPos?'+':'')+(_cero?'0':tasa.toFixed(1))+'%';
+      elTasaAhorro.style.color=tonoAhorro;
       elAhorrado.textContent=(esPos?'+':'')+fmt(balance);
-      elAhorrado.style.color=esPos?'var(--accent)':'var(--red)';
+      elAhorrado.style.color=tonoAhorro;
     } else {
       elTasaAhorro.textContent='—';
       elTasaAhorro.style.color='var(--text3)';
@@ -241,6 +248,8 @@ function renderAnalisis(){
     const balancePrev=balPrev.balance;
     const ingresosPrev=balPrev.ingresos.total-(balPrev.ingresos.rendimientos||0); // solo ingresos operativos: decide si hay datos que comparar
 
+    // Este mes aún no termina y el anterior sí: la comparación es «hasta hoy contra el mes completo», así que los
+    // textos dicen «por ahora» en vez de dar el mes por cerrado («Mejoró»/«Empeoró»).
     const diffGastos=gastosTotalMes-totalPrev;
     const diffBalance=balance-balancePrev;
     const hayDatos=totalPrev>0;
@@ -261,7 +270,7 @@ function renderAnalisis(){
             </div>
             <div class="an-der">
               <div class="an-comp-val ${diffClase(diffGastos,true)}">${diffGastos===0?'=':arrow(diffGastos)} ${fmt(Math.abs(diffGastos))}</div>
-              <div class="an-comp-sub an-t-muted">${totalPrev>0?Math.abs(Math.round(diffGastos/totalPrev*100))+'%':''} ${diffGastos<0?'menos':'más'}</div>
+              <div class="an-comp-sub an-t-muted">${totalPrev>0?Math.abs(Math.round(diffGastos/totalPrev*100))+'%':''} ${diffGastos<0?'menos':'más'} por ahora</div>
             </div>
           </div>
           <div class="an-sep"></div>
@@ -273,7 +282,7 @@ function renderAnalisis(){
             </div>
             <div class="an-der">
               <div class="an-comp-val ${diffClase(diffBalance,false)}">${diffBalance===0?'=':arrow(diffBalance)} ${fmt(Math.abs(diffBalance))}</div>
-              <div class="an-comp-sub ${diffClase(diffBalance,false)}">${diffBalance>0?'Mejoró':'Empeoró'}</div>
+              <div class="an-comp-sub ${diffClase(diffBalance,false)}">${diffBalance===0?'Sin cambio por ahora':diffBalance>0?'Va mejor por ahora':'Va peor por ahora'}</div>
             </div>
           </div>`:''}
         </div>`;
@@ -297,8 +306,13 @@ function renderAnalisis(){
       const minV=Math.min(...valsReales);
       const rng=maxV-minV||1;
       const W=320,H=90,PAD=4;
+      // El eje X reparte los puntos por FECHA, no en partes iguales: un registro solo se guarda los días en que abres la app y
+      // guardas algo, así que un salto de 10 días no debe verse igual que uno de 1 día. (Sin fechas distintas, partes iguales.)
+      const _ms=h=>new Date(h.fecha+'T00:00:00').getTime();
+      const _t0=_ms(hist[0]), _span=_ms(hist[hist.length-1])-_t0;
+      const _diasVentana=_span>0?Math.round(_span/86400000)+1:hist.length;
       const pts=valsReales.map((v,i)=>{
-        const px=PAD+i*(W-PAD*2)/(hist.length-1);
+        const px=PAD+(_span>0?(_ms(hist[i])-_t0)/_span:i/(hist.length-1))*(W-PAD*2);
         const py=PAD+(1-(v-minV)/rng)*(H-PAD*2);
         return[px,py];
       });
@@ -312,26 +326,32 @@ function renderAnalisis(){
       const primeroReal = valsReales[0];
       const ultimoReal = valsReales[valsReales.length-1];
       const diffTotal = ultimoReal - primeroReal;
-      const diffColor=diffTotal>=0?'var(--accent)':'var(--red)'; // para el trazo SVG y data-diffcolor (el JS del tooltip lo lee)
-      const diffClasePat=diffTotal>=0?'c-green':'c-red';
-      const diffPct = primeroReal!==0 ? (diffTotal/Math.abs(primeroReal)*100) : 0;
+      // Sin cambio en la ventana (p. ej. todo en $0): ni «+», ni verde, ni rojo; la línea se pinta neutra.
+      const sinCambio=Math.abs(diffTotal)<0.005;
+      const diffColor=sinCambio?'var(--text3)':(diffTotal>=0?'var(--accent)':'var(--red)'); // para el trazo SVG y data-diffcolor (el JS del tooltip lo lee)
+      const diffColorGrad=sinCambio?'#8e8e84':(diffTotal>=0?'#c8f060':'#f06868');
+      const diffClasePat=sinCambio?'an-t-muted':(diffTotal>=0?'c-green':'c-red');
+      const diffSigno=sinCambio?'':(diffTotal>=0?'+':'');
+      // Sin base (el primer punto vale 0) un porcentaje no tiene sentido: se muestra «—», no «+0.0%» junto a un cambio en pesos.
+      const diffPct = primeroReal!==0 ? diffTotal/Math.abs(primeroReal)*100 : null;
+      const diffPctTxt = diffPct===null ? '—' : (sinCambio||diffPct<0?'':'+')+diffPct.toFixed(1)+'%';
       patriEl.innerHTML=`
         <div class="an-pat-cab">
           <div>
-            <div class="an-pat-tit">Últimos ${hist.length} días</div>
+            <div class="an-pat-tit">Últimos ${_diasVentana} días</div>
             <div class="an-pat-val">${fmt(ultimo2.valorVisible!=null?ultimo2.valorVisible:ultimo2.valor)}</div>
           </div>
           <div class="an-der">
-            <div class="an-pat-diff ${diffClasePat}">${diffTotal>=0?'+':''}${fmt(diffTotal)}</div>
-            <div class="an-pat-pct ${diffClasePat}">${diffPct>=0?'+':''}${diffPct.toFixed(1)}%</div>
+            <div class="an-pat-diff ${diffClasePat}">${diffSigno}${fmt(diffTotal)}</div>
+            <div class="an-pat-pct ${diffClasePat}">${diffPctTxt}</div>
           </div>
         </div>
         <div id="_pat-wrap" class="an-pat-wrap">
-          <svg viewBox="0 0 ${W} ${H}" class="an-pat-svg">
+          <svg aria-hidden="true" viewBox="0 0 ${W} ${H}" class="an-pat-svg">
             <defs>
               <linearGradient id="pgGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="${diffTotal>=0?'#c8f060':'#f06868'}" stop-opacity="0.25"/>
-                <stop offset="100%" stop-color="${diffTotal>=0?'#c8f060':'#f06868'}" stop-opacity="0"/>
+                <stop offset="0%" stop-color="${diffColorGrad}" stop-opacity="0.25"/>
+                <stop offset="100%" stop-color="${diffColorGrad}" stop-opacity="0"/>
               </linearGradient>
             </defs>
             <path d="${areaPath}" fill="url(#pgGrad)"/>
@@ -426,7 +446,7 @@ function renderIngresosFijos(){
   if(!el)return;
   const lista=S.ingresosFijos||[];
   if(!lista.length){
-    el.innerHTML='<div class="an-vacio an-vacio-13">Sin ingresos fijos. Agregá tu sueldo, freelance u otro ingreso recurrente.</div>';
+    el.innerHTML='<div class="an-vacio an-vacio-13">Sin ingresos fijos. Agrega tu sueldo, freelance u otro ingreso recurrente y registra su cobro cada vez que te paguen.</div>';
     return;
   }
   // Migrado a html`` (ver auditoria-tecnica.md, cierre de la discrepancia
@@ -444,22 +464,40 @@ function renderIngresosFijos(){
   // el medio). Cada `html\`...\`` interno ya devuelve un fragmento seguro;
   // `.join()` lo coacciona a string vía su propio `toString()`, sin volver
   // a escapar nada — misma coerción implícita ya validada para innerHTML.
+  const mes=mesActual();
   el.innerHTML=lista.map(ing=>{
     const desdeLabel=ing.desde?html`<span class="an-desde">desde ${ing.desde}</span>`:'';
-    return html`<div class="row an-ing-row">
-      <div class="an-col-2">
-        <span class="an-nom-13">${ing.nombre||'Sin nombre'}</span>
-        ${desdeLabel}
+    // Estado del mes en curso: un ingreso fijo solo suma cuando se registra su cobro.
+    const est=ingresoFijoEstadoMes(ing,mes);
+    const estadoHtml=est.cobrado>0
+      ?html`<span class="an-ing-estado an-ing-estado-ok">Cobrado este mes · ${fmt(est.cobrado)}</span>`
+      :(est.esperado?html`<span class="an-ing-estado an-ing-estado-pend">Sin cobrar este mes</span>`:'');
+    const recientes=cobrosDeIngresoFijo(ing).slice().sort((x,y)=>String(y.fecha||'').localeCompare(String(x.fecha||''))).slice(0,3);
+    const cobrosHtml=recientes.length?html`<div class="an-cobros">${raw(recientes.map(c=>html`<div class="an-cobro-fila">
+        <span class="an-cobro-txt">${c.fecha||''} · cubre ${cobroMesTexto(c.mesCubre)}${cobroFuentesDe(c).length?' · '+cobroFuentesDe(c).map(f=>fuenteLabel(f)).join(', '):''}</span>
+        <span class="an-cobro-acc"><span class="an-cobro-monto">+${fmt(c.monto||0)}</span>
+          <button type="button" ${raw(Events.attr('analisis:eliminarCobro', ing.id, c.id))} class="an-btn-icono an-t-muted" title="Borrar este cobro" aria-label="Borrar este cobro">
+            <svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button></span>
+      </div>`).join(''))}</div>`:'';
+    return html`<div class="an-ing-bloque">
+      <div class="row an-ing-row">
+        <div class="an-col-2">
+          <span class="an-nom-13">${ing.nombre||'Sin nombre'}</span>
+          <span class="an-desde-fila">${raw(estadoHtml)}${desdeLabel}</span>
+        </div>
+        <div class="an-flex-10">
+          <span class="an-ing-monto">${fmt(ing.monto||0)}</span>
+          <button type="button" ${raw(Events.attr('analisis:cobrarIngresoFijo', ing.id))} class="btn-chip btn-chip-accent">Cobrar</button>
+          <button type="button" ${raw(Events.attr('analisis:editarIngresoFijo', ing.id))} class="an-btn-icono an-t-muted" aria-label="Editar">
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+          <button type="button" ${raw(Events.attr('analisis:eliminarIngresoFijo', ing.id))} class="an-btn-icono an-t-red" aria-label="Eliminar">
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+          </button>
+        </div>
       </div>
-      <div class="an-flex-10">
-        <span class="an-ing-monto">${fmt(ing.monto||0)}</span>
-        <button type="button" ${raw(Events.attr('analisis:editarIngresoFijo', ing.id))} class="an-btn-icono an-t-muted">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-        </button>
-        <button type="button" ${raw(Events.attr('analisis:eliminarIngresoFijo', ing.id))} class="an-btn-icono an-t-red">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-        </button>
-      </div>
+      ${raw(cobrosHtml)}
     </div>`;
   }).join('<div class="divider"></div>');
 }
@@ -493,18 +531,23 @@ function editarIngresoFijo(id){ abrirSheetIngresoFijo(id); }
 async function eliminarIngresoFijo(id){
   const ing=(S.ingresosFijos||[]).find(x=>x.id===id);
   if(!ing)return;
-  const ok=await dialogo('Eliminar ingreso','¿Eliminar "'+ing.nombre+'"?','Eliminar',true);
+  const cobros=cobrosDeIngresoFijo(ing);
+  const aviso=cobros.length?' Se quitarán también sus '+cobros.length+(cobros.length===1?' cobro registrado':' cobros registrados')+(cobros.some(c=>cobroFuentesDe(c).length)?' y la plata que entró a tus cuentas se descontará.':'.'):'';
+  const ok=await dialogo('Eliminar ingreso','¿Eliminar "'+ing.nombre+'"?'+aviso,'Eliminar',true);
   if(!ok)return;
+  const _histAntes=medirPatrimonioParaHistorial();
+  cobros.forEach(c=>{cobroRevertir(c);});
   S.ingresosFijos=(S.ingresosFijos||[]).filter(x=>x.id!==id);
-  save();renderIngresosFijos();renderAnalisis();
+  cobros.forEach(c=>purgarEfectoEnHistorial(_histAntes,c));
+  save();refresh();renderAnalisis();
 }
 
 function guardarIngresoFijo(){
   const n=(document.getElementById('if_n').value||'').trim();
   const m=parseMoney(document.getElementById('if_m').value);
   const d=(document.getElementById('if_d').value||'').trim();
-  if(!n){toast('Ingresá un nombre','err');return;}
-  if(!m||m<=0){toast('Ingresá un monto válido','err');return;}
+  if(!n){toast('Ingresa un nombre','err');return;}
+  if(!m||m<=0){toast('Ingresa un monto válido','err');return;}
   if(!S.ingresosFijos)S.ingresosFijos=[];
   if(_ifEditId){
     const ing=S.ingresosFijos.find(x=>x.id===_ifEditId);
@@ -515,6 +558,110 @@ function guardarIngresoFijo(){
   closeSheet('ingreso-fijo');
   save();renderIngresosFijos();renderAnalisis();
   toast(_ifEditId?'Ingreso actualizado':'Ingreso guardado');
+}
+
+/* ---- COBRO DE UN INGRESO FIJO ----
+   Reglas de negocio en js/core/cobros.js (cobroRegistrar / cobroBorrar). Acá solo la pantalla: leer el sheet, llamar a esas
+   reglas y repintar. Mismo molde que «Registrar pago» de Mesada: monto, fecha en que te pagaron, destino (o dividir). */
+let _cbId=null;
+let cbSplitMode=false;
+
+crearSplitWidget('cb',{
+  simpleId:'cbModoSimple',splitId:'cbModoDividido',toggleId:'cbSplitToggle',rowsId:'cbSplitRows',
+  getModo:()=>cbSplitMode,setModo:v=>{cbSplitMode=v;},
+  getFuentesFn:selectedVal=>buildFuentesOptsHtml({selectedVal,placeholder:'No especificar',incluirTC:false}),
+  onPreview:()=>actualizarCbPreview(),
+});
+
+function actualizarCbAvisoMes(){
+  const el=document.getElementById('cbAvisoMes');
+  if(el)el.textContent=cobroAvisoMes(document.getElementById('cbMes').value,document.getElementById('cbFecha').value);
+}
+
+function actualizarCbPreview(){
+  const prev=document.getElementById('cbPreview');
+  if(!prev)return;
+  const v=parseMoney(document.getElementById('cbMonto').value)||0;
+  if(!v){prev.textContent='';return;}
+  if(cbSplitMode){
+    const splits=splitGetData('cb');
+    const total=splits.reduce((a,x)=>a+x.monto,0),resto=v-total;
+    if(!splits.length){prev.textContent=fmt(v)+' por distribuir';prev.style.color='var(--text2)';return;}
+    const lineas=splits.map(x=>fuenteLabel(x.fuente||'')+': +'+fmt(x.monto)).join(' · ');
+    if(resto>0){prev.textContent=lineas+' · Sin asignar: '+fmt(resto);prev.style.color='var(--amber)';}
+    else if(resto<0){prev.textContent=lineas+' · Excede por: '+fmt(-resto);prev.style.color='var(--red)';}
+    else{prev.textContent=lineas+' · Todo distribuido';prev.style.color='var(--accent)';}
+    return;
+  }
+  const dest=document.getElementById('cbDestino').value;
+  if(dest){
+    const actual=getSaldoFuente(dest);
+    prev.textContent=fuenteLabel(dest)+': '+fmt(actual)+' + '+fmt(v)+' = '+fmt(actual+v);
+    prev.style.color='var(--accent)';
+  }else{
+    prev.textContent=fmt(v)+' registrados';
+    prev.style.color='var(--text2)';
+  }
+}
+
+function abrirCobroIngresoFijo(id){
+  const ing=(S.ingresosFijos||[]).find(x=>x.id===id);
+  if(!ing)return;
+  _cbId=id;
+  document.getElementById('cbTitle').textContent='Cobro · '+(ing.nombre||'Ingreso fijo');
+  setMoneyInput('cbMonto',ing.monto||0);
+  document.getElementById('cbMes').value=mesActual();
+  document.getElementById('cbFecha').value=hoy(); // valor por defecto: quien registra el cobro de otro día cambia la fecha
+  document.getElementById('cbNota').value='';
+  document.getElementById('cbPreview').textContent='';
+  splitReset('cb');
+  document.getElementById('cbSplitToggle').style.display='';
+  document.getElementById('cbDestino').innerHTML=buildFuentesOptsHtml({placeholder:'No especificar / lo gasté',incluirTC:false});
+  actualizarCbAvisoMes();
+  actualizarCbPreview();
+  openSheet('cobro-ingreso');
+}
+
+function confirmarCobroIngresoFijo(){
+  const r=cobroRegistrar({
+    id:_cbId,
+    mesCubre:document.getElementById('cbMes').value,
+    monto:parseMoney(document.getElementById('cbMonto').value)||0,
+    fecha:document.getElementById('cbFecha').value||hoy(),
+    nota:(document.getElementById('cbNota').value||'').trim(),
+    destino:document.getElementById('cbDestino').value,
+    splitMode:cbSplitMode,
+    splits:cbSplitMode?splitGetData('cb'):null,
+  });
+  if(!r.ok){
+    if(r.motivo==='monto-invalido')toast('Ingresa el monto que te pagaron','err');
+    else if(r.motivo==='mes-invalido')toast('Elige el mes que cubre este cobro','err');
+    else if(r.motivo==='split-excede'){const prev=document.getElementById('cbPreview');prev.textContent='El total dividido supera el monto recibido';prev.style.color='var(--red)';}
+    return;
+  }
+  closeSheet('cobro-ingreso');
+  save();refresh();renderAnalisis();
+  toast('Cobro registrado');
+}
+
+async function eliminarCobroIngresoFijo(id,cobroId){
+  const ing=(S.ingresosFijos||[]).find(x=>x.id===id);
+  const c=ing&&cobrosDeIngresoFijo(ing).find(x=>x.id===cobroId);
+  if(!c)return;
+  // Protección por antigüedad (docs/proteccion-antiguedad-movimientos.md): solo si borrar mueve el saldo de alguna cuenta.
+  const fuentes=cobroFuentesDe(c);
+  if(fuentes.length){
+    const nivel=nivelAntiguedadMovimiento(c.fecha,0,'ingreso-fijo');
+    if(nivel==='bloqueado'){await avisarMovimientoBloqueado();return;}
+    if(nivel==='viejo'){
+      const nombre=fuentes.length>1?fuentes.length+' cuentas':fuenteLabel(fuentes[0]);
+      if(!await confirmarBorrarMovimientoViejo(nombre,c.monto||0,'baja'))return;
+    }
+  }else if(!await dialogo('Borrar cobro','¿Borrar este cobro de '+fmt(c.monto||0)+'? Dejará de contar como ingreso.','Borrar',true))return;
+  const _histAntes=medirPatrimonioParaHistorial();
+  cobroBorrar(id,cobroId);
+  purgarEfectoEnHistorial(_histAntes,c);
+  save();refresh();renderAnalisis();
 }
 
 /* ---- PRESUPUESTOS ----
@@ -536,11 +683,12 @@ function abrirPresupuestos(){
   // numérico (S.presupuestos[cat]), pero con html`` deja de depender de que siga
   // siendo siempre así.
   lista.innerHTML = html`${cats.map((cat, i) => {
-    const val = S.presupuestos[cat] || '';
+    // Se muestra con puntos de miles (500.000); lo guardado sigue siendo el número (500000).
+    const val = S.presupuestos[cat] ? _milesFormatear(String(Math.round(S.presupuestos[cat]))) : '';
     return html`<div class="ig">
       <label class="il" for="presup-input-${i}">${cat}</label>
       <div class="an-flex-8">
-        <input type="text" inputmode="decimal" id="presup-input-${i}" class="presup-input an-presup-input" data-cat="${cat}" placeholder="Sin límite" value="${val}">
+        <input type="text" inputmode="numeric" id="presup-input-${i}" class="presup-input miles-input an-presup-input" data-cat="${cat}" placeholder="Sin límite" value="${val}">
         <span class="an-presup-mes">/mes</span>
       </div>
     </div>`;
@@ -549,10 +697,10 @@ function abrirPresupuestos(){
   lista.querySelectorAll('.presup-input').forEach(inp => {
     inp.addEventListener('change', function(){
       const cat = this.dataset.cat;
-      const val = window.parseMoney ? window.parseMoney(this.value) : parseFloat(this.value)||0;
+      const val = parseMiles(this.value); // sin puntos: nunca se guarda "1.500.000"
       if(!S.presupuestos) S.presupuestos = {};
       if(val > 0) S.presupuestos[cat] = val;
-      else delete S.presupuestos[cat];
+      else { delete S.presupuestos[cat]; this.value = ''; } // vacío o 0 = sin límite
       if(window._fbSaveToCloud) window._fbSaveToCloud();
       renderPresupuestos();
     });
@@ -605,13 +753,31 @@ function renderPresupuestos(){
 }
 
 /* ---- EVENTOS: acciones con data-action="analisis:..." ---- */
+// Events llama a cada handler con (...args, elemento, evento). El botón "+ Agregar" no lleva
+// argumentos, así que sin este envoltorio abrirSheetIngresoFijo recibiría el botón como `id`,
+// no encontraría ese ingreso y saldría sin abrir el sheet.
 Events.registerAll('analisis', {
-  abrirSheetIngresoFijo,
+  abrirSheetIngresoFijo: () => abrirSheetIngresoFijo(),
   editarIngresoFijo,
   eliminarIngresoFijo,
+  cobrarIngresoFijo: abrirCobroIngresoFijo,
+  eliminarCobro: eliminarCobroIngresoFijo,
   abrirPresupuestos,
 });
 
 /* ---- WIRING de controles que no son data-action simples ---- */
 const _btnGuardarIngresoFijo = document.getElementById('btn-guardar-ingreso-fijo');
 if (_btnGuardarIngresoFijo) _btnGuardarIngresoFijo.addEventListener('click', guardarIngresoFijo);
+
+// Controles estáticos del sheet «Registrar cobro» (los ids ya existen en index.html).
+[
+  ['btn-confirmar-cobro','click',confirmarCobroIngresoFijo],
+  ['cbMonto','input',actualizarCbPreview],
+  ['cbDestino','change',actualizarCbPreview],
+  ['cbMes','input',actualizarCbAvisoMes],
+  ['cbMes','change',actualizarCbAvisoMes],
+  ['cbFecha','input',actualizarCbAvisoMes],
+  ['cbFecha','change',actualizarCbAvisoMes],
+  ['cbSplitToggle','click',()=>splitToggle('cb')],
+  ['btn-add-split-row-cb','click',()=>splitAgregarRow('cb')],
+].forEach(([id,evt,fn])=>{const el=document.getElementById(id);if(el)el.addEventListener(evt,fn);});

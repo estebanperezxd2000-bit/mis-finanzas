@@ -47,7 +47,7 @@ function renderCatsConfig(){
     return html`<span class="cat-chip">
       ${c}
       ${!esDefault?html`<button type="button" class="cat-chip-del" title="Eliminar" ${raw(Events.attr('config:eliminarCat',tipo,c))}>
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        <svg aria-hidden="true" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>`:''}
     </span>`;
   });
@@ -84,7 +84,7 @@ function eliminarCat(tipo,cat){
   if(tipo==='var')S.catsVar=nuevas;
   else S.catsFijo=nuevas;
   save();renderCatsConfig();
-  toast(`Categoría "${escHtml(cat)}" eliminada`,'info');
+  toast(`Categoría "${escHtml(cat)}" eliminada`,'ok');
 }
 
 /* ---- COPIA DE SEGURIDAD: EXPORTAR / IMPORTAR JSON ---- */
@@ -181,6 +181,7 @@ function leerArchivoImport(e){
       }
       const ok=await dialogo('Importar datos','¿Reemplazar todos los datos actuales con el archivo importado? Esta acción no se puede deshacer.','Importar',true);
       if(!ok)return;
+      if(!await pedirPinAntesDe('Para reemplazar todos tus datos con el backup')){e.target.value='';return;}
       // Llevar el backup al modelo de datos actual (si falla, el catch avisa y NO se reemplaza nada).
       aplicarMigraciones(data);
       // Reemplazar CONTENIDO de S sin romper la referencia de window.S
@@ -267,6 +268,7 @@ function toggleModulo(nombre){
 async function borrarTodo(){
   const ok=await dialogo('Borrar todos los datos','¿Seguro que quieres borrar TODO? Esta acción no se puede deshacer y perderás toda tu información financiera.','Borrar todo',true);
   if(!ok)return;
+  if(!await pedirPinAntesDe('Para borrar todos los datos'))return;
   const _overlay = document.getElementById('fb-loading-screen');
   if(_overlay) _overlay.style.display = 'flex';
   // Borrar en Firebase: payload "{}" a propósito — la carga lo lee como "vacío", lo verifica
@@ -287,6 +289,10 @@ async function borrarTodo(){
       _borradoFirebaseOk = false;
     }
   }
+  // El PIN y la huella son locales a este dispositivo y protegían datos que ya no existen. Solo se
+  // quitan si el borrado en la nube se confirmó: si falló, los datos viejos pueden volver al reabrir
+  // y tienen que seguir protegidos. Al recargar, _pinGate() ya no encuentra PIN y no lo pide.
+  if(_borradoFirebaseOk && typeof window._pinReset==='function') window._pinReset();
   if(!_borradoFirebaseOk){
     // No se pudo confirmar el borrado en la nube (ej. sin conexión). Avisar antes de
     // recargar para que el usuario sepa que debe reintentar — si no, al reabrir con

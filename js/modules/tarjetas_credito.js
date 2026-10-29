@@ -409,9 +409,11 @@ function renderTCScreen(){
   hero.textContent=fmt(deudaTotal);
   if(heroCupo)heroCupo.textContent=cupoTotal?'Cupo total: '+fmt(cupoTotal):'';
 
+  // El estado vacío ya trae «Agregar tarjeta»: el botón de pie solo aparece con tarjetas.
+  mostrarSi(document.getElementById('btn-nueva-tarjeta'),tarjetas.length>0);
   if(!tarjetas.length){
     lista.innerHTML=html`<div class="empty-state">
-      <div class="empty-state-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="1.6" stroke-linecap="round"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/><circle cx="7" cy="15" r="1.2" fill="var(--red)" stroke="none"/></svg></div>
+      <div class="empty-state-icon"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="1.8" stroke-linecap="round"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/><path d="M6 15h3"/></svg></div>
       <div class="empty-state-title">Sin tarjetas de crédito</div>
       <div class="empty-state-sub">Agrega tu primera tarjeta para registrar compras y controlar tu cupo.</div>
       <button type="button" class="empty-state-btn" ${raw(Events.attr('tarjetas:nueva'))}>Agregar tarjeta</button>
@@ -436,14 +438,14 @@ function renderTCScreen(){
       <div class="tc-cab">
         <div class="tc-flex1-min0">
           <div class="tc-nombre">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${colorIcono}" stroke-width="2" stroke-linecap="round" class="tc-ico-tarjeta"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/><circle cx="7" cy="15" r="1.2" fill="${colorIcono}" stroke="none"/></svg>${tc.nombre}
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${colorIcono}" stroke-width="2" stroke-linecap="round" class="tc-ico-tarjeta"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/><circle cx="7" cy="15" r="1.2" fill="${colorIcono}" stroke="none"/></svg>${tc.nombre}
             ${raw(estadoInfo.badge?`<span class="badge ${estadoInfo.badge} badge-xs">${estadoInfo.label}</span>`:'')}
           </div>
           ${subtitulo?html`<div class="tc-sub">${subtitulo}</div>`:''}
         </div>
         <div class="tc-acciones">
-          <button type="button" ${raw(Events.attr('tarjetas:editar',tc.id))} class="tc-btn-editar"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
-          <button type="button" ${raw(Events.attr('tarjetas:eliminar',tc.id))} class="tc-btn-borrar"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
+          <button type="button" ${raw(Events.attr('tarjetas:editar',tc.id))} class="tc-btn-editar"><svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+          <button type="button" ${raw(Events.attr('tarjetas:eliminar',tc.id))} class="tc-btn-borrar"><svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
         </div>
       </div>
 
@@ -494,7 +496,7 @@ function renderTCDashboard(){
     return html`<div class="tc-fila">
       <div class="tc-flex1-min0">
         <div class="tc-fila-nombre">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="tc-ico-fila"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/><circle cx="7" cy="15" r="1.2" fill="currentColor" stroke="none"/></svg>${tc.nombre}
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="tc-ico-fila"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/><circle cx="7" cy="15" r="1.2" fill="currentColor" stroke="none"/></svg>${tc.nombre}
           ${raw(tc.cupo?`<span class="tc-pill ${pct>80?'tc-pill-red':pct>50?'tc-pill-amber':'tc-pill-neutro'}">${pct.toFixed(0)}% usado</span>`:'')}
           ${raw(estadoInfo.badge?`<span class="badge ${estadoInfo.badge} tc-badge-8">${estadoInfo.label}</span>`:'')}
         </div>
@@ -548,7 +550,7 @@ function renderTCDashboard(){
         const pct=Math.min(100,Math.round(saldoCajita/deudaGrupo*100));
         bloquesFull.push(html`<div class="tc-falta-caja">
           <div class="tc-falta-cab">
-            <div class="tc-falta-cap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12" class="tc-falta-ico"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg> Cajita ${cajita.nombre}</div>
+            <div class="tc-falta-cap"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12" class="tc-falta-ico"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg> Cajita ${cajita.nombre}</div>
             <div class="tc-falta-monto">${fmt(saldoCajita)}</div>
           </div>
           <div class="tc-falta-barra">
@@ -617,7 +619,7 @@ function confirmarCompraTC(){
 
   closeSheet('compra-tc');
   save();refresh();renderTCScreen();
-  toast('Compra registrada — deuda: '+fmt(tc.deuda),'info',3000);
+  toast('Compra registrada — deuda: '+fmt(tc.deuda),'ok',3000);
 }
 
 // ── Cargo especial (intereses, comisiones, correcciones) ──────────
@@ -681,7 +683,7 @@ async function confirmarCargoEspecialTC(){
   closeSheet('cargo-especial-tc');
   save();refresh();renderTCScreen();
   abrirDetalleTCSheet(tc.id);
-  toast('Cargo registrado — deuda: '+fmt(tc.deuda),superaCupo?'err':'info',3500);
+  toast('Cargo registrado — deuda: '+fmt(tc.deuda),superaCupo?'warn':'ok',3500);
 }
 
 // ── Pagar TC ───────────────────────────────────────────────────────
@@ -705,7 +707,7 @@ function abrirPagarTC(tcId){
         <div class="tc-pago-tit">Pago total</div>
         <div class="tc-pago-sub">${fmt(deuda)} — deja el cupo disponible al máximo</div>
       </div>
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+      <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
     </button>`:'';
   }
 
@@ -723,8 +725,6 @@ function abrirPagarTC(tcId){
 function ptcSetMonto(val){
   const el=document.getElementById('ptc_monto');
   el.value=fmtInput(val);
-  _initMoneyInput(el);
-  _moneyDigits.set(el,String(Math.round(val*100)));
   el.dispatchEvent(new Event('input',{bubbles:true}));
   ptcActualizarPreview();
 }
@@ -848,7 +848,7 @@ function abrirDetalleTCSheet(tcId){
     // widget simplemente no se muestra esta vez — no es lo mismo que
     // "se eliminó", así que no cae acá.
     contenido+=`<div class="tc-aviso">
-      La cajita que tenías vinculada para pagar esta tarjeta ya no existe. Podés vincular una nueva desde "Editar tarjeta".
+      La cajita que tenías vinculada para pagar esta tarjeta ya no existe. Puedes vincular una nueva desde "Editar tarjeta".
     </div>`;
   }
 
@@ -892,13 +892,15 @@ function abrirDetalleTCSheet(tcId){
     };
     contenido+=itemsLinea.slice(0,80).map(item=>{
       if(item._tipo==='saldo_inicial'){
-        return html`<div class="gasto-item tc-saldo-ini" ${raw(_tcAttrs(item,'Tarjeta de crédito',null,'Saldo inicial'))}>
-        <div class="gasto-item-top">
-          <div class="tc-flex1-min0"><div class="row-name tc-row-13">Saldo inicial</div><div class="row-sub">${item.fecha}</div></div>
-          <span class="row-amount tc-amount-text2">${fmt(item.monto)}</span>
-        </div>
-        <div class="gasto-item-meta"><span class="badge tc-badge-ini">Deuda antes de usar la app</span></div>
-      </div>`;
+        return filaMovimiento({
+          clase: 'tc-saldo-ini',
+          attrs: _tcAttrs(item,'Tarjeta de crédito',null,'Saldo inicial'),
+          nombre: 'Saldo inicial',
+          sub: item.fecha,
+          monto: fmt(item.monto),
+          montoClase: 'tc-amount-text2',
+          meta: html`<span class="badge tc-badge-ini">Deuda antes de usar la app</span>`
+        });
       }
       if(item._tipo==='compra'){
         const c=item;
@@ -910,18 +912,17 @@ function abrirDetalleTCSheet(tcId){
         const _origenC=esCargoEspecial?'Cargo especial del banco':(c._desdeCP?'Plata comprometida':'Tarjeta de crédito');
         const badgeLabel=esCargoEspecial?('Cargo especial · '+(TC_MOTIVOS_CARGO[c._motivoCargo]||'Otro')):(esFavor?'Favor cubierto':(c.cat||'Sin cat.'));
         const badgeClase=esCargoEspecial?'tc-badge-amber':(esFavor?'tc-badge-azul':'tc-badge-rojo');
-        return html`<div class="gasto-item tc-item ${esCargoEspecial?'tc-item-b-amber':(esFavor?'tc-item-b-azul':'')}" ${raw(_tcAttrs(c,_origenC,null))}>
-        <div class="gasto-item-top">
-          <div class="tc-flex1-min0"><div class="row-name tc-row-13">${c.desc}${raw(favorBadge)}</div><div class="row-sub">${c.fecha}</div></div>
-          <div class="tc-monto-fila">
-            <span class="row-amount ${esCargoEspecial?'tc-c-amber':(esFavor?'tc-c-blue':'tc-c-red')}">${fmt(c.monto)}</span>
-            <button type="button" class="btn-delete-hover" ${raw(Events.attr('tarjetas:eliminarCompra',tc.id,c.id))} data-stop-propagation="true">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
-            </button>
-          </div>
-        </div>
-        <div class="gasto-item-meta"><span class="badge badge-xs ${badgeClase}">${badgeLabel}</span>${c.nota?html`<span class="tc-cupo-txt">${c.nota}</span>`:''}</div>
-      </div>`;
+        return filaMovimiento({
+          clase: 'tc-item ' + (esCargoEspecial?'tc-item-b-amber':(esFavor?'tc-item-b-azul':'')),
+          attrs: _tcAttrs(c,_origenC,null),
+          nombre: c.desc,
+          nombreExtra: raw(favorBadge),
+          sub: c.fecha,
+          monto: fmt(c.monto),
+          montoClase: esCargoEspecial?'tc-c-amber':(esFavor?'tc-c-blue':'tc-c-red'),
+          acciones: botonEliminarFila('tarjetas:eliminarCompra', [tc.id, c.id]),
+          meta: html`<span class="badge badge-xs ${badgeClase}">${badgeLabel}</span>${c.nota?html`<span class="tc-cupo-txt">${c.nota}</span>`:''}`
+        });
       }
       if(item._tipo==='tcmov'){
         const m=item;
@@ -939,36 +940,29 @@ function abrirDetalleTCSheet(tcId){
         const _origenM=esEncargo?'Encargos':(esDeuda
           ?('Préstamos · Yo debo · '+((Deudas.porId('contra',m.miDeudaId)||{}).nombre||''))
           :('Préstamos · '+((Deudas.porId('favor',m.deudorId)||{}).nombre||'')));
-        return html`<div class="gasto-item tc-item ${claseBorde}" ${raw(_tcAttrs(m,_origenM,null))}>
-        <div class="gasto-item-top">
-          <div class="tc-flex1-min0"><div class="row-name tc-row-13">${m.desc}</div><div class="row-sub">${m.fecha}</div></div>
-          <span class="row-amount ${claseMonto}">${fmt(m.monto)}</span>
-        </div>
-        <div class="gasto-item-meta">
-          <span class="badge badge-xs ${claseBadge}">${raw(iconoBadge)}${labelBadge}</span>
-          ${m.nota?html`<span class="tc-cupo-txt">${m.nota}</span>`:''}
-        </div>
-      </div>`;
+        return filaMovimiento({
+          clase: 'tc-item ' + claseBorde,
+          attrs: _tcAttrs(m,_origenM,null),
+          nombre: m.desc,
+          sub: m.fecha,
+          monto: fmt(m.monto),
+          montoClase: claseMonto,
+          meta: html`<span class="badge badge-xs ${claseBadge}">${raw(iconoBadge)}${labelBadge}</span>${m.nota?html`<span class="tc-cupo-txt">${m.nota}</span>`:''}`
+        });
       }
       const p=item;
       const descPago=p.nota?p.nota:'Abono a la deuda de '+(tc.nombre||'tu tarjeta')+' — no corresponde a una compra específica';
       const otrasPago=p.fuente?[{fuente:p.fuente,monto:-p.monto}]:null;
-      return html`<div class="gasto-item tc-item-ok" ${raw(_tcAttrs(p,'Tarjeta de crédito',otrasPago,'Abono a tu deuda'))}>
-        <div class="gasto-item-top">
-          <div class="tc-flex1-min0"><div class="row-name tc-row-13">Abono a tu deuda</div><div class="row-sub">${p.fecha}</div></div>
-          <div class="tc-monto-fila">
-            <span class="row-amount c-green">−${fmt(p.monto)}</span>
-            <button type="button" class="btn-delete-hover" ${raw(Events.attr('tarjetas:eliminarPago',tc.id,p.id))} data-stop-propagation="true">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
-            </button>
-          </div>
-        </div>
-        <div class="gasto-item-meta">
-          <span class="badge bg-green badge-xs"><i class="fa-solid fa-arrow-down tc-favor-ico"></i>Reduce deuda</span>
-          <span class="badge ${fuenteBadgeClass(p.fuente)} badge-xs">Desde ${fuenteLabel(p.fuente)}</span>
-          <span class="tc-cupo-txt">${descPago}</span>
-        </div>
-      </div>`;
+      return filaMovimiento({
+        clase: 'tc-item-ok',
+        attrs: _tcAttrs(p,'Tarjeta de crédito',otrasPago,'Abono a tu deuda'),
+        nombre: 'Abono a tu deuda',
+        sub: p.fecha,
+        monto: `−${fmt(p.monto)}`,
+        montoClase: 'c-green',
+        acciones: botonEliminarFila('tarjetas:eliminarPago', [tc.id, p.id]),
+        meta: html`<span class="badge bg-green badge-xs"><i class="fa-solid fa-arrow-down tc-favor-ico"></i>Reduce deuda</span><span class="badge ${fuenteBadgeClass(p.fuente)} badge-xs">Desde ${fuenteLabel(p.fuente)}</span><span class="tc-cupo-txt">${descPago}</span>`
+      });
     }).join('');
   }
 
@@ -993,8 +987,10 @@ async function eliminarCompraTC(tcId,compraId){
     ? await confirmarBorrarMovimientoViejo(tc.nombre,compra.monto||0,'baja','deuda')
     : await dialogo('Eliminar compra','¿Eliminar esta compra de '+fmt(compra.monto)+'? Se reducirá la deuda de la tarjeta.','Eliminar',true);
   if(!ok)return;
+  const _histAntes=medirPatrimonioParaHistorial(); // el historial de patrimonio deja de contar esta compra
   tcEliminarCompraInterna(tc,compraId);
   if(S.gastosVar)S.gastosVar=S.gastosVar.filter(g=>!(g._esCompraTC&&g._tcCompraId===compraId));
+  purgarEfectoEnHistorial(_histAntes,compra);
   save();refresh();renderTCScreen();
   abrirDetalleTCSheet(tcId);
   toast('Compra eliminada — deuda actualizada','ok');
@@ -1017,9 +1013,11 @@ async function eliminarPagoTC(tcId,pagoId){
     ? await confirmarBorrarMovimientoViejo(tc.nombre,pago.monto||0,'sube','deuda')
     : await dialogo('Eliminar pago','¿Eliminar este pago de '+fmt(pago.monto)+'? Se devolverá el dinero a '+fuenteLabel(pago.fuente)+' y aumentará la deuda de la tarjeta.','Eliminar',true);
   if(!ok)return;
+  const _histAntes=medirPatrimonioParaHistorial(); // el historial de patrimonio deja de contar este pago
   tcEliminarPagoInterna(tc,pagoId);
   if(pago.fuente) sumarFuente(pago.fuente,pago.monto,_ogTc(pagoId,true));
   if(S.gastosVar)S.gastosVar=S.gastosVar.filter(g=>!(g._esPagoTC&&g._tcPagoId===pagoId));
+  purgarEfectoEnHistorial(_histAntes,pago);
   save();refresh();renderTCScreen();
   abrirDetalleTCSheet(tcId);
   toast('Pago eliminado — deuda actualizada','ok');

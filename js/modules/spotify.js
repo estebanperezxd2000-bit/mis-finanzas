@@ -290,6 +290,24 @@ function spResumenCicloActual(hist){
   return {recaudado,flotante,tramos};
 }
 
+// ¿El costo del plan es un número mayor que cero? Una sola condición para el aviso de renderSpotify y para
+// el bloqueo de «Pagar Spotify»: sin costo no hay cuota ni ganancia que calcular.
+function spCostoValido(){
+  const c=S.spotify.costo;
+  return typeof c==='number' && isFinite(c) && c>0;
+}
+
+// Abre «Pagar Spotify» solo con el costo configurado; si no, lleva al campo del costo.
+function abrirPagarSpotify(){
+  if(!spCostoValido()){
+    toast('Configura el costo del plan para registrar pagos','err');
+    const inp=document.getElementById('spotifyCosto');
+    if(inp){ inp.focus(); inp.select(); }
+    return;
+  }
+  openSheet('pagar-spotify');
+}
+
 function renderSpotify(){
   const el=document.getElementById('spotifyList');
   const p=S.spotify.personas||[];
@@ -321,15 +339,15 @@ function renderSpotify(){
   document.getElementById('spProg').style.width=(costo>0?Math.min(100,cob/costo*100):0).toFixed(0)+'%';
   document.getElementById('spProgLabel').textContent=(costo>0?Math.round(cob/costo*100)+'% recaudado':'')+(resCiclo.flotante>0?(costo>0?' · ':'')+'+ '+fmt(resCiclo.flotante)+' adelantado (aún no cuenta)':'');
 
-  // Aviso cuando no está configurado el costo del plan
+  // Aviso cuando el costo del plan no es válido (misma condición que el bloqueo de «Pagar Spotify»)
   let warnEl=document.getElementById('sp-costo-warn');
-  if(costo===0){
+  if(!spCostoValido()){
     if(!warnEl){
       warnEl=document.createElement('div');
       warnEl.id='sp-costo-warn';
-      warnEl.style.cssText='display:flex;align-items:center;gap:8px;background:rgba(240,184,64,0.12);border:1.5px solid var(--amber);border-radius:var(--radius-sm);padding:10px 13px;margin-bottom:12px;font-size:12px;color:var(--amber);cursor:pointer;';
-      warnEl.innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span>No configuraste el costo del plan — los cálculos de ganancia no son precisos. <u>Configurar ahora</u></span>';
-      warnEl.addEventListener('click', ()=>{ const inp=document.getElementById('spotifyCosto'); if(inp){ inp.focus(); inp.select(); } });
+      warnEl.className='sp-costo-aviso';
+      warnEl.innerHTML='<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span class="sp-costo-aviso-txt">Configura el costo del plan para empezar a registrar pagos.</span><button type="button" class="btn btn-sm sp-costo-aviso-btn">Configurar costo</button>';
+      warnEl.querySelector('button').addEventListener('click', ()=>{ const inp=document.getElementById('spotifyCosto'); if(inp){ inp.focus(); inp.select(); } });
       const spList=document.getElementById('spotifyList');
       if(spList&&spList.parentNode) spList.parentNode.insertBefore(warnEl,spList);
     }
@@ -360,8 +378,10 @@ function renderSpotify(){
     statusEl.textContent='';
   }
   
+  // El estado vacío ya trae «Agregar persona»: el botón de pie solo aparece con personas.
+  mostrarSi(document.getElementById('btn-add-spotify-persona'),p.length>0);
   if(!p.length){el.innerHTML=emptyState(
-    '<svg width="20" height="20" viewBox="0 0 25 26" fill="none"><path d="M12.046 23.6856C18.257 23.6856 23.292 18.5625 23.292 12.2428C23.292 5.92312 18.257 0.800003 12.046 0.800003C5.835 0.800003 0.799988 5.92312 0.799988 12.2428C0.799988 18.5625 5.835 23.6856 12.046 23.6856Z" stroke="var(--text3)" stroke-width="1.8"/></svg>',
+    '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="1.8" stroke-linecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>',
     'Sin personas en Spotify',
     'Agrega a las personas que comparten tu plan para hacer seguimiento de sus cobros mensuales.',
     'Agregar persona',
@@ -390,8 +410,8 @@ function renderSpotify(){
         fechaInfo=html`<span class="badge badge-xs ${raw(vencido?'bg-red':hoy0?'bg-amber':'bg-purple')}">${vencido?'Vencido hace '+Math.abs(diasRestantes)+'d':hoy0?'Vence hoy':'Paga en '+diasRestantes+'d · '+x.proximoPago}</span>`;
       }
       const destinoBadge=x.ultimoDestinoSplit
-        ?html`<span class="badge bg-purple sp-badge-flecha"><svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg> Dividido</span>`
-        :(x.ultimoDestino?html`<span class="badge ${raw(fuenteBadgeClass(x.ultimoDestino))} sp-badge-flecha"><svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg> ${fuenteLabel(x.ultimoDestino)}</span>`:'');
+        ?html`<span class="badge bg-purple sp-badge-flecha"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg> Dividido</span>`
+        :(x.ultimoDestino?html`<span class="badge ${raw(fuenteBadgeClass(x.ultimoDestino))} sp-badge-flecha"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg> ${fuenteLabel(x.ultimoDestino)}</span>`:'');
       return html`<div class="sp-row">
         <div class="sp-flex-c">
           <div class="avatar">${spNombreDe(x).substring(0,2).toUpperCase()}</div>
@@ -405,8 +425,8 @@ function renderSpotify(){
         <div class="sp-acciones">
           <span class="badge sp-click ${raw(spPersonaPagadaVigente(x)?'bg-green':'bg-red')}" ${raw(Events.attr('spotify:marcarPago', i))} title="${spPersonaPagadaVigente(x)?'Ya pagó · clic para revertir':'Cobrar a '+spNombreDe(x)}">${spPersonaPagadaVigente(x)?'Pagó':'Cobrar'}</span>
           <div class="sp-flex-2">
-            <button type="button" class="btn-icon sp-btn-34 sp-btn-acento" ${raw(Events.attr('spotify:editar', i))} title="Editar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
-            <button type="button" class="btn-icon sp-btn-34" ${raw(Events.attr('spotify:eliminar', i))}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>
+            <button type="button" class="btn-icon sp-btn-34 sp-btn-acento" ${raw(Events.attr('spotify:editar', i))} title="Editar"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+            <button type="button" class="btn-icon sp-btn-34" ${raw(Events.attr('spotify:eliminar', i))}><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>
           </div>
         </div>
       </div>`;
@@ -431,7 +451,7 @@ function renderSpHistorial(){
   const hist=total.map((h,i)=>({...h,_realIdx:i}))
     .sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||'')||(b._realIdx-a._realIdx))
     .slice(0,12);
-  if(!hist.length){el.innerHTML='<div class="sp-vacio">Sin pagos registrados aún.</div>';return;}
+  if(!hist.length){el.innerHTML='<div class="card card-sm sp-hist-vacio">Sin pagos registrados aún.</div>';return;}
   // Migrado a html`` (js/core/html-tag.js, ver auditoria-tecnica.md, punto 2).
   // Hallazgo real de paso: fuenteLabel() en `fuentesInfo` (nombre de cajita/cuenta,
   // texto libre) nunca pasaba por escHtml() acá — a diferencia del badge de
@@ -470,7 +490,7 @@ function renderSpHistorial(){
         </div>
         <div class="sp-hist-der">
           <div class="sp-hist-monto ${raw(h.tipo==='pago'?'c-red':'c-green')}">${h.tipo==='pago'?'−':'+'} ${fmt(h.monto)}</div>
-          <button type="button" class="btn-icon sp-btn-36" ${raw(Events.attr('spotify:eliminarHistorial', h._realIdx))}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>
+          <button type="button" class="btn-icon sp-btn-36" ${raw(Events.attr('spotify:eliminarHistorial', h._realIdx))}><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>
         </div>
       </div>
     </div>`;
@@ -484,7 +504,11 @@ function renderSpStats(){
   const hist=S.spotify.historial||[];
   const costo=S.spotify.costo||0;
 
-  if(!personas.length&&!hist.length){
+  // Sin personas ni historial no hay nada que mostrar: el título «Estadísticas» tampoco
+  // (quedaba pegado al de «Historial de pagos», que sí lleva su mensaje de vacío).
+  const _hayStats=personas.length>0||hist.length>0;
+  mostrarSi(document.getElementById('spStatsTitulo'),_hayStats);
+  if(!_hayStats){
     el.innerHTML='';
     return;
   }
@@ -590,7 +614,7 @@ function renderSpStats(){
         <div class="stat-value ${cV(margen)}">${margen>=0?'+':''}${fmt(Math.abs(margen))}</div>
         <div class="sp-stat-nota2">cobras ${fmt(ingresoEstimado)} en cuotas · el plan cuesta ${costo>0?fmt(costo):'—'}</div>
       </div>
-      <div class="sp-stat-hint">proyección con tu configuración actual, no con tu frecuencia real de pago — registrá un pago a Spotify para ver el promedio real por ciclo</div>
+      <div class="sp-stat-hint">proyección con tu configuración actual, no con tu frecuencia real de pago — registra un pago a Spotify para ver el promedio real por ciclo</div>
     </div>`;
   }
 
@@ -691,6 +715,7 @@ async function deleteSpHistorial(i){
 // (confirmación específica, ver arriba) terminen en el mismo lugar sin
 // duplicar la reversión de saldos.
 async function _borrarSpHistorial(i,h){
+  const _histAntes=medirPatrimonioParaHistorial(); // el historial de patrimonio deja de contar este registro
 
   if(h.tipo==='cobro'){
     // Si este cobro tuvo pago parcial con deuda pendiente (ver §3 de docs/spotify.md),
@@ -777,6 +802,7 @@ async function _borrarSpHistorial(i,h){
   }
 
   S.spotify.historial.splice(i,1);
+  purgarEfectoEnHistorial(_histAntes,h);
   save();refresh();
   toast('Movimiento eliminado y plata revertida','ok');
 }
@@ -840,7 +866,7 @@ function marcarPagoSpotify(i){
   document.getElementById('spCobSplitRows').innerHTML='';
   const spCobToggleBtn=document.getElementById('spCobSplitToggle');
   if(spCobToggleBtn){
-    spCobToggleBtn.textContent='Dividir ÷';
+    spCobToggleBtn.textContent='Dividir';
     spCobToggleBtn.style.background='rgba(200,240,96,.1)';
     spCobToggleBtn.style.borderColor='rgba(200,240,96,.3)';
     spCobToggleBtn.style.color='var(--accent)';
@@ -1002,7 +1028,7 @@ function confirmarSpDestino(){
     splits=getSpCobSplitData();
     const totalSplit=splits.reduce((a,s)=>a+s.monto,0);
     if(splits.length===0||totalSplit<=0){
-      document.getElementById('spCobPreview').textContent='Asigná el cobro a al menos una cuenta';
+      document.getElementById('spCobPreview').textContent='Asigna el cobro a al menos una cuenta';
       document.getElementById('spCobPreview').style.color='var(--red)';
       return;
     }
@@ -1113,7 +1139,7 @@ function confirmarSpDestino(){
   spcSplitMode=false;
   save();refresh();closeSheet('sp-destino');
   if(diferenciaSp>0){
-    toast(`Cobro registrado · ${escHtml(nombreActual)} quedó debiendo ${fmt(diferenciaSp)}`,'info',3500);
+    toast(`Cobro registrado · ${escHtml(nombreActual)} quedó debiendo ${fmt(diferenciaSp)}`,'ok',3500);
   } else {
     const sufijoExtra=extraSp>0?` · extra +${fmt(extraSp)}`:'';
     toast((meses>1?`Cobrados ${meses} períodos adelantados a ${escHtml(nombreActual)} · ${fmt(cuotaRecibida)}`:`Cobro registrado · ${escHtml(nombreActual)}`)+sufijoExtra,'ok');
@@ -1211,7 +1237,7 @@ function openSheet_pagarSpotify(){
   document.getElementById('spPagarSplitRows').innerHTML='';
   const sppToggleBtn=document.getElementById('spPagarSplitToggle');
   if(sppToggleBtn){
-    sppToggleBtn.textContent='Dividir ÷';
+    sppToggleBtn.textContent='Dividir';
     sppToggleBtn.style.background='rgba(200,240,96,.1)';
     sppToggleBtn.style.borderColor='rgba(200,240,96,.3)';
     sppToggleBtn.style.color='var(--accent)';
@@ -1350,7 +1376,8 @@ async function confirmarPagarSpotify(){
   // Registrar también como gasto variable para que aparezca en la sección Gastos
   if(!S.gastosVar)S.gastosVar=[];
   const gastoId=_pagoRef;
-  S.gastosVar.push({id:gastoId,desc:'Spotify Premium',monto,fecha:hoy(),cat:'Suscripciones',fuente,nota:notaGasto,clase:'gasto',_secundario:true,_origenSeccion:'Spotify'});
+  // La fecha es la que escribió quien paga («Fecha en que pagaste»), no la de hoy: el balance cuenta el gasto en el mes en que salió la plata.
+  S.gastosVar.push({id:gastoId,desc:'Spotify Premium',monto,fecha:fechaPago0,cat:'Suscripciones',fuente,nota:notaGasto,clase:'gasto',_secundario:true,_origenSeccion:'Spotify'});
   // Se guarda la cuota del administrador vigente EN ESTE MOMENTO (según cuántas personas
   // hay ahora), para que si la cantidad de integrantes cambia en el futuro, la ganancia
   // de este ciclo ya pagado no se recalcule con datos de otra época.
@@ -1445,7 +1472,7 @@ function addSpotify(){
   if(!n){toast('Ingresa el nombre','err');return;}
   const yaExisteNombre=(S.spotify.personas||[]).some(p=>(p.nombre||'').trim().toLowerCase()===n.toLowerCase());
   if(yaExisteNombre){
-    toast(`Ya hay un integrante llamado "${escHtml(n)}". Usa un nombre distinto (agregá un apellido o apodo) para no mezclar sus cobros en el historial.`,'err',4200);
+    toast(`Ya hay un integrante llamado "${escHtml(n)}". Usa un nombre distinto (agrega un apellido o apodo) para no mezclar sus cobros en el historial.`,'err',4200);
     return;
   }
   const fechaIngresoRaw=document.getElementById('sp_fecha_ingreso').value;
@@ -1532,7 +1559,7 @@ function guardarEditarSpotify() {
 const _spBtnAdd = document.getElementById('btn-add-spotify-persona');
 if (_spBtnAdd) _spBtnAdd.addEventListener('click', () => openSheet('spotify'));
 const _spBtnPagar = document.getElementById('btn-pagar-spotify');
-if (_spBtnPagar) _spBtnPagar.addEventListener('click', () => openSheet('pagar-spotify'));
+if (_spBtnPagar) _spBtnPagar.addEventListener('click', abrirPagarSpotify);
 
 const _spBtnSave = document.getElementById('btn-guardar-spotify');
 // OJO: igual que con Gastos — index.html sobrescribe el global addSpotify
@@ -1634,7 +1661,7 @@ function _initSpotifyPersonaSelector() {
       class="sp-persona-btn">
       <div id="sp-persona-avatar" class="avatar sp-persona-avatar" style="display:none;"></div>
       <span id="sp-persona-label">Seleccionar persona...</span>
-      <svg class="sp-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+      <svg aria-hidden="true" class="sp-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
     </div>
     <input type="hidden" id="sp_n" value="">`;
 }
@@ -1670,9 +1697,9 @@ function _initSpotifyEditPersonaSelector() {
       class="sp-persona-btn">
       <div id="sp-edit-persona-avatar" class="avatar sp-persona-avatar" style="display:none;"></div>
       <span id="sp-edit-persona-label">Seleccionar persona...</span>
-      <svg id="sp-edit-persona-chevron" class="sp-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+      <svg aria-hidden="true" id="sp-edit-persona-chevron" class="sp-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
     </div>
-    <div id="sp-edit-persona-hint" class="sp-persona-hint" style="display:none;">Para asignarle este cobro a otra persona, eliminá este integrante y agregá uno nuevo — así el historial no se mezcla entre los dos.</div>
+    <div id="sp-edit-persona-hint" class="sp-persona-hint" style="display:none;">Para asignarle este cobro a otra persona, elimina este integrante y agrega uno nuevo — así el historial no se mezcla entre los dos.</div>
     <input type="hidden" id="sp_edit_n" value="">`;
 }
 
@@ -1840,7 +1867,7 @@ guardarEditarSpotify = function() {
   // input oculto sigue con el nombre anterior — avisar en vez de guardarlo en silencio.
   if (_spEditPersonaPickerAbierto && !_spEditPersonaPickerConfirmado) {
     const spActual = (S.spotify.personas || [])[_spEditIdx];
-    toast(`No se seleccionó una persona nueva — se mantuvo a "${spActual ? escHtml(spActual.nombre) : 'la persona anterior'}"`, 'err', 4000);
+    toast(`No se seleccionó una persona nueva — se mantuvo a "${spActual ? escHtml(spActual.nombre) : 'la persona anterior'}"`, 'info', 4000);
   }
   // Capturar idx ANTES de llamar al original (que lo pone a null)
   const idxAntes = _spEditIdx;

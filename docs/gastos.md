@@ -130,6 +130,7 @@ Elegir "Pagar" en la plantilla → elegir cuenta de pago → validar que no est�
 - **¿Por qué el módulo quedó en un solo archivo (`gastos.js`) en vez de dividirse como Spotify o Encargos?** Porque ninguna de sus funciones depende de código definido más abajo en `index.html` al momento de cargar el script — a diferencia de Spotify/Encargos, que necesitan que Personas ya exista.
 - **¿Por qué "saldo insuficiente" no está escrito en `gastos.js`?** Porque esa comprobación es la misma para toda la app. `addGastoVar()` llama a `validarSalidaFuente(fuente, monto)` (`core-state.js`), que devuelve `{ok, mensaje}` con el mensaje ya escapado: cuenta o cajita falla si el saldo es menor que el monto; una TC falla solo si tiene cupo configurado y no alcanza. Antes cada módulo lo escribía a mano con redacción distinta y Spotify sin escapar el nombre de la cuenta. Los mensajes en línea de `confirmarPagarGastoFijo()` ("Necesario: …") se dejaron propios a propósito: son otro formato.
 - **¿Por qué el selector de "Pagar gasto fijo" no arma las `<option>` a mano?** `abrirPagarGastoFijo()` usa `FuentesFiltro.optsHtml()` (`js/core/fuentes-filtro.js`): filtra por saldo/cupo con `PRESET.SALIDA` y construye las opciones con `buildFuentesOptsHtml`, que escapa nombre y valor en un solo sitio. Es la misma pieza que usa el split de gasto variable.
+- **¿Por qué "Registrar gasto" no abre si no hay de dónde sacar la plata?** `abrirNuevoGastoVar()` consulta `FuentesFiltro.hayUtilizable(getFuentes(), PRESET.SALIDA)`: hace falta al menos una cuenta con saldo ≥ $1,00 o una TC con cupo (una TC también puede cargar un gasto). Si no hay ninguna, muestra `FuentesFiltro.MSG_SIN_SALDO` («No tienes cuentas con saldo disponible») y no abre el sheet, porque «¿De dónde salió la plata?» es obligatorio y quedaría sin opciones. Cubre los tres accesos (botón del estado vacío, botón de la lista y acción del menú +), que pasan por esa función.
 
 ## 8. Referencia de implementación
 
@@ -138,7 +139,8 @@ Archivo: `js/modules/gastos.js`.
 | Función | Qué hace |
 |---|---|
 | `switchGastoTab(t)` | Cambia entre la pestaña "Gastos" (variable) y "Fijos mensuales". |
-| `renderMesFiltros()` | Arma los chips de filtro por mes y dispara `renderGastosVar()`. |
+| `renderMesFiltros()` | Arma los chips de filtro por mes y dispara `renderGastosVar()`. El filtro (`#mesFilter`) solo se muestra desde el **segundo** mes con gastos (o retiros manuales): con un solo mes «Todos» y ese mes muestran lo mismo. Si el mes filtrado deja de existir, el filtro vuelve a «todos». |
+| `renderGastosFijos()` | Pinta la lista de fijos; el «Total mensual fijo» (`#gfTotalCard`) y el botón de pie solo se muestran si hay al menos un gasto fijo (el estado vacío ya trae su botón). |
 | `setMesFiltro(m)` | Cambia el mes filtrado y vuelve a renderizar. |
 | `renderGastosVar()` | Pinta el historial de gasto variable en una sola lista ordenada (fecha desc., y dentro del día el último registrado arriba), agrupada por día con subtotal, más los totales de arriba. |
 | `_gvDiaLabel(fecha)` | Etiqueta del encabezado de día: "Hoy", "Ayer" o "sáb 19 sep" (con año si no es el actual). Arma la fecha con `new Date(y, m-1, d)`, no con `new Date('YYYY-MM-DD')` (UTC). |

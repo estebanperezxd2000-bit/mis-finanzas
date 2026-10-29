@@ -199,7 +199,7 @@ function mesKey(d){return d?d.substring(0,7):'';}
 //                     mostrarlo (ej. justo después de elegir persona en un
 //                     selector). Default: no lo toca.
 // opts.conIniciales — si hay que escribir las iniciales en el avatar (ej. un
-//                     selector recién confirmado). Default: true. Ponelo en
+//                     selector recién confirmado). Default: true. Ponlo en
 //                     false si el avatar ya tiene sus iniciales de un render
 //                     previo y solo hace falta actualizar el color.
 // opts.alphaFondo / opts.alphaBorde — sufijo hex de opacidad para el color de
@@ -436,7 +436,7 @@ function getFuentesSinTC(){return _listaFuentes(false);}
 function fuenteLabel(val){
   if(!val)return'Sin especificar';
   if(val==='alcancia')return'Alcancía';
-  if(val==='ganancia')return'<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ico-inline"><ellipse cx="12" cy="17" rx="8" ry="5"/><path d="M4 17v-4c0-2.76 3.58-5 8-5s8 2.24 8 5v4"/><path d="M4 13c0-2.76 3.58-5 8-5s8 2.24 8 5"/></svg> Ganancia (no desembolsada)';
+  if(val==='ganancia')return'<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ico-inline"><ellipse cx="12" cy="17" rx="8" ry="5"/><path d="M4 17v-4c0-2.76 3.58-5 8-5s8 2.24 8 5v4"/><path d="M4 13c0-2.76 3.58-5 8-5s8 2.24 8 5"/></svg> Ganancia (no desembolsada)';
   if(val==='nequi'||val==='efectivo')return getCuentaFija(val).nombre;
   if(val.startsWith('cajita:')){
     const id=val.split(':')[1];
@@ -518,40 +518,26 @@ function validarSalidaFuente(fuente,monto){
 
 /* ---- LOAD / SAVE ---- */
 function fmtInput(n){
-  // Format a raw number for display in a money-input field (calculator style: always show 2 decimals)
+  // Número → texto para un campo de plata (.money-input): enteros sin decimales ("500.000"), con decimales
+  // siempre 2 ("1.234,50"). Es el mismo formato que deja el formateo al escribir (js/core/money-input.js).
   if(!n&&n!==0)return'';
   const num=parseFloat(n);
   if(isNaN(num)||num===0)return'';
-  // Always show with 2 decimals, using es-CO separators
   const cents=Math.round(Math.abs(num)*100);
-  const intPart=Math.floor(cents/100);
-  const decPart=String(cents%100).padStart(2,'0');
-  return (num<0?'-':'')+intPart.toLocaleString('es-CO')+','+decPart;
+  const intPart=String(Math.floor(cents/100)).replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+  const decPart=cents%100;
+  return (num<0?'-':'')+intPart+(decPart?','+String(decPart).padStart(2,'0'):'');
 }
 
-// Calculator-style money input: digits push right-to-left from centavos
-// Stores raw digit string per input element
-const _moneyDigits=new WeakMap();
-
-function _moneyRender(digits){
-  // digits: string of up to N digit chars, e.g. "300" → "3,00"
-  if(!digits||digits==='0'||digits==='')return'0,00';
-  // Pad to at least 3 digits so we always have 2 decimal places
-  const padded=digits.padStart(3,'0');
-  const intRaw=padded.slice(0,-2);
-  const dec=padded.slice(-2);
-  // Remove leading zeros from integer part
-  const intNum=parseInt(intRaw,10)||0;
-  const intFmt=intNum.toLocaleString('es-CO');
-  return intFmt+','+dec;
-}
-
-function _moneyValue(digits){
-  if(!digits||digits==='0')return 0;
-  const padded=digits.padStart(3,'0');
-  const intRaw=padded.slice(0,-2);
-  const dec=padded.slice(-2);
-  return parseInt(intRaw||'0',10)+(parseInt(dec,10)/100);
+// ÚNICA forma de precargar un valor en un input de plata (.money-input) desde JS: lo deja formateado igual que
+// cuando el usuario escribe ("80.000", no "80000"). Asignar `input.value = n` directo se ve sin separador de miles,
+// porque el formateo de money-input.js solo corre en el evento 'input'. Acepta el elemento o su id; n vacío/0/NaN limpia
+// el campo. { evento: true } además avisa 'input' para que se actualicen las vistas previas del sheet.
+function setMoneyInput(elOrId,n,opts){
+  const el=typeof elOrId==='string'?document.getElementById(elOrId):elOrId;
+  if(!el)return;
+  el.value=fmtInput(n);
+  if(opts&&opts.evento)el.dispatchEvent(new Event('input',{bubbles:true}));
 }
 
 // Clase guardada de un movimiento ('ingreso' | 'gasto' | 'neutro' | 'ajuste'), o null si no la tiene.
@@ -619,7 +605,7 @@ function load(){
   aplicarMigraciones(S);
   _ensureSpotify();
   if(S._esquemaAnterior && typeof toast==='function')
-    toast('Estos datos son de una versión anterior (esquema '+S._esquemaAnterior+') y esta versión empieza de cero. Exporta un backup si lo quieres y usa Configuración → Borrar todo.','err',12000);
+    toast('Estos datos son de una versión anterior (esquema '+S._esquemaAnterior+') y esta versión empieza de cero. Exporta un backup si lo quieres y usa la opción «Borrar todo» de Configuración.','err',12000);
   if(!S.encargos)S.encargos=[];
   if(!S.movimientos)S.movimientos=[];
   if(!Array.isArray(S.libro))S.libro=[];
@@ -827,8 +813,29 @@ function calcDeudaTcPropia() {
   return (S.tarjetasCredito||[]).reduce((a,tc)=>a+calcDeudaTcPropiaDeTarjeta(tc),0);
 }
 
-function calcPatrimonioTotal(){
-  const nu=(S.cajitas||[]).reduce((a,c)=>a+calcC(c).val,0);
+/* ---- PATRIMONIO Y LIQUIDEZ: UNA SOLA DEFINICIÓN ----------------------------------------------------------------------
+   Todo número de la app que sea «cuánto tengo» sale de calcPatrimonioDesglose() o de calcLiquidez(). Nadie más suma cuentas
+   ni resta deudas a mano: el hero de Inicio, el historial (snapshotPatrimonio, medirPatrimonioParaHistorial), la gráfica
+   de Análisis, la Proyección y Salud financiera leen de aquí. Antes cada uno tenía su propia fórmula y se desalinearon
+   (el hero no restaba «Yo debo»; Salud tampoco). Si una regla cambia (una deuda nueva, otra cuenta), se cambia en ESTE
+   bloque y todo lo demás sigue igual; tests/nucleo.test.js («patrimonio — fuente única») lo vigila.
+
+   PATRIMONIO = activos − pasivos (patrimonio NETO)
+     activos : cajitas de Nu (con su interés), CDTs, Nequi, Efectivo, cuentas propias, «Me deben» y Alcancía.
+     pasivos : deuda de tarjetas (completa), «Yo debo» (deudas con personas) y plata ajena que guardas en tus cuentas.
+   Las deudas con personas cuentan completas aunque no tengan fecha de pago: un pasivo sin vencimiento sigue siendo un pasivo
+   (entre amigos casi nunca hay fecha, y no por eso la plata deja de ser de otro). Lo mismo vale para «Me deben»: es un
+   activo aunque no sepas cuándo te pagan. La fecha incierta no cambia el patrimonio: cambia la LIQUIDEZ (ver abajo).
+   «Visible» = patrimonio sin la Alcancía (está oculta a propósito, ver alcancia.js): es lo que se muestra y se guarda en
+   `valorVisible`. El total real (con Alcancía) solo se usa por dentro.
+
+   LIQUIDEZ = lo que podrías usar ya, sin vender nada ni esperar a nadie (para el fondo de emergencia de Salud financiera).
+     suma  : cajitas, Nequi, Efectivo y cuentas propias.
+     resta : deuda de tarjeta PROPIA, «Yo debo» y plata ajena (esas tres salen de tu bolsillo o ya tienen dueño).
+     no suma: CDTs (bloqueados), «Me deben» (sin fecha cierta no es plata disponible) ni Alcancía (oculta).
+   Es a propósito asimétrica y prudente: lo que te deben no cuenta hasta que llega, lo que debes cuenta completo. */
+function calcPatrimonioDesglose(){
+  const cajitas=(S.cajitas||[]).reduce((a,c)=>a+calcC(c).val,0);
   const cdts=(S.cajitas||[]).reduce((a,c)=>a+(c.cdts||[]).reduce((b,cdt)=>b+calcCDT(cdt).val,0),0);
   // NOTA: ya NO se resta plata de encargos guardada en Nequi/Efectivo/cuentas
   // personalizadas. Registrar una entrada de encargo con esa cuenta es solo
@@ -838,21 +845,63 @@ function calcPatrimonioTotal(){
   // acá contaba de menos un patrimonio que en realidad nunca se sumó. Ver
   // CHANGELOG.md#encargos.
   const nequi=getSaldoFuente('nequi');
-  const ef=getSaldoFuente('efectivo');
+  const efectivo=getSaldoFuente('efectivo');
   // Deudas (calc-helpers.js, carga de entrada) — calcPatrimonioTotal() corre en
   // CADA save() de la app (vía snapshotPatrimonio), no solo en refresh().
-  const prest=typeof Deudas!=='undefined'?Deudas.totalPendiente('favor'):0;
+  const meDeben=typeof Deudas!=='undefined'?Deudas.totalPendiente('favor'):0;
   const custom=cuentasCustom().reduce((a,c)=>a+(c.saldo||0),0);
+  // Alcancía: el saldo registrado es plata real tuya aunque esté "oculta"
+  const alcancia=(S.alcancia&&S.alcancia.saldoRegistrado)?S.alcancia.saldoRegistrado:0;
   const deudaTC=(S.tarjetasCredito||[]).reduce((a,tc)=>a+(tc.deuda||0),0);
   // Lo que le debo a otras personas (S.misDeudas) — esa plata está físicamente en
   // mis cuentas pero no es mía, así que se resta igual que la deuda de TC.
-  const misDeudas=typeof Deudas!=='undefined'?Deudas.totalPendiente('contra'):0;
+  const yoDebo=typeof Deudas!=='undefined'?Deudas.totalPendiente('contra'):0;
   // Restar plata comprometida ajena que está físicamente en cuentas propias
-  // (igual que se restan encargos) — es plata de otras personas que administrás
-  const cpAjeno = _saldoCPAjeno();
-  // Alcancía: el saldo registrado es plata real tuya aunque esté "oculta"
-  const alcancia = (S.alcancia && S.alcancia.saldoRegistrado) ? S.alcancia.saldoRegistrado : 0;
-  return nu+cdts+nequi+ef+prest+custom+alcancia-deudaTC-misDeudas-cpAjeno;
+  // (igual que se restan encargos) — es plata de otras personas que administras
+  const ajeno=_saldoCPAjeno();
+  const activos=cajitas+cdts+nequi+efectivo+meDeben+custom+alcancia;
+  const pasivos=deudaTC+yoDebo+ajeno;
+  const total=cajitas+cdts+nequi+efectivo+meDeben+custom+alcancia-deudaTC-yoDebo-ajeno;
+  return {
+    cajitas, cdts, nequi, efectivo, custom, meDeben, alcancia,      // activos
+    deudaTC, yoDebo, ajeno,                                         // pasivos
+    activos, pasivos,
+    total,                    // patrimonio neto real (con Alcancía)
+    visible: total-alcancia,  // el que se muestra y se guarda en el historial (sin Alcancía)
+  };
+}
+
+// Patrimonio neto real (con Alcancía). Nombre histórico: delega en calcPatrimonioDesglose().
+function calcPatrimonioTotal(){ return calcPatrimonioDesglose().total; }
+
+// Patrimonio visible (sin Alcancía): el número del hero, de la Proyección, de Salud y de `valorVisible` en el historial.
+function calcPatrimonioVisible(){ return calcPatrimonioDesglose().visible; }
+
+// Texto del hero con lo que de verdad entra en la cuenta: solo menciona los pasivos que existen hoy.
+function patrimonioFormulaTexto(d){
+  d=d||calcPatrimonioDesglose();
+  const resta=[];
+  if(d.deudaTC>0)resta.push('Deuda TC');
+  if(d.yoDebo>0)resta.push('Yo debo');
+  if(d.ajeno>0)resta.push('Plata ajena');
+  return 'Cuentas + CDTs + Prestado'+resta.map(t=>' − '+t).join('');
+}
+
+// Liquidez: lo que se puede usar ya (ver el bloque de arriba). La deuda de tarjeta es solo la PROPIA: la parte de la
+// tarjeta que es de un préstamo o un encargo se cubre con lo que te deben, que tampoco entra aquí.
+function calcLiquidez(){
+  const d=calcPatrimonioDesglose();
+  const libre=d.cajitas+d.nequi+d.efectivo+d.custom;
+  const tcPropia=typeof calcDeudaTcPropia==='function'?calcDeudaTcPropia():0;
+  const obligaciones=tcPropia+d.yoDebo+d.ajeno;
+  const neta=libre-obligaciones;
+  return {
+    libre, tcPropia, yoDebo:d.yoDebo, ajeno:d.ajeno, obligaciones,
+    neta,                    // liquidez real: la que mide el fondo de emergencia
+    cdts:d.cdts,
+    conCDTs:neta+d.cdts,     // si además se cuentan los CDTs (bloqueados, no sirven de emergencia)
+    meDeben:d.meDeben,
+  };
 }
 
 // calcC/calcCDT (nu-calc.js) y Deudas (calc-helpers.js) son núcleo de carga de
@@ -887,11 +936,13 @@ function _ajusteAlcanciaPorFecha(){
 // saldo inicial, destapes de alcancía y deudas sin pata de caja). load() la llama en cada carga, así las correcciones
 // valen también hacia atrás sin migración; scripts/conciliacion.js la usa para medir lo mismo que ve la app.
 function recalcularMontoBaseHistorial(){
-  // Migración retroactiva: calcular el monto exacto de aperturas y ajustes de saldo inicial
-  // (incluyendo borrados de apertura, que generan un ajuste negativo en _ajustesBaseLog)
-  // por fecha en el historial de patrimonio que ya existía antes de este fix. Así la
-  // tendencia mensual descuenta solo esa parte del cambio del día y conserva cualquier
-  // ingreso real que haya ocurrido la misma fecha, sin tener que esperar a un nuevo snapshot.
+  // Eliminar un saldo inicial ya no deja ningún registro aparte (ver purgarAperturaDelHistorial): la base sale solo de
+  // lo que existe. `_ajustesBaseLog` era ese registro y, con el movimiento ya borrado, quedaba como un ajuste negativo
+  // sin respaldo que inflaba la gráfica; se retira de los datos que aún lo traen.
+  delete S._ajustesBaseLog;
+  // Calcular el monto exacto de aperturas y ajustes de saldo inicial por fecha en el historial de patrimonio. Así la
+  // tendencia mensual descuenta solo esa parte del cambio del día y conserva cualquier ingreso real que haya ocurrido
+  // la misma fecha, sin tener que esperar a un nuevo snapshot.
   if(S.patrimonioHistorial.length){
     const montoAperturaPorFecha = {};
     const sumarApertura=(m)=>{
@@ -899,7 +950,6 @@ function recalcularMontoBaseHistorial(){
       if(m._ajustes){ m._ajustes.forEach(aj=>{ montoAperturaPorFecha[aj.fecha]=(montoAperturaPorFecha[aj.fecha]||0)+(aj.monto||0); }); }
     };
     (S.movimientos||[]).forEach(sumarApertura);
-    (S._ajustesBaseLog||[]).forEach(aj=>{ montoAperturaPorFecha[aj.fecha]=(montoAperturaPorFecha[aj.fecha]||0)+(aj.monto||0); });
     // Destapes de alcancía ya hechos (sobrante/faltante): mismo tratamiento que una apertura — ver _ajusteAlcanciaPorFecha().
     const _ajAlc=_ajusteAlcanciaPorFecha();
     Object.keys(_ajAlc).forEach(f=>{ montoAperturaPorFecha[f]=(montoAperturaPorFecha[f]||0)+_ajAlc[f]; });
@@ -948,7 +998,8 @@ function snapshotPatrimonio(){
   if(!_patrimonioDependenciasListas()) return;
   const hoyStr=hoy();
   if(!S.patrimonioHistorial)S.patrimonioHistorial=[];
-  const val=calcPatrimonioTotal();
+  const _pat=calcPatrimonioDesglose();
+  const val=_pat.total;
   if(val==null||isNaN(val)){
     // Mismo motivo que el guard de refresh() más abajo: antes esto fallaba
     // en silencio total (ni siquiera un $0 en pantalla, solo un snapshot que
@@ -960,8 +1011,7 @@ function snapshotPatrimonio(){
   // El total real (val) sí la incluye y es el que usan el health score y la proyección,
   // pero mostrar la serie cruda en la gráfica revelaría los depósitos día a día —
   // rompiendo el propósito de "ocultar" el saldo (igual que ya hace el hero de Inicio).
-  const _alcSnap=(S.alcancia&&S.alcancia.saldoRegistrado)?S.alcancia.saldoRegistrado:0;
-  const valVisible=val-_alcSnap;
+  const valVisible=_pat.visible;
   // ¿Hoy se registró algún saldo inicial (cajita nueva, Nequi, Efectivo, cuenta personalizada)
   // o se corrigió uno existente? La app ya sabe distinguir esto vía tipo:'apertura' (ver
   // crearMovimientoApertura) y vía _ajustes (ver confirmarEditarApertura). Guardamos el
@@ -976,7 +1026,6 @@ function snapshotPatrimonio(){
   },0);
   const montoAperturaHoy =
     sumarAperturasYAjustesDeHoy(S.movimientos)
-    + (S._ajustesBaseLog||[]).filter(aj=>aj.fecha===hoyStr).reduce((a,aj)=>a+(aj.monto||0),0)
     + (_ajusteAlcanciaPorFecha()[hoyStr]||0)
     + (_ajusteDeudasSinCuentaPorFecha()[hoyStr]||0);
   const ultimo=S.patrimonioHistorial[S.patrimonioHistorial.length-1];
@@ -992,6 +1041,71 @@ function snapshotPatrimonio(){
   }
   if(S.patrimonioHistorial.length>365)S.patrimonioHistorial=S.patrimonioHistorial.slice(-365);
   // (No localStorage — Firebase lo guarda _fbSaveToCloud)
+}
+
+// ── Eliminar un movimiento no deja rastro en el historial de patrimonio ─────────────────────────────────────────
+// S.patrimonioHistorial guarda una instantánea por día (el patrimonio al cierre de ese día). Si después se elimina algo
+// que ya estaba contado (un ingreso puesto por error, un gasto mal registrado), las instantáneas desde el día en que se
+// creó siguen incluyéndolo: la gráfica mostraría un salto sin ningún movimiento que lo respalde. Quitar de esas
+// instantáneas lo que cambió el patrimonio al eliminar hace que borrar equivalga a «nunca ocurrió». Cada flujo de
+// eliminación mide el patrimonio antes de revertir y llama a purgarEfectoEnHistorial() antes de guardar. Editar un
+// movimiento es eliminar y crear otro, así que queda cubierto por el mismo camino.
+// Límite: el efecto se resta por igual en todos los días desde la creación; el interés que una cajita de Nu haya
+// generado sobre ese dinero entre medias entra en el cálculo como si hubiera estado desde el primer día.
+
+// Patrimonio total y el «visible» (sin Alcancía, el que guarda valorVisible), o null si no se puede medir.
+function medirPatrimonioParaHistorial(){
+  if(!_patrimonioDependenciasListas()) return null;
+  const d=calcPatrimonioDesglose();
+  if(d.total==null||isNaN(d.total)) return null;
+  return {val:d.total, vis:d.visible};
+}
+
+// Día (YYYY-MM-DD) en que el movimiento entró al patrimonio: el de su creación (ts, o la hora que lleva su id de uid()),
+// no la fecha que el usuario le puso, que puede ser pasada. Sin ninguno de los dos, su fecha.
+function diaCreacionMov(item){
+  if(!item) return '';
+  let ms=Number(item.ts);
+  if(!Number.isFinite(ms)||ms<=0){
+    const id=item.id!=null?item.id:item._id;
+    ms=(typeof id==='string'&&/^[0-9a-z]{10,12}$/.test(id))?parseInt(id.slice(0,-3),36):NaN;
+  }
+  if(Number.isFinite(ms)&&ms>1.5778e12&&ms<=Date.now()+864e5){
+    const d=new Date(ms);
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  }
+  return item.fecha||'';
+}
+
+// Suma `delta` (y `deltaVisible`, por defecto igual) a las instantáneas con fecha >= dia.
+function quitarDeHistorial(dia, delta, deltaVisible){
+  if(!dia||!S.patrimonioHistorial) return;
+  const dv=deltaVisible===undefined?delta:deltaVisible;
+  const r=n=>Math.round(n*1e6)/1e6;
+  S.patrimonioHistorial.forEach(h=>{
+    if(!h.fecha||h.fecha<dia) return;
+    h.valor=r((h.valor||0)+delta);
+    if(h.valorVisible!=null) h.valorVisible=r(h.valorVisible+dv);
+  });
+}
+
+// `antes` viene de medirPatrimonioParaHistorial() justo antes de revertir; `item` es lo que se eliminó.
+function purgarEfectoEnHistorial(antes, item){
+  const despues=medirPatrimonioParaHistorial();
+  if(!antes||!despues) return;
+  const d=despues.val-antes.val, dv=despues.vis-antes.vis;
+  if(Math.abs(d)<0.005&&Math.abs(dv)<0.005) return;
+  quitarDeHistorial(diaCreacionMov(item), d, dv);
+}
+
+// Un saldo inicial entró por partes: el monto original el día que se creó la cuenta y cada corrección (`_ajustes`, que
+// confirmarEditarApertura deja con su fecha) el día en que se hizo. `m.monto` ya incluye las correcciones.
+function purgarAperturaDelHistorial(m){
+  if(!m) return;
+  const ajustes=m._ajustes||[];
+  const original=(m.monto||0)-ajustes.reduce((a,x)=>a+(x.monto||0),0);
+  quitarDeHistorial(diaCreacionMov(m), -original);
+  ajustes.forEach(x=>quitarDeHistorial(x.fecha, -(x.monto||0)));
 }
 
 // Calcula cuánta plata de encargos (dinero que estás cuidando de otra persona,
@@ -1031,7 +1145,7 @@ function gastosMes(mesK){
 // Suma los ingresos fijos configurados que aplican para un mes dado (YYYY-MM)
 function getIngresosFijosMes(mesK){ return Periodo.ingresosFijosDelMes(mesK); }
 
-// ── CLASE EXPLÍCITA (plan-clasificacion-movimientos.md) ──
+// ── CLASE EXPLÍCITA (docs/analisis-financiero.md y docs/libro-de-movimientos.md §7) ──
 // Cada movimiento nace con `clase`: 'ingreso' (sube el patrimonio), 'gasto' (lo baja), 'neutro' (mueve plata sin cambiar el
 // patrimonio: el "espejo" de Mesada, Préstamos, Encargos, plata comprometida…) o 'ajuste' (corrección de datos, ej. la apertura
 // de una cuenta). Todo lector pasa por claseEfectivaMovimiento(): no hay otro camino que mire etiquetas ni textos.
@@ -1106,15 +1220,18 @@ function _esGastoVarNoReal(g){
 // `diferencial.js`/`diffValidarIntercambios()` (`fuenteLabel(...)` sin
 // escapar). Ver CHANGELOG.md para el detalle de esos tres.
 function toast(msg, tipo='ok', dur=2800){
-  // tipo: 'ok' (éxito / plata que entra, verde) · 'salida' (plata que sale, rojo con flecha) · 'err' (algo salió mal, rojo con X)
-  //       · 'info' (neutro, azul). Los colores y el tamaño están en la clase .toast-<tipo> (CSS crítico de index.html).
+  // El color indica el RESULTADO de la acción, no el tipo de dato: 'ok' (se hizo: registrar, guardar, eliminar; verde) · 'salida'
+  //       (se hizo y es plata que sale: verde con flecha, para distinguirla de una entrada sin confundirla con un error) · 'warn' (se
+  //       hizo, pero con algo que revisar; ámbar) · 'err' (no se hizo o falló; rojo con X) · 'info' (neutro, nada cambió; azul).
+  //       Los colores y el tamaño están en la clase .toast-<tipo> (CSS crítico de index.html, espejo en styles.css).
   const c=document.getElementById('toast-container');
   const el=document.createElement('div');
-  const svg=(trazo,ancho)=>`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${ancho}" stroke-linecap="round" stroke-linejoin="round">${trazo}</svg>`;
+  const svg=(trazo,ancho)=>`<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${ancho}" stroke-linecap="round" stroke-linejoin="round">${trazo}</svg>`;
   const ICONOS={
     ok:svg('<polyline points="20 6 9 17 4 12"/>',3),
     salida:svg('<line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/>',2.6),
     err:svg('<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',3),
+    warn:svg('<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',2.5),
     info:svg('<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>',2.5)
   };
   el.className='toast toast-'+tipo;
@@ -1314,6 +1431,56 @@ function emptyState(icon, title, sub, btnLabel, btnFn){
   </div>`;
 }
 
+/* ---- FILA DE MOVIMIENTO COMPARTIDA ----
+   Una sola plantilla para las filas de historial de Tarjetas, Encargos, Gastos y Cuentas (antes cada módulo
+   armaba el mismo esqueleto a mano con sus propios envoltorios). Estructura: .gasto-item > .gasto-item-top
+   (nombre + fecha | monto + acciones) > bloques de meta. El aspecto (borde, color) sigue siendo una clase
+   que pasa el módulo en `clase` (tc-item-b-*, enc-item-b-*): nunca estilos en línea.
+   Opciones: clase, attrs (atributos ya escapados, p. ej. data-mov-*), nombre, nombreClase, nombreExtra (html),
+   sub, subClase, monto + montoClase (o montoHtml para un monto propio), acciones (html), antesMeta (html),
+   meta (contenido de .gasto-item-meta; sin él no se dibuja), metaClase, despues (html). Va en core-state.js,
+   igual que emptyState(): html/raw se resuelven al llamar. */
+function botonEliminarFila(accion, args, titulo) {
+  return html`<button type="button" class="btn-delete-hover" data-stop-propagation="true" ${raw(Events.attr(accion, ...(args || [])))} title="${titulo || 'Eliminar'}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>`;
+}
+
+function filaMovimiento(o) {
+  const nombreClase = o.nombreClase || 'row-name row-name-13';
+  const monto = o.montoHtml !== undefined ? o.montoHtml : html`<span class="row-amount ${o.montoClase || ''}">${o.monto}</span>`;
+  return html`<div class="gasto-item${o.clase ? ' ' + o.clase : ''}" ${raw(o.attrs || '')}>
+    <div class="gasto-item-top">
+      <div class="gasto-item-info">
+        <div class="${nombreClase}">${o.nombre}${o.nombreExtra || ''}</div>
+        <div class="row-sub${o.subClase ? ' ' + o.subClase : ''}">${o.sub}</div>
+      </div>
+      <div class="gasto-acciones">${monto}${o.acciones || ''}</div>
+    </div>
+    ${o.antesMeta || ''}${o.meta !== undefined ? html`<div class="gasto-item-meta${o.metaClase ? ' ' + o.metaClase : ''}">${o.meta}</div>` : ''}${o.despues || ''}
+  </div>`;
+}
+
+// Segundo candado de las acciones destructivas (mejora 13): con PIN activo, vuelve a pedirlo ANTES de ejecutar la acción.
+// Devuelve true si se puede seguir: no hay PIN (todo como antes) o se escribió el correcto; false si se canceló o con un PIN
+// activo no se pudo verificar (módulo del PIN sin cargar): en ese caso no se ejecuta nada. Se llama justo después de la
+// confirmación propia de cada acción: `if (!await pedirPinAntesDe('Para borrar todos los datos')) return;`
+// Acciones que lo piden: borrarTodo, importar un backup, eliminar la cuenta, quitar el PIN y quitar la huella.
+async function pedirPinAntesDe(motivo) {
+  let hayPin = false;
+  try { hayPin = !!localStorage.getItem('mf_pin'); } catch (e) { /* sin acceso a localStorage: no hay PIN que pedir */ }
+  if (!hayPin) return true;
+  if (typeof window._pinVerificar !== 'function') return false;
+  const ok = await window._pinVerificar(motivo);
+  if (!ok && typeof toast === 'function') toast('Acción cancelada', 'info');
+  return ok;
+}
+
+// Muestra u oculta un elemento según el estado de la pantalla (JS, no CSS):
+// lo usan los botones de pie de lista que sobran cuando el estado vacío ya
+// trae su propio botón de acción (un solo botón por estado vacío).
+function mostrarSi(el, visible) {
+  if (el) el.style.display = visible ? '' : 'none';
+}
+
 // renderAttencion() migrada a js/modules/inicio.js — ver auditoria-tecnica.md.
 // De paso se corrigió un caso más de .innerHTML sin escapar (spNombreDe()
 // interpolado directo, mismo patrón ya visto 5 veces en otros módulos).
@@ -1361,19 +1528,22 @@ function refresh(){
     return a+(baseInteres>0?baseInteres*(Math.pow(1+tasaCajita/100,1/365)-1):0);
   },0);
 
-  const deudaTCTotal=(S.tarjetasCredito||[]).reduce((a,tc)=>a+(tc.deuda||0),0);
-  const _cpAjenoHero=typeof _saldoCPAjeno==='function'?_saldoCPAjeno():0;
-  // Alcancía: el patrimonio real la incluye, pero el hero la oculta para mantener la sorpresa
-  const _alcSaldo = (S.alcancia && S.alcancia.saldoRegistrado) ? S.alcancia.saldoRegistrado : 0;
-  const _patrimonioVisible = disp+prest+cdts-deudaTCTotal-_cpAjenoHero; // sin alcancía
+  // El patrimonio del hero NO se arma aquí: sale de calcPatrimonioDesglose() (arriba, junto a calcPatrimonioTotal), la misma
+  // cuenta que usan el historial, la gráfica de Análisis, la Proyección y Salud. Así el hero no puede desalinearse de ellos
+  // (antes tenía su propia fórmula y no restaba «Yo debo»). `visible` = sin Alcancía, que se oculta para mantener la sorpresa.
+  const _pat=calcPatrimonioDesglose();
+  const _alcSaldo=_pat.alcancia;
+  const _patrimonioVisible=_pat.visible;
   // Red de seguridad (2026-09-26): fmt()/fmtNoCents() hacen `n||0`, así que un
   // NaN acá se mostraría como "$0" silencioso, indistinguible de un patrimonio
   // real en cero — exactamente lo que pasó con el bug de fecha sin padear en
   // un CDT (ver _fechaSafe() más arriba). Esto no arregla la causa, pero deja
   // rastro en consola para no perder otra sesión entera diagnosticando a ciegas.
   if(isNaN(_patrimonioVisible)){
-    console.error('[refresh] _patrimonioVisible dio NaN — revisar fechas corruptas u otra fuente de NaN en cajitas/CDTs/deudores/tarjetas', {disp,prest,cdts,deudaTCTotal,_cpAjenoHero});
+    console.error('[refresh] _patrimonioVisible dio NaN — revisar fechas corruptas u otra fuente de NaN en cajitas/CDTs/deudores/tarjetas', _pat);
   }
+  const _heroFormula=document.getElementById('hero-formula');
+  if(_heroFormula)_heroFormula.textContent=patrimonioFormulaTexto(_pat);
   document.getElementById('heroTotal').textContent=fmt(_patrimonioVisible);
   // Indicador de alcancía en el hero — ícono chico junto al label, no un
   // bloque aparte (docs/auditoria-tecnica.md, "Reservar espacio para

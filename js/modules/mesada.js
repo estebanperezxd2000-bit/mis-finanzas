@@ -606,13 +606,32 @@ function _poblarDestinoMesada(selectId) {
   if (sel) sel.innerHTML = buildFuentesOptsHtml({ placeholder: 'No especificar / lo gasté', incluirTC: false });
 }
 
+// La Mesada cuenta como ingreso del mes en que te la PAGAN (la fecha), no del mes que cubre (la clave del pago). Si son
+// distintos se dice antes de guardar, para que se entienda dónde va a aparecer la plata en Análisis. Es informativo.
+// Devuelve el texto o '' (clave inválida, sin fecha, o la fecha cae en el mes que cubre).
+function mesadaAvisoMesPago(key, fecha) {
+  const k = /^(\d{4})-(\d{1,2})$/.exec(String(key || ''));
+  const f = /^(\d{4})-(\d{2})-\d{2}/.exec(String(fecha || ''));
+  if (!k || !f) return '';
+  if (Number(k[1]) === Number(f[1]) && Number(k[2]) === Number(f[2]) - 1) return '';
+  const mesFecha = f[1] + '-' + f[2];
+  const donde = mesFecha === mesActual() ? 'este mes' : _mesNombreDeKey(f[1] + '-' + (Number(f[2]) - 1));
+  return 'Cubre ' + _mesNombreDeKey(key) + ', pero cuenta como ingreso de ' + donde + ': el mes en que te la pagan.';
+}
+
+function actualizarMpAvisoMes() {
+  const el = _msEl('mpAvisoMes');
+  if (el) el.textContent = mesadaAvisoMesPago(_msFlujos.mp.key, _msVal('mpFecha'));
+}
+
 function abrirRegistrarMesada(parent, key, nombre) {
   const f = _msFlujos.mp;
   f.parent = parent; f.key = key;
   _msEl('mpTitle').textContent = mesadaNombrePadre(parent) + ' · ' + nombre;
   _msEl('mpDesc').textContent = 'Registra cuándo te pagó y qué hiciste con esa plata.';
-  _msEl('mpMonto').value = mesadaCuotaDeKey(parent, key) || '';
+  setMoneyInput(_msEl('mpMonto'), mesadaCuotaDeKey(parent, key));
   _msEl('mpFecha').value = hoy();
+  actualizarMpAvisoMes();
   _msEl('mpNota').value = '';
   _msEl('mpPreview').textContent = '';
   splitReset('mp'); // vuelve el widget de dividir a su estado base (modo simple, sin filas)
@@ -716,7 +735,7 @@ function confirmarMesadaPago() {
   if (!r.ok) { _mesadaMostrarError(r, 'mpPreview'); return; }
   save(); refresh();
   closeSheet('mesada-pago');
-  if (r.pendiente > 0) toast('Guardado — quedó pendiente ' + fmt(r.pendiente), 'info', 3500);
+  if (r.pendiente > 0) toast('Guardado — quedó pendiente ' + fmt(r.pendiente), 'ok', 3500);
   else if (r.usoEncargo) toast('Guardado — se descontó de lo que le tenías guardado', 'ok', 3000);
 }
 
@@ -753,7 +772,7 @@ function abrirDetalleMesada(parent, key, nombre) {
       ${debe
         ? html`<div class="row ms-fila-pend"><span class="ms-lbl ms-lbl-amber">Pendiente</span><span class="row-amount c-amber">${fmt(info.pendiente)}</span></div>`
         : html`<div class="ms-saldado"><i class="fa-solid fa-check"></i>Ya te dio todo lo que faltaba</div>`}
-      ${tieneHistorial ? html`<div class="ms-historial">${raw(info.pendienteHistorial.map((h, idx) => html`<div class="ms-hist-row"><span class="ms-hist-txt">${h.fecha || ''}${h.origenEncargo ? ' · Plata guardada de ' + h.origenEncargo.nombre : (h.destino ? ' · ' + fuenteLabel(h.destino) : '')}${h.nota ? ' · ' + h.nota : ''}</span><span class="ms-hist-acc"><span class="ms-hist-monto">+${fmt(h.monto)}</span><span ${raw(Events.attr('mesada:deshacerPendiente', parent, key, idx))} class="ms-hist-undo" title="Deshacer este abono"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span></span></div>`).join(''))}</div>` : ''}
+      ${tieneHistorial ? html`<div class="ms-historial">${raw(info.pendienteHistorial.map((h, idx) => html`<div class="ms-hist-row"><span class="ms-hist-txt">${h.fecha || ''}${h.origenEncargo ? ' · Plata guardada de ' + h.origenEncargo.nombre : (h.destino ? ' · ' + fuenteLabel(h.destino) : '')}${h.nota ? ' · ' + h.nota : ''}</span><span class="ms-hist-acc"><span class="ms-hist-monto">+${fmt(h.monto)}</span><span ${raw(Events.attr('mesada:deshacerPendiente', parent, key, idx))} class="ms-hist-undo" title="Deshacer este abono"><svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span></span></div>`).join(''))}</div>` : ''}
       ${debe ? html`<button type="button" class="btn btn-soft-amber ms-btn-top" ${raw(Events.attr('mesada:resolverPendiente', parent, key))}>Registrar pago de lo pendiente</button>` : ''}
     </div>`;
   } else if (puedeMarcarPendiente) {
@@ -795,7 +814,9 @@ async function eliminarMesadaPago(parent, key) {
       if (!await confirmarBorrarMovimientoViejo(nombreCuenta, info.monto || 0, 'baja')) return;
     }
   }
+  const _histAntes = medirPatrimonioParaHistorial(); // el historial de patrimonio deja de contar este pago
   mesadaBorrarPago(parent, key);
+  purgarEfectoEnHistorial(_histAntes, info);
   save(); refresh();
   closeSheet('mesada-det');
 }
@@ -809,7 +830,7 @@ function marcarMesadaComoPendiente(parent, key) {
     return;
   }
   save(); refresh();
-  toast('Marcado como pendiente — debe ' + fmt(r.pendiente), 'info', 3000);
+  toast('Marcado como pendiente — debe ' + fmt(r.pendiente), 'ok', 3000);
   abrirDetalleMesada(parent, key, _mesNombreDeKey(key));
 }
 
@@ -821,7 +842,7 @@ function abrirResolverPendiente(parent, key) {
   f.parent = parent; f.key = key;
   _msEl('mppTitle').textContent = mesadaNombrePadre(parent) + ' · ' + _mesNombreDeKey(key);
   _msEl('mppDesc').textContent = 'Te debía ' + fmt(info.pendiente) + '. ¿Cuánto te dio ahora?';
-  _msEl('mppMonto').value = fmtInput(info.pendiente);
+  setMoneyInput(_msEl('mppMonto'), info.pendiente);
   _msEl('mppFecha').value = hoy();
   _msEl('mppNota').value = '';
   _poblarDestinoMesada('mppDestino');
@@ -901,6 +922,8 @@ function _msCablear() {
     ['btn-confirmar-mesada',      'click',  confirmarMesadaPago],
     ['btn-confirmar-mesada-pend', 'click',  confirmarPendienteMesada],
     ['mpMonto',                   'input',  actualizarMpPreview],
+    ['mpFecha',                   'input',  actualizarMpAvisoMes],
+    ['mpFecha',                   'change', actualizarMpAvisoMes],
     ['mpDestino',                 'change', actualizarMpPreview],
     ['mpQuedaDebiendo',           'change', actualizarMpPreview],
     ['mppMonto',                  'input',  actualizarMppPreview],

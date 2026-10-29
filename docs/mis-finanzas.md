@@ -27,7 +27,7 @@ Todos viven en `js/core/` salvo que se indique lo contrario. "Clásico" = `<scri
 |---|---|---|
 | `firebase-init.js` | módulo | Inicializa Firebase (config, Auth, Firestore con caché offline multi-pestaña) y escucha `onAuthStateChanged` para arrancar la app o mostrar el login. Expone en `window._fb` lo que usa el resto (incluido `runTransaction`, para leer el documento directo del servidor — ver `firebase-sync.js` — y `popupResolver`, que los popups de login/reautenticación reciben como tercer argumento). Auth usa `initializeAuth()`: con sesión previa (marca `mf_auth_hint` en `localStorage`, que mantiene `_onAuthState`) arranca SIN el iframe/gapi de Firebase Auth; sin marca, con el resolver precargado. |
 | `firebase-sync.js` | módulo | Guardado en Firestore con debounce y detección de "sin cambios" (`_fbSaveToCloud`), carga inicial de datos, `onSnapshot` para sync entre dispositivos, indicador de estado de sync. **Regla que no se debe romper:** `_dataLoaded` (que habilita todo guardado) solo pasa a `true` con un payload leído bien (`_cargaConfiable`) o tras verificar contra el servidor que el documento no existe (`_verificarSinDocumento`); "sin documento" del listener nunca se cree tal cual, ni siquiera con `fromCache=false`. Mientras no haya confianza la app queda en modo lectura (ver `CHANGELOG.md`, sección "Arranque"). Al pasar a segundo plano (`visibilitychange`/`pagehide`) fuerza el guardado pendiente en vez de esperar el debounce (`_fbFlushSave`). |
-| `pin-bio.js` | módulo | Bloqueo con PIN de 4 dígitos + biometría opcional (WebAuthn/Face ID/huella) entre el login y la carga real de datos. |
+| `pin-bio.js` | módulo | Bloqueo con PIN de 4 dígitos (también con el teclado del PC) + biometría opcional local, sin passkey (WebAuthn/Face ID/huella) entre el login y la carga real de datos; además confirma con el PIN las acciones destructivas (`window._pinVerificar`, vía `pedirPinAntesDe()` de `core-state.js`). |
 | `bootstrap.js` | clásico | Arranque mínimo: `iniciales()`, fecha del header, autosave silencioso cada 60s. |
 | `async-css.js` | clásico | Activa el CSS de Font Awesome/Google Fonts (cargado con `media="print"` para no bloquear el render) una vez que termina de descargar. |
 
@@ -35,13 +35,13 @@ Todos viven en `js/core/` salvo que se indique lo contrario. "Clásico" = `<scri
 
 | Archivo | Tipo | Qué hace |
 |---|---|---|
-| `core-state.js` | clásico | El corazón de la app: objeto de estado global `S`, `save()`, `refresh()` base, `escHtml()`, formateo de dinero (`_moneyDigits`/`_moneyRender`), **el libro de movimientos** (`Libro`, la puerta única de saldos `sumarFuente`/`descontarFuente`/`ajustarSaldoCuenta`; ver `libro-de-movimientos.md`), la versión del esquema (`aplicarMigraciones`) y el resto de helpers puros que usa toda la app. |
+| `core-state.js` | clásico | El corazón de la app: objeto de estado global `S`, `save()`, `refresh()` base, `escHtml()`, formateo de dinero (`fmtInput`, `parseMoney`), **el libro de movimientos** (`Libro`, la puerta única de saldos `sumarFuente`/`descontarFuente`/`ajustarSaldoCuenta`; ver `libro-de-movimientos.md`), la versión del esquema (`aplicarMigraciones`) y el resto de helpers puros que usa toda la app. |
 | `events.js` | clásico | Despachador centralizado de clicks (`Events.on`/`attr`/`registerAll`) — reemplaza los `onclick` inline bloqueados por la CSP; un solo listener delegado en `document` para toda la app. |
 | `html-tag.js` | clásico | Primitivo `` html`` `` que escapa por defecto cualquier valor interpolado — migración gradual, módulo por módulo, para cerrar de raíz el bug recurrente de `.innerHTML` sin escapar. |
 | `calc-helpers.js` | clásico | Funciones de cálculo puras de Mesada, Tarjetas de Crédito, Préstamos (`getDeudorSaldo`) y Spotify (`spNombreDe`, `spPersonaPagadaVigente`) que Inicio necesita (para "Necesita atención"/salud financiera) en el primer render, sin tener que cargar esos módulos lazy completos. Los módulos de origen ya no las definen y las usan como globales: **todo test que cargue uno de ellos y las use tiene que cargar también `calc-helpers.js`** (ver `tests/README.md`). |
-| `fuentes-filtro.js` | clásico | `FuentesFiltro`: decide qué cuentas se ofrecen cuando la plata SALE (saldo mínimo por flujo: $1 general, $50 Spotify, > $0 pagar TC con efectivo ≥ $1.000; TC solo con cupo disponible). Carga después de `calc-helpers.js`. |
+| `fuentes-filtro.js` | clásico | `FuentesFiltro`: decide qué cuentas se ofrecen cuando la plata SALE (saldo mínimo por flujo: $1 general, $50 Spotify, > $0 pagar TC con efectivo ≥ $1.000; TC solo con cupo disponible), `hayUtilizable` (¿hay de dónde sacar plata?) y `esTC` / `puedeRecibir` / `receptoras` (destinos que nunca pueden ser una TC). Carga después de `calc-helpers.js`. |
 | `color-picker.js` | clásico | Un solo helper (`marcarColorSeleccionado`) para los selectores de color circulares, compartido por Cuentas, TC y Prestado. |
-| `split.js` | clásico | Motor genérico de "split de fuentes": Mesada, MovEnc y Usar Parte comparten la misma lógica para dividir un monto entre varias cuentas. |
+| `split.js` | clásico | Motor genérico de "split de fuentes": Mesada, MovEnc y Usar Parte comparten la misma lógica para dividir un monto entre varias cuentas. En todos los sheets que lo usan, ÷ solo se activa si el sheet ofrece al menos dos cuentas y no admite más filas que cuentas ofrecidas (`splitCuentasValidas`); la misma cuenta no se repite entre filas. |
 | `diferencial.js` | clásico | Motor genérico de "margen dijo vs. real" (diferencia entre lo que correspondía y lo que realmente costó/se recibió), usado por 5 sheets distintos de varios módulos. |
 | `wait-for.js` / `wait-for-module.js` | clásico / módulo | `waitFor(checkFn, callback, opts)`: reintenta hasta que una condición se cumpla, en vez de que cada consumidor reimplemente su propio `setInterval` + contador. Duplicado a propósito en dos archivos (uno por tipo de script) — un intento de unificarlos rompió en producción. |
 | `hook-global.js` / `hook-global-module.js` | clásico / módulo | `hookGlobal(name, fn, opts)`: envuelve una función global existente (`refresh`, `openSheet`, `applyModulos`) sin pisar lo que ya hacía, esperando con `waitFor()` si todavía no existe. Mismo split clásico/módulo que `wait-for.js` y por el mismo motivo. |
@@ -68,7 +68,7 @@ Todos viven en `js/core/` salvo que se indique lo contrario. "Clásico" = `<scri
 
 | Archivo | Tipo | Qué hace |
 |---|---|---|
-| `money-input.js` | clásico | Auto-formateo estilo calculadora para los inputs de plata (`.money-input`): los dígitos se empujan de derecha a izquierda desde los centavos. |
+| `money-input.js` | clásico | Auto-formateo al escribir de los inputs de plata: `.money-input` (miles con puntos y decimales opcionales tras la coma) y `.miles-input` (enteros). Motor único `_montoFormatear`; el texto del campo es el valor, el cursor se mueve libre. |
 
 ## Estructura de archivos — `js/modules/`
 
@@ -103,7 +103,7 @@ A diferencia de `js/core/`, acá **"clásico"** siempre significa `<script defer
 | `css/styles.css` | Hoja de estilos de toda la app. |
 | `css/fa-subset.css` | Subconjunto de Font Awesome autoalojado (solo los íconos usados). |
 | `sw.js` | Service Worker (PWA offline): `cacheFirst` para fuentes, `networkFirst` para el HTML y el SDK de Firebase (`gstatic.com/firebasejs`), `staleWhileRevalidate` para el resto. **Firestore, Identity Toolkit y SecureToken no pasan por el SW** (el canal de escucha es un stream largo: cachearlo fallaba con `Cache.put() ... network error`, y el fallback respondía HTML con status 200 a requests de Firestore). Toda escritura en caché va por `guardarEnCache()`, con `.catch`. Versión de caché en `VERSION` (bump manual al desplegar). |
-| `scripts/` | Herramientas de desarrollo (no se despliegan): `generar-mapa.js` (genera `mapa-codigo.md`), `smoke-browser.js` (prueba de humo con jsdom), `equivalencia.js` (compara ingresos, gastos y patrimonio por mes sobre un backup real), `conciliacion.js` y `paso5/` (verificadores TEMPORALES de la conversión de estilos; la carpeta se borra al terminar el Paso 5, ver `CONTINUAR.md` §13.16). |
+| `scripts/` | Herramientas de desarrollo (no se despliegan): `generar-mapa.js` (genera `mapa-codigo.md`), `smoke-browser.js` (prueba de humo con jsdom), `equivalencia.js` (compara ingresos, gastos y patrimonio por mes sobre un backup real), `conciliacion.js` y `notificaciones/`. (Los verificadores de la conversión de estilos, `paso5/`, se retiraron el 2026-10-24; están en el tag `paso5-cerrado`.) |
 | `tests/` | Pruebas con el test runner nativo de Node (`npm test`, ver `tests/README.md`). `estilos.test.js` vigila que los archivos ya convertidos no vuelvan a tener `style=""`. |
 
 ---
@@ -130,8 +130,8 @@ Aunque cada módulo se documenta por separado, hay reglas de diseño que atravie
 | **Cuentas** | Saldos y movimientos de Nequi, efectivo, cajitas y cuentas personalizadas |
 | **Gastos** | Registro de gastos variables, con o sin tarjeta de crédito |
 | **Tarjetas de crédito** | Deuda de TC, pagos, fechas de corte y detalle de cada movimiento cargado |
-| **Préstamos → Me deben** | Plata que otras personas te deben a vos |
-| **Préstamos → Yo debo** | Plata que vos le debés a otras personas (`S.misDeudas`) |
+| **Préstamos → Me deben** | Plata que otras personas te deben a ti |
+| **Préstamos → Yo debo** | Plata que tú le debes a otras personas (`S.misDeudas`) |
 | **Encargos** | Dinero que un tercero te encarga guardar (separa el capital ajeno de cualquier interés propio que genere) |
 | **Mesada** | Mensualidad de papá y mamá, mes a mes, con manejo de pagos parciales y deuda pendiente |
 | **Spotify** | Suscripción compartida: cobro a integrantes, pago al servicio, cálculo de ganancia/pérdida del administrador |

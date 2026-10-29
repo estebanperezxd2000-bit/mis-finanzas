@@ -413,6 +413,11 @@ function _wrappedMesadaMes(S, anio, mesIdx){
 function _wrappedIngresosFijosMes(S, mesK){
   return Periodo.ingresosFijosDelMes(mesK, S);
 }
+// Cuotas de Spotify cobradas en el mes (regla de caja, la misma de Inicio y Análisis). El slide propio de Spotify
+// (_wrappedCalcularSpotify) sigue siendo otra lectura: cobrado − pagado del período.
+function _wrappedSpotifyMes(S, mesK){
+  return Periodo.spotifyDelMes(mesK, S);
+}
 
 /* Extraído de `_wrappedCalcularPeriodo` (2026-09-14) para que las nuevas
    funciones de la tercera tanda (comparaciones, récords, descubrimientos,
@@ -459,14 +464,14 @@ function _wrappedCalcularPeriodo(S, tipo, mesK, anioK){
   if(tipo === 'mes' && mesK){
     const anio = parseInt(mesK.split('-')[0], 10);
     const mesIdx = parseInt(mesK.split('-')[1], 10) - 1;
-    ingresoMesadaFijos = _wrappedMesadaMes(S, anio, mesIdx) + _wrappedIngresosFijosMes(S, mesK);
+    ingresoMesadaFijos = _wrappedMesadaMes(S, anio, mesIdx) + _wrappedIngresosFijosMes(S, mesK) + _wrappedSpotifyMes(S, mesK);
   } else if(tipo === 'anio' && anioK){
     const anio = parseInt(anioK, 10);
     const { anioActual, mesActualIdx } = _wrappedAnioYMesActual();
     const mesMax = (anioK === anioActual) ? mesActualIdx : 11;
     for(let m=0; m<=mesMax; m++){
       const mesKLoop = anioK + '-' + String(m+1).padStart(2,'0');
-      ingresoMesadaFijos += _wrappedMesadaMes(S, anio, m) + _wrappedIngresosFijosMes(S, mesKLoop);
+      ingresoMesadaFijos += _wrappedMesadaMes(S, anio, m) + _wrappedIngresosFijosMes(S, mesKLoop) + _wrappedSpotifyMes(S, mesKLoop);
     }
   }
 
@@ -1049,13 +1054,13 @@ function _wrappedCopyGasto(gastoMasGrande, avgGasto, totalGastosAnio){
     intensidad = _wrappedBankPick('gasto-extremo', [
       `${veces} veces más grande que tu gasto promedio — muchísimo más que cualquiera de tus otros gastos del año.`,
       `${veces} veces tu gasto típico. En otra categoría, literalmente.`,
-      `nada se le acerca: ${veces} veces por encima de lo que gastás normalmente.`,
+      `nada se le acerca: ${veces} veces por encima de lo que gastas normalmente.`,
     ], gastoMasGrande.desc);
   } else if(avgGasto > 0 && gastoMasGrande.monto >= avgGasto * 2){
     const veces = (gastoMasGrande.monto / avgGasto).toFixed(1).replace(/\.0$/,'');
     intensidad = _wrappedBankPick('gasto-alto', [
       `${veces} veces tu gasto típico.`,
-      `${veces} veces más de lo que gastás normalmente.`,
+      `${veces} veces más de lo que gastas normalmente.`,
       `${veces} veces por encima de lo habitual — se notó.`,
     ], gastoMasGrande.desc);
   } else {
@@ -1181,18 +1186,18 @@ function _wrappedCopyEncargos(e, fmt2){
     const detalleTop = (e.topEncargo && e.topEncargo.nombre)
       ? ' ' + _wrappedBankPick('encargos-top', [
           `La mayor parte te la encargó ${_wrappedNombrePersona(e.topEncargo.personaId, e.topEncargo.nombre)}${(typeof fmt2 === 'function' && Number.isFinite(e.topEncargo.monto)) ? `, con ${fmt2(e.topEncargo.monto)}` : ''}.`,
-          `Quien más confió en vos para guardarle plata fue ${_wrappedNombrePersona(e.topEncargo.personaId, e.topEncargo.nombre)}.`,
+          `Quien más confió en ti para guardarle plata fue ${_wrappedNombrePersona(e.topEncargo.personaId, e.topEncargo.nombre)}.`,
           `${_wrappedNombrePersona(e.topEncargo.personaId, e.topEncargo.nombre)} fue quien más plata te encargó cuidar.`,
         ], e.topEncargo.nombre)
       : '';
     return _wrappedBankPick('encargos-varias', [
-      `Repartida entre ${e.nPersonas} personas que confiaron en vos para guardarla.`,
+      `Repartida entre ${e.nPersonas} personas que confiaron en ti para guardarla.`,
       `${e.nPersonas} personas te encargaron su plata este año.`,
     ], e.nPersonas) + detalleTop;
   }
   if(e.topEncargo && e.topEncargo.nombre) return _wrappedBankPick('encargos-una', [
     `La mayor parte te la encargó ${_wrappedNombrePersona(e.topEncargo.personaId, e.topEncargo.nombre)}.`,
-    `Fue ${_wrappedNombrePersona(e.topEncargo.personaId, e.topEncargo.nombre)} quien más confió en vos para guardarle plata.`,
+    `Fue ${_wrappedNombrePersona(e.topEncargo.personaId, e.topEncargo.nombre)} quien más confió en ti para guardarle plata.`,
     `${_wrappedNombrePersona(e.topEncargo.personaId, e.topEncargo.nombre)} te encargó su plata todo el año.`,
   ], e.topEncargo.nombre);
   return _wrappedBankPick('encargos-generica', [
@@ -1229,7 +1234,7 @@ function _wrappedCopyMisDeudas(m){
     'Le metiste parejo: pagaste incluso más de lo que recibiste.',
   ]);
   return _wrappedBankPick('misDeudas-generica', [
-    'Plata que alguien más te prestó a vos.',
+    'Plata que alguien más te prestó a ti.',
     'Este año también recibiste una mano de alguien.',
     'Este año también hubo quien te tendió la mano con plata.',
   ]);
@@ -1350,7 +1355,7 @@ function _wrappedGraficoAnimadoSvg(serie){
   }).join('');
   const labelIni = `<text x="${coords[0].x.toFixed(1)}" y="${h-2}" font-size="9" fill="var(--text3)" text-anchor="start" font-family="'DM Mono',monospace">${_wrappedMesKaAbrev(serie[0].mesK)}</text>`;
   const labelFin = `<text x="${ultimo.x.toFixed(1)}" y="${h-2}" font-size="9" fill="var(--text3)" text-anchor="end" font-family="'DM Mono',monospace">${_wrappedMesKaAbrev(serie[serie.length-1].mesK)}</text>`;
-  return `<svg class="wrapped-svg-block" viewBox="0 0 ${w} ${h}" width="100%" height="${h}">
+  return `<svg aria-hidden="true" class="wrapped-svg-block" viewBox="0 0 ${w} ${h}" width="100%" height="${h}">
     <defs>
       <linearGradient id="wrappedAreaGradient" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0%" stop-color="${color}" stop-opacity="0.35"/>
@@ -1934,7 +1939,7 @@ function _wrappedCalcularPrestado(S, tipo, mesK, anioK){
 }
 
 /* ─── PRESTADO — Yo debo (S.misDeudas) ────────────────────────────────
-   Espejo del anterior: cuánto te prestaron a vos este período
+   Espejo del anterior: cuánto te prestaron a ti este período
    ('recibido') y cuánto pagaste de vuelta ('pago') — ver prestado.md
    §3.2. */
 function _wrappedCalcularMisDeudas(S, tipo, mesK, anioK){
@@ -2226,7 +2231,7 @@ function _wrappedCopyCierrePoema(ctx){
   if(personalidad){
     return _wrappedBankPick('poema-personalidad', [
       `Un año con su propio estilo: el de ${personalidad.tipo}. No hubo una sola decisión grande que lo definiera, sino muchas chicas, repetidas, que terminaron formando un patrón reconocible.`,
-      `Si tu plata tuviera una forma de ser este año, sería la de ${personalidad.tipo}. Ni perfecta ni dramática — simplemente vos, movimiento a movimiento.`,
+      `Si tu plata tuviera una forma de ser este año, sería la de ${personalidad.tipo}. Ni perfecta ni dramática — simplemente tú, movimiento a movimiento.`,
     ], anioK + personalidad.tipo);
   }
   return _wrappedBankPick('poema-generico', [
@@ -2274,7 +2279,7 @@ function _wrappedPersonalidad(S, anioK){
   const candidatos = [];
 
   if(tieneCdt){
-    candidatos.push({ tipo:'El Inversionista', evidencia:'tenés al menos un CDT activo', frase: _wrappedBankPick('personalidad-inversionista', [
+    candidatos.push({ tipo:'El Inversionista', evidencia:'tienes al menos un CDT activo', frase: _wrappedBankPick('personalidad-inversionista', [
       'No solo guardaste plata — la pusiste a producir.',
       'Tu plata no se quedó quieta: la pusiste a rendir.',
     ]) });
@@ -2282,7 +2287,7 @@ function _wrappedPersonalidad(S, anioK){
   if(prestado && prestado.totalPrestado > 0 && deudores.length >= 3){
     candidatos.push({ tipo:'El Banquero', evidencia:`fuiste banco de ${deudores.length} personas`, frase: _wrappedBankPick('personalidad-banquero', [
       `Este año también fuiste banco de ${deudores.length} personas.`,
-      `${deudores.length} personas contaron con vos como su banco personal este año.`,
+      `${deudores.length} personas contaron contigo como su banco personal este año.`,
     ], deudores.length) });
   }
   if(racha >= 4){
@@ -2294,7 +2299,7 @@ function _wrappedPersonalidad(S, anioK){
   if((cajitas.length + cuentasPersonalizadas.length) >= 6){
     candidatos.push({ tipo:'El Multicuenta', evidencia:`${cajitas.length + cuentasPersonalizadas.length} cuentas y cajitas activas`, frase: _wrappedBankPick('personalidad-multicuenta', [
       'Tu plata vive repartida en muchos lugares distintos.',
-      'Tenés más cuentas que la mayoría — y a todas les llevás la cuenta.',
+      'Tienes más cuentas que la mayoría — y a todas les llevas la cuenta.',
     ]) });
   }
   if(catsDistintas >= 6){
@@ -2463,7 +2468,7 @@ function _wrappedGraficoMensualSvg(meses){
   const dotsDe = (key, clase) => meses.map((m,i) => `<circle class="wrapped-mes-dot ${clase}" data-idx="${i}" cx="${xOf(i).toFixed(1)}" cy="${yOf(m[key]).toFixed(1)}" r="3.5"/>`).join('');
   const labels = meses.map((m,i) => `<text class="wrapped-mes-label" data-idx="${i}" x="${xOf(i).toFixed(1)}" y="${h-2}" font-size="9" text-anchor="middle" font-family="'DM Mono',monospace" fill="var(--text3)">${_wrappedMesKaAbrev(m.mesK)}</text>`).join('');
   const hitzones = meses.map((m,i) => `<rect data-wrapped-mesidx="${i}" x="${(xOf(i)-(stepX||w)/2).toFixed(1)}" y="0" width="${(stepX||w).toFixed(1)}" height="${h}" fill="transparent" class="wrapped-hit"/>`).join('');
-  return `<svg class="wrapped-mensual-svg wrapped-svg-block" viewBox="0 0 ${w} ${h}" width="100%" height="${h}">
+  return `<svg aria-hidden="true" class="wrapped-mensual-svg wrapped-svg-block" viewBox="0 0 ${w} ${h}" width="100%" height="${h}">
     <path d="${pathDe('ingresos')}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
     <path d="${pathDe('gastos')}" fill="none" stroke="var(--red)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
     <g>${dotsDe('ingresos','wrapped-dot-ingreso')}${dotsDe('gastos','wrapped-dot-gasto')}</g>
@@ -3193,7 +3198,7 @@ function _wrappedBuildSlides(S, fmt2){
   if(misDeudasAnio && misDeudasAnio.totalRecibido > 0){
     candidatosInsights.push({
       intensidad: 1,
-      html: _wrappedSlideBignum('Te prestaron a vos', '', misDeudasAnio.totalRecibido, 'var(--blue)', {
+      html: _wrappedSlideBignum('Te prestaron a ti', '', misDeudasAnio.totalRecibido, 'var(--blue)', {
         sub: _wrappedCopyMisDeudas(misDeudasAnio)
       })
     });
@@ -3289,7 +3294,7 @@ function _wrappedBuildSlides(S, fmt2){
           ])}</div>
           <div class="wrapped-headline">${_wrappedBankPick('relCategoria-headline', [
             'Lo que más se repite no siempre es lo que más pesa.',
-            'Una cosa es lo que más usás, otra lo que más cuesta cada vez.',
+            'Una cosa es lo que más usas, otra lo que más cuesta cada vez.',
             'La categoría más presente no fue la más pesada por movimiento.',
           ])}</div>
           ${_wrappedFrasesHtml([
@@ -3325,7 +3330,7 @@ function _wrappedBuildSlides(S, fmt2){
         <div class="wrapped-headline">${_wrappedBankPick('suscripciones-headline', [
           'Estos gastos aparecen solos, mes tras mes.',
           'Suscripciones y recurrentes: la plata que sale en piloto automático.',
-          'Nadie te pregunta si querés pagar esto — simplemente pasa cada mes.',
+          'Nadie te pregunta si quieres pagar esto — simplemente pasa cada mes.',
         ])}</div>
         ${_wrappedFrasesHtml(filas)}
       </div>`
@@ -3479,7 +3484,7 @@ function _wrappedBuildSlides(S, fmt2){
       html: `<div class="wrapped-slide-inner">
         <div class="wrapped-eyebrow">Tu resumen</div>
         <div class="wrapped-headline">Todavía no hay mucho que contar</div>
-        <div class="wrapped-sub">Todavía no hay suficiente historial este año para contarte algo. Volvé más adelante.</div>
+        <div class="wrapped-sub">Todavía no hay suficiente historial este año para contarte algo. Vuelve más adelante.</div>
       </div>`
     }];
   }
@@ -3816,11 +3821,11 @@ window.renderWrapped = function(){
   const debugOn = _wrappedDebugOn();
   const debugHtml = debugOn
     ? `<button type="button" id="wrapped-debug-toggle" aria-label="Panel de debug" title="Panel de debug">
-         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
+         <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
        </button>
        <div id="wrapped-debug-panel">
          <div id="wrapped-debug-head"><span>Debug — Wrapped</span><button type="button" id="wrapped-debug-close">
-           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+           <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
          </button></div>
          <div id="wrapped-debug-body">${_wrappedDebugPanelHtml(S, slides._wrappedDebugInfo)}</div>
        </div>`
@@ -3845,12 +3850,12 @@ window.renderWrapped = function(){
       <div class="wrapped-topbar-right">
         <button type="button" id="wrapped-restart" aria-label="Volver al inicio" title="Volver al inicio"><i class="fa-solid fa-arrow-rotate-left"></i></button>
         <button type="button" id="wrapped-close" aria-label="Cerrar" title="Cerrar">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
         </button>
       </div>
     </div>
     <div id="wrapped-slides">${slidesHtml}</div>
-    <div id="wrapped-hint">Tocá, deslizá o usá las flechas para avanzar</div>
+    <div id="wrapped-hint">Toca, desliza o usa las flechas para avanzar</div>
     ${debugHtml}`;
   document.body.appendChild(overlay);
 

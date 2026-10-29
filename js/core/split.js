@@ -78,9 +78,21 @@ function crearSplitWidget(instId, cfg){
   return cfg;
 }
 
+// Cuántas cuentas distintas ofrece la instancia: las <option> con valor que devuelve cfg.getFuentesFn.
+// El motor no sabe de filtros (cada módulo decide qué cuentas valen para su sheet), así que cuenta lo
+// que ese sheet ofrece de verdad. Es el tope de filas y el requisito (mínimo 2) para poder dividir.
+function splitCuentasValidas(instId){
+  const cfg = _splitInstancias[instId]; if(!cfg) return 0;
+  const tmp = document.createElement('select');
+  tmp.innerHTML = cfg.getFuentesFn('');
+  return Array.from(tmp.options).filter(o => o.value).length;
+}
+
 function splitToggle(instId){
   const cfg = _splitInstancias[instId]; if(!cfg) return;
   const modo = !cfg.getModo();
+  // Dividir pide al menos dos cuentas distintas: con una sola no hay nada que repartir.
+  if(modo && splitCuentasValidas(instId) < 2){ toast('Necesitas al menos dos cuentas para dividir', 'err'); return; }
   cfg.setModo(modo);
   const simple = document.getElementById(cfg.simpleId);
   const split  = document.getElementById(cfg.splitId);
@@ -88,7 +100,7 @@ function splitToggle(instId){
   if(split)  split.style.display  = modo ? '' : 'none';
   const btn = document.getElementById(cfg.toggleId);
   if(btn){
-    btn.textContent   = modo ? 'Una sola cuenta' : 'Dividir ÷';
+    btn.textContent   = modo ? 'Una sola cuenta' : 'Dividir';
     btn.style.background  = modo ? 'rgba(240,184,64,.1)' : 'rgba(200,240,96,.1)';
     btn.style.borderColor = modo ? 'rgba(240,184,64,.3)' : 'rgba(200,240,96,.3)';
     btn.style.color       = modo ? 'var(--amber)' : 'var(--accent)';
@@ -106,6 +118,8 @@ function splitAgregarRow(instId){
   const cfg = _splitInstancias[instId]; if(!cfg) return;
   const container = document.getElementById(cfg.rowsId);
   if(!container) return;
+  // Tope: una fila por cuenta disponible (la misma cuenta no se puede elegir dos veces).
+  if(container.children.length >= splitCuentasValidas(instId)){ toast('Ya usaste todas las cuentas disponibles', 'err'); return; }
   const id = 'spr_'+uid();
   const div = document.createElement('div');
   div.id = id;
@@ -114,7 +128,7 @@ function splitAgregarRow(instId){
     <div class="select-wrap"><select class="split-select">${cfg.getFuentesFn('')}</select></div>
     <input type="text" inputmode="decimal" placeholder="monto" class="money-input split-monto">
     <button type="button" class="split-quitar">
-      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      <svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>`;
 
   // onchange/oninput/onclick no pasan por Events (solo despacha clicks con
@@ -199,7 +213,7 @@ function splitActualizarOpciones(instId){
   }
 }
 
-// Devuelve un widget a su estado base: modo simple, sin filas, botón "Dividir ÷".
+// Devuelve un widget a su estado base: modo simple, sin filas, botón "Dividir".
 // Se usa al reabrir un sheet (para que no quede un split viejo de la vez anterior).
 function splitReset(instId){
   const cfg = _splitInstancias[instId]; if(!cfg) return;
@@ -212,7 +226,7 @@ function splitReset(instId){
   if(split)  split.style.display  = 'none';
   if(rows)   rows.innerHTML = '';
   if(btn){
-    btn.textContent = 'Dividir ÷';
+    btn.textContent = 'Dividir';
     btn.style.background  = 'rgba(200,240,96,.1)';
     btn.style.borderColor = 'rgba(200,240,96,.3)';
     btn.style.color       = 'var(--accent)';

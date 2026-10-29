@@ -10,15 +10,18 @@ Los cambios puntuales de una sesión de limpieza (renombres, tildes, reordenamie
 
 ## 0. Estilos: clases, no `style=""`
 
-Los sheets y pantallas **no llevan `style="…"` en el HTML ni en los strings de JS**: se usan las clases de `css/styles.css` (en Wrapped, el CSS que inyecta su propio archivo). Es el Paso 5 del endurecimiento de la CSP (`CONTINUAR.md` §13.16): al terminar se quita `'unsafe-inline'` de `style-src`.
+Los sheets y pantallas **no llevan `style="…"` en el HTML ni en los strings de JS**: se usan las clases de `css/styles.css` (en Wrapped, el CSS que inyecta su propio archivo). El Paso 5 (conversión de todo el proyecto) **terminó el 2026-10-24**; `tests/estilos.test.js` impide que vuelvan a aparecer. Se mantiene `'unsafe-inline'` en `style-src` (decisión A, razones en `auditoria-tecnica.md`, «Seguridad — pendiente»).
 
-- **Color semántico de un texto:** `c-green`, `c-red`, `c-amber`, `c-blue`, `c-purple`. Chip chico: `badge badge-xs`. Ícono en línea: `ico-inline`. Marcas de label: `<span class="c-red">*</span>` y `<span class="lbl-opc">(opcional)</span>` (ver §2).
-- **Valor que solo se conoce al ejecutar** (ancho de una barra, color elegido por el usuario) es la excepción: queda en un `style` con `${…}`, registrado como permitido en `tests/estilos.test.js`. El plan para eliminarlos (un helper que aplica `el.style.x = …` tras renderizar) está en `CONTINUAR.md` §13.16.
+- **Color semántico de un texto:** `c-green`, `c-red`, `c-amber`, `c-blue`, `c-purple`. Chip chico: `badge badge-xs`. Ícono en línea: `ico-inline`. Marcas de label: `<span class="c-red">*</span>` y `<span class="lbl-opc">(opcional)</span>` (ver §2). Cada módulo tiene su prefijo de clases propias (`nu-`, `alc-`, `tc-`, `enc-`, `pe-`, `cp-`, `mdet-`, `ix-` para el HTML de `index.html`).
+- **Lo único que puede seguir en `style`:** (1) un valor que solo se conoce al ejecutar (ancho de una barra `width:${pct}%`, color elegido por el usuario), registrado como permitido en `tests/estilos.test.js`; (2) `display:none` de un elemento que el JS muestra con `el.style.display = ''` (si fuera clase, vaciar el inline no lo revelaría); (3) lo que se ve antes de que cargue `styles.css` (es async): `#fb-loading-screen`, `#fb-login-screen`, `#pin-screen`, `#toast-container`; (4) lo que el JS vacía con `style.X = ''` o `cssText = ''` (con una clase el vaciado dejaría el valor inicial) y lo que un selector de atributo de `styles.css` necesita (`#gv_fuente_hint[style*="visibility:hidden"]`, `#health-score-card`, `#encargoAvatar`).
 - **Mostrar/ocultar en vivo:** `el.style.display` desde JS (la CSP lo permite) o una clase.
-- **Estado de la conversión:** archivos convertidos y pendientes en `CONTINUAR.md` §13.16; `index.html` todavía tiene los suyos y sus sheets usan estilos inline hasta que se convierta.
-- Antes de convertir un archivo, buscar quién lee su HTML o su `.style`, y verificar con `scripts/paso5/`.
+- **Si alguna vez hay que volver a convertir estilos en línea** (la herramienta salió del repo; está en el tag de git `paso5-cerrado`, carpeta `scripts/paso5/`), las trampas que costaron errores reales: (a) un `style` dentro de `${cond ? ' style="…"' : ''}` es **condicional**, no fijo; (b) al copiar un `style` desde una cadena JS hay que des-escapar `\'`: una comilla escapada en CSS rompe la regla y el navegador descarta también las siguientes; (c) buscar en `styles.css` selectores de atributo `[style*=…]` antes de mover un `style`; (d) buscar `style.X = ''` y `cssText` sobre el elemento; (e) una clase `(0,1,0)` pierde contra `input[type=…]`, `.btn-primary:active`, `#id{…}`, etc., que antes perdían contra el inline: usar selectores compuestos (`input.x`, `.btn.x`, `#id.x`); (f) comprobar con un comparador de cascada real (jsdom), no solo comparando texto: así se detectaron los tres errores de la verificación final (ver `CHANGELOG.md`, "Verificación con `jsdom` y correcciones").
 
 ---
+
+### Filas de historial: `filaMovimiento()`
+
+Las filas de movimientos de Tarjetas, Encargos, Gastos y Cuentas se arman con `filaMovimiento({…})` y su botón de borrar con `botonEliminarFila(accion, args, titulo)` (ambos en `core-state.js`); no se escribe a mano `.gasto-item-top`. El borde o color de una variante se pide con una clase en `clase` (`tc-item-b-*`, `enc-item-b-*`), nunca con estilo en línea. Los atributos `data-mov-*` van en `attrs`. Una prueba (`tests/nucleo.test.js`, bloque `fila-movimiento`) falla si un módulo vuelve a repetir el esqueleto.
 
 ## 1. Regla general de orden
 
@@ -151,7 +154,7 @@ Agregar/Retirar dinero de una cuenta personalizada ya no tiene sheet propio — 
 
 ### Gastos
 
-**`sheet-gasto-var`** — Registrar gasto: Descripción → Monto → Categoría → ¿De dónde salió la plata? `*` → Fecha → Nota (opcional)
+**`sheet-gasto-var`** — Registrar gasto: Descripción → Monto → Categoría → ¿De dónde salió la plata? `*` → Fecha → Nota (opcional). No abre si no hay ninguna cuenta con saldo (ni TC con cupo): avisa «No tienes cuentas con saldo disponible»
 
 **`sheet-gasto-fijo`** — Gasto fijo mensual: Nombre → Monto mensual → Categoría
 
@@ -161,7 +164,7 @@ Agregar/Retirar dinero de una cuenta personalizada ya no tiene sheet propio — 
 
 ### Ingresos
 
-**`sheet-ingreso-fijo`** — Ingreso fijo mensual: Nombre → Monto mensual → Aplica desde
+**`sheet-ingreso-fijo`** — Ingreso fijo mensual: Nombre → Monto mensual → Aplica desde (`#if_d`, `type="month"`, con el mismo estilo base que los campos de texto y de fecha)
 
 ### Plata comprometida
 
@@ -185,7 +188,7 @@ Agregar/Retirar dinero de una cuenta personalizada ya no tiene sheet propio — 
 
 **`sheet-sp-hist-pend`** — Pago de lo pendiente (Spotify): Monto recibido → ¿A dónde metiste esa plata? → Fecha en que te pagó → Nota (opcional)
 
-**`sheet-pagar-spotify`** — Pagar Spotify: Monto a pagar → ¿De dónde sacas la plata? → Fecha en que pagaste → Nota (opcional)
+**`sheet-pagar-spotify`** — Pagar Spotify: Monto a pagar → ¿De dónde sacas la plata? → Fecha en que pagaste → Nota (opcional). No abre sin un costo del plan válido (ver `spotify.md`)
 
 ### Encargos
 
@@ -197,9 +200,9 @@ Agregar/Retirar dinero de una cuenta personalizada ya no tiene sheet propio — 
 
 > Nota: los dos expandibles quedan en posiciones distintas (uno antes de Fecha, el otro después de Nota) porque así está en el código actual — no es el ideal, pero tocarlo implica reordenar lógica condicional en `encargos.js`, fuera del alcance de esta limpieza de sheets estáticos.
 
-> **(÷)** = el campo trae el botón "Dividir ÷" del motor `js/core/split.js`: pasa de un select a filas cuenta + monto (mínimo 2, sin repetir cuenta, botón de quitar solo con 3 o más filas). Con el split activo, lo repartido tiene que sumar exactamente el monto total ("Yo puse la plata") o el sobrante (margen) — se valida al confirmar, antes de tocar ningún saldo. En los sheets de sobrante el bloque se muestra solo cuando hay margen libre, y al reabrir el sheet vuelve a "una sola cuenta".
+> **(÷)** = el campo trae el botón "Dividir ÷" del motor `js/core/split.js`: pasa de un select a filas cuenta + monto (mínimo 2 filas y como máximo tantas como cuentas ofrezca ese sheet, sin repetir cuenta, botón de quitar solo con 3 o más filas; con una sola cuenta disponible el botón no activa el modo dividido y avisa). Con el split activo, lo repartido tiene que sumar exactamente el monto total ("Yo puse la plata") o el sobrante (margen) — se valida al confirmar, antes de tocar ningún saldo. En los sheets de sobrante el bloque se muestra solo cuando hay margen libre, y al reabrir el sheet vuelve a "una sola cuenta".
 
-**`sheet-traspaso-encargo`** — Me lo regalaron: Descripción (opcional) → ¿Cuánto te regalaron? → ¿De qué cuenta del encargo salió? → ¿A cuál de tus cuentas entra? → Fecha
+**`sheet-traspaso-encargo`** — Me lo regalaron: Descripción (opcional) → ¿Cuánto te regalaron? → ¿De qué cuenta del encargo salió? → ¿A cuál de tus cuentas entra? (sin tarjetas de crédito) → Fecha
 
 **`sheet-transferencia-encargo`** — Pagarle a otro encargo desde este: ¿A cuál encargo le pagaste? → Descripción (opcional) → ¿Cuánto le pagaste? → ¿De qué cuenta del encargo salió? → ¿En qué cuenta quedó, para el otro encargo? → Fecha
 
@@ -209,7 +212,7 @@ Agregar/Retirar dinero de una cuenta personalizada ya no tiene sheet propio — 
 
 **`sheet-usar-parte`** — Ya la usé: ¿De dónde sacaste la plata? → [Expandible] El valor real era diferente → ¿Cuánto era en realidad? + ¿En qué cuenta te cayó ese margen? (÷)
 
-**`sheet-mover-enc-cuentas`** — Mover entre cuentas (encargo): ¿De qué cuenta sale? → ¿A qué cuenta va? → ¿Cuánto vas a mover? → Fecha
+**`sheet-mover-enc-cuentas`** — Mover entre cuentas (encargo): ¿De qué cuenta sale? → ¿A qué cuenta va? → ¿Cuánto vas a mover? → Fecha (origen y destino sin tarjetas de crédito)
 
 ### Personas / Deudores
 
@@ -221,7 +224,7 @@ Agregar/Retirar dinero de una cuenta personalizada ya no tiene sheet propio — 
 
 **`sheet-nueva-deuda`** — Nueva deuda: ¿A quién le debes? → ¿Cuánto te prestó? → ¿A qué cuenta entró la plata? → Fecha → Nota (opcional)
 
-**`sheet-mov-mi-deuda`** — Me prestó más / Le pagué: Monto → ¿A qué cuenta entró la plata? (condicional, solo en "me prestó más") → Fecha → Nota (opcional)
+**`sheet-mov-mi-deuda`** — Nueva deuda / Registrar pago: Monto → ¿A qué cuenta entró la plata? (condicional, solo en "Nueva deuda") → Fecha → Nota (opcional)
 
 ### Préstamos (yo le presté a alguien)
 

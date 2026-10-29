@@ -147,6 +147,8 @@ function switchGastoTab(t) {
 /* ---- ESTADO VACÍO: helpers que unifican el flujo con el botón fantasma ---- */
 
 function abrirNuevoGastoVar() {
+  // Sin ninguna cuenta con saldo (ni TC con cupo) no hay de dónde sacar la plata: el sheet no se abre.
+  if (!FuentesFiltro.hayUtilizable(getFuentes(), FuentesFiltro.PRESET.SALIDA)) { toast(FuentesFiltro.MSG_SIN_SALDO, 'err'); return; }
   poblarCatSelect('gv_cat', getCatsVar());
   // Resetear split (mismo patrón que abrirRegistrarMesada en mesada.js /
   // openSheet_pagarSpotify en spotify.js)
@@ -156,7 +158,7 @@ function abrirNuevoGastoVar() {
   document.getElementById('gvSplitRows').innerHTML = '';
   const gvToggleBtn = document.getElementById('gvSplitToggle');
   if (gvToggleBtn) {
-    gvToggleBtn.textContent = 'Dividir ÷';
+    gvToggleBtn.textContent = 'Dividir';
     gvToggleBtn.style.background = 'rgba(200,240,96,.1)';
     gvToggleBtn.style.borderColor = 'rgba(200,240,96,.3)';
     gvToggleBtn.style.color = 'var(--accent)';
@@ -179,7 +181,14 @@ function renderMesFiltros() {
   (S.gastosVar || []).forEach(g => { if (g.fecha) meses.add(mesKey(g.fecha)); });
   Periodo.retirosManuales().forEach(r => { if (r.fecha) meses.add(mesKey(r.fecha)); }); // un mes con solo un retiro también se puede elegir
   const sorted = ['todos', ...[...meses].filter(m => m !== 'todos').sort().reverse()];
-  document.getElementById('mesFilter').innerHTML = html`${sorted.map(m => html`
+  // Con un solo mes (o ninguno) filtrar no aporta nada: «Todos» y ese mes muestran lo mismo. El filtro aparece desde el
+  // segundo mes con gastos. Si el filtro quedó en un mes que ya no existe (se borraron sus gastos), vuelve a «todos» para
+  // no dejar la lista filtrada sin forma de cambiarlo.
+  const hayVariosMeses = sorted.length > 2;
+  if (!hayVariosMeses || !sorted.includes(mesFilter)) mesFilter = 'todos';
+  const filtroEl = document.getElementById('mesFilter');
+  mostrarSi(filtroEl, hayVariosMeses);
+  filtroEl.innerHTML = !hayVariosMeses ? '' : html`${sorted.map(m => html`
     <div class="${raw('mf-chip ' + (mesFilter === m ? 'active' : ''))}" ${raw(Events.attr('gastos:setMesFiltro', m))}>
       ${m === 'todos' ? 'Todos' : MC[parseInt(m.split('-')[1]) - 1] + ' ' + m.split('-')[0]}
     </div>`)}`;
@@ -242,9 +251,14 @@ function renderGastosVar() {
   // sigue oculto es lo mismo que ya lo estaba: movimientos de alcancía y
   // extras de préstamo (_esGastoVarNoReal sin ninguna de las otras banderas).
   const visibles = gastos.filter(g => !_esGastoVarNoReal(g) || g._esCompraTC || g._esPagoTC || g.esPagoGastoFijo);
+  // Sin gastos no hay nada que totalizar. Y el botón de pie se esconde solo cuando el estado
+  // vacío ya trae el suyo («Registrar primer gasto», solo con el filtro «todos»); en un mes
+  // sin gastos el estado vacío no tiene botón, así que el de pie sigue siendo la acción.
+  mostrarSi(document.getElementById('gvTotalCard'), visibles.length > 0);
+  mostrarSi(document.querySelector('.btn-open-gasto-var'), visibles.length > 0 || mesFilter !== 'todos');
   if (!visibles.length) {
     el.innerHTML = emptyState(
-      '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="1.8" stroke-linecap="round"><path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 3 14 9 20 9"/><line x1="8" y1="13" x2="16" y2="13"/></svg>',
+      '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="1.8" stroke-linecap="round"><path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 3 14 9 20 9"/><line x1="8" y1="13" x2="16" y2="13"/></svg>',
       'Sin gastos registrados',
       mesFilter === 'todos' ? 'Aún no has registrado ningún gasto. Añade el primero para ver tu resumen mensual.' : 'No hay gastos en este mes.',
       mesFilter === 'todos' ? 'Registrar primer gasto' : '',
@@ -270,27 +284,22 @@ function renderGastosVar() {
         : esPagoTC
           ? [html`<span class="badge badge-xs bg-green">Pago TC</span>`]
           : [html`<span class="badge badge-xs bg-blue">${g.cat}</span>`];
-    return html`<div class="gasto-item${raw((esFijo || esPagoTC) ? ' gasto-item-atenuado' : '')}">
-      <div class="gasto-item-top">
-        <div class="gasto-item-info">
-          <div class="row-name gasto-nombre-fila">${g.desc}${esSecundario ? html`<span class="gasto-chip-auto"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>Automático</span>` : ''}</div>
-          <div class="row-sub">${g.fecha}</div>
-        </div>
-        <div class="gasto-acciones">
-          <span class="row-amount ${raw(claseMonto)}">${esPagoTC ? '-' : ''}${fmt(g.monto)}</span>
-          ${esSecundario
-            ? html`<span title="Generado automáticamente — elimínalo desde ${g._origenSeccion || 'la sección de origen'}" class="gasto-candado"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>`
-            : html`<button type="button" class="btn-delete-hover" ${raw(Events.attr('gastos:deleteGastoVar', g.id))} title="Eliminar">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-          </button>`}
-        </div>
-      </div>
-      <div class="gasto-item-meta">
+    return filaMovimiento({
+      clase: (esFijo || esPagoTC) ? 'gasto-item-atenuado' : '',
+      nombreClase: 'row-name gasto-nombre-fila',
+      nombre: g.desc,
+      nombreExtra: esSecundario ? html`<span class="gasto-chip-auto"><svg aria-hidden="true" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>Automático</span>` : '',
+      sub: g.fecha,
+      monto: `${esPagoTC ? '-' : ''}${fmt(g.monto)}`,
+      montoClase: claseMonto,
+      acciones: esSecundario
+        ? html`<span title="Generado automáticamente — elimínalo desde ${g._origenSeccion || 'la sección de origen'}" class="gasto-candado"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>`
+        : botonEliminarFila('gastos:deleteGastoVar', [g.id]),
+      meta: html`
         ${tipoBadges}
         ${g.splits && g.splits.length ? html`<span class="badge badge-xs">Dividido: ${g.splits.map(s => fuenteLabel(s.fuente || '')).join(', ')}</span>` : (g.fuente ? html`<span class="badge badge-xs ${raw(fuenteBadgeClass(g.fuente))}">${fuenteLabel(g.fuente)}</span>` : '')}
-        ${(!(esFijo || esTC) && g.nota) ? html`<span class="gasto-nota">${g.nota}</span>` : ''}
-      </div>
-    </div>`;
+        ${(!(esFijo || esTC) && g.nota) ? html`<span class="gasto-nota">${g.nota}</span>` : ''}`
+    });
   }
 
   // Agrupar por día (visibles ya viene ordenado, así que los días quedan
@@ -368,7 +377,7 @@ function addGastoVar() {
       gastoObj._tcId = tcId;
       gastoObj._tcCompraId = compra.id;
       S.gastosVar.push(gastoObj);
-      toast('Compra cargada a ' + escHtml(tc.nombre) + ' — deuda: ' + fmt(tc.deuda), 'info', 3500);
+      toast('Compra cargada a ' + escHtml(tc.nombre) + ' — deuda: ' + fmt(tc.deuda), 'ok', 3500);
     } else {
       S.gastosVar.push(gastoObj);
     }
@@ -458,6 +467,7 @@ async function deleteGastoVar(id) {
     const ok = await dialogo('Eliminar gasto', '¿Seguro que quieres eliminar este gasto? Esta acción no se puede deshacer.', 'Eliminar', true);
     if (!ok) return;
   }
+  const _histAntes = medirPatrimonioParaHistorial(); // el historial de patrimonio deja de contar este gasto
   if (g) {
     if (g._esCompraTC && g._tcId) {
       // Revertir: marcar la compra como eliminada (nunca se borra físicamente) y recalcular
@@ -485,6 +495,7 @@ async function deleteGastoVar(id) {
     }
   }
   S.gastosVar = (S.gastosVar || []).filter(x => x.id !== id);
+  if (g) purgarEfectoEnHistorial(_histAntes, g);
   save(); refresh();
   toast('Gasto eliminado', 'ok');
   if (window.logCambio && g) logCambio('Eliminaste un gasto', g.desc || '', g.monto, 'eliminar');
@@ -507,9 +518,12 @@ function renderGastosFijos() {
   const mesClaveTot = mesActual();
   const totalGFPagado = Periodo.gastosFijosDelMes(mesClaveTot).reduce((a, p) => a + p.monto, 0);
   document.getElementById('totalGF').textContent = fmt(totalGFPagado);
+  // El estado vacío ya trae «Agregar gasto fijo»: el botón de pie y el total solo aparecen con datos.
+  mostrarSi(document.querySelector('.btn-open-gasto-fijo'), todos.length > 0);
+  mostrarSi(document.getElementById('gfTotalCard'), todos.length > 0);
   if (!todos.length) {
     el.innerHTML = emptyState(
-      '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
+      '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
       'Sin gastos fijos',
       'Agrega tus gastos recurrentes como arriendo, Netflix o servicios para tenerlos siempre visibles.',
       'Agregar gasto fijo',
@@ -533,21 +547,14 @@ function renderGastosFijos() {
     } else {
       accionHtml = html`<span class="gasto-nota">Spotify</span>`;
     }
-    return html`<div class="gasto-item">
-      <div class="gasto-item-top">
-        <div><div class="row-name row-name-13">${x.nombre}</div></div>
-        <div class="gasto-acciones">
-          <span class="row-amount c-red">${fmt(x.monto)}</span>
-          ${!x._virtual ? html`<button type="button" class="btn-delete-hover" ${raw(Events.attr('gastos:deleteGastoFijo', x.id))} title="Eliminar">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-          </button>` : ''}
-        </div>
-      </div>
-      <div class="gasto-item-meta gasto-meta-fijo">
-        <span class="badge badge-xs bg-blue">${x.cat}</span>
-        ${accionHtml}
-      </div>
-    </div>`;
+    return filaMovimiento({
+      nombre: x.nombre,
+      monto: fmt(x.monto),
+      montoClase: 'c-red',
+      acciones: !x._virtual ? botonEliminarFila('gastos:deleteGastoFijo', [x.id]) : '',
+      metaClase: 'gasto-meta-fijo',
+      meta: html`<span class="badge badge-xs bg-blue">${x.cat}</span>${accionHtml}`
+    });
   })}`;
 }
 

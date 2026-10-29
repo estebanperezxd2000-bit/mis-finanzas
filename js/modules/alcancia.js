@@ -117,9 +117,9 @@ function _alcDesgloseHtml(movimientos, fmtFn){
   });
 
   // Construir filas sólo con montos > 0
-  const iconYo      = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v2m0 8v2M9.5 9.5a2.5 2.5 0 0 1 5 0c0 1.5-2.5 2-2.5 3.5m0 1h.01"/></svg>';
-  const iconMandado = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/><path d="M10 18H6.5M14 18h3.5M4 10h12l2 5H2l2-5z"/><path d="M10 10V7l4-2"/></svg>';
-  const iconMama    = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--purple)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12v10H4V12"/><path d="M22 7H2v5h20V7z"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>';
+  const iconYo      = '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v2m0 8v2M9.5 9.5a2.5 2.5 0 0 1 5 0c0 1.5-2.5 2-2.5 3.5m0 1h.01"/></svg>';
+  const iconMandado = '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/><path d="M10 18H6.5M14 18h3.5M4 10h12l2 5H2l2-5z"/><path d="M10 10V7l4-2"/></svg>';
+  const iconMama    = '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--purple)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12v10H4V12"/><path d="M22 7H2v5h20V7z"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>';
 
   const filas = [];
   if(yo > 0)      filas.push({ icon: iconYo,      label: 'Ahorrado con mi propio dinero',      monto: yo      });
@@ -137,7 +137,7 @@ function _alcDesgloseHtml(movimientos, fmtFn){
 
   return `
   <div class="card card-sm alc-aviso-card">
-    <div class="alc-aviso-cap"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> Origen del dinero acumulado</div>
+    <div class="alc-aviso-cap"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> Origen del dinero acumulado</div>
     ${filasHtml}
   </div>`;
 }
@@ -147,7 +147,7 @@ function _alcDesgloseHtml(movimientos, fmtFn){
    split / cobro-deuda). Ahora cada depósito se arma con UNO o VARIOS orígenes:
    una cuenta real (resta saldo), o uno de tres orígenes "sin cuenta" (plata que
    nunca estuvo en ninguna cuenta → ingreso registrado, sin tocar saldos), o el
-   cobro de una deuda (solo en modo de un único origen). "Dividir ÷" reparte el
+   cobro de una deuda (solo en modo de un único origen). "Dividir" reparte el
    monto entre varios orígenes con el motor genérico js/core/split.js.
    Con UN solo origen el registro guardado es idéntico al de siempre (tipo
    yo-cuenta / yo-directo / regalo / mandado / cobro-deuda); con varios se guarda
@@ -161,7 +161,7 @@ const _ALC_ORIGENES_SIN_CUENTA = {
 const _ALC_INFO_ORIGEN = {};
 Object.keys(_ALC_ORIGENES_SIN_CUENTA).forEach(k => { _ALC_INFO_ORIGEN[_ALC_ORIGENES_SIN_CUENTA[k].origen] = _ALC_ORIGENES_SIN_CUENTA[k]; });
 
-let _alcSplitMode = false; // true = "Dividir ÷" activo (varios orígenes)
+let _alcSplitMode = false; // true = "Dividir" activo (varios orígenes)
 
 function _alcNombreFuente(f){
   if(!f) return '';
@@ -239,8 +239,7 @@ function _alcSplitPreview(){
   }
   const montoInput = document.getElementById('alc_dep_monto');
   if(montoInput){
-    montoInput.value = total > 0 ? total.toFixed(2).replace('.', ',') : '';
-    montoInput.dispatchEvent(new Event('input'));
+    setMoneyInput(montoInput, total > 0 ? total : 0, { evento: true });
   }
 }
 
@@ -299,8 +298,7 @@ function _alcDeudorSaldoHintActualizar(){
   // Precarga el monto con el saldo pendiente (editable — puede ser un abono parcial)
   const montoInput = document.getElementById('alc_dep_monto');
   if(montoInput && saldo > 0){
-    montoInput.value = saldo.toFixed(2).replace('.', ',');
-    montoInput.dispatchEvent(new Event('input'));
+    setMoneyInput(montoInput, saldo, { evento: true });
   }
 }
 
@@ -320,7 +318,7 @@ function _inyectarAlcanciaSheets(){
       <div class="ig">
         <div class="alc-origen-cab">
           <label class="il alc-origen-lbl" for="alc_dep_origen">¿De dónde viene este dinero?</label>
-          <button type="button" id="alc_split_toggle" ${Events.attr('alcancia:toggleDividir')} class="alc-btn-dividir">Dividir ÷</button>
+          <button type="button" id="alc_split_toggle" ${Events.attr('alcancia:toggleDividir')} class="alc-btn-dividir">Dividir</button>
         </div>
         <div id="alc_origen_simple">
           <div class="select-wrap">
@@ -330,7 +328,7 @@ function _inyectarAlcanciaSheets(){
         </div>
         <div id="alc_origen_split" style="display:none;">
           <div id="alc_split_rows"></div>
-          <button type="button" ${Events.attr('alcancia:agregarOrigen')} class="alc-btn-agregar-origen">+ Agregar otro origen</button>
+          <button type="button" ${Events.attr('alcancia:agregarOrigen')} class="btn-add-cuenta">+ Agregar otro origen</button>
           <div id="alc_split_total_hint" class="alc-split-total"></div>
         </div>
       </div>
@@ -422,10 +420,7 @@ function _inyectarAlcanciaSheets(){
     });
   });
 
-  /* ---------- Money inputs ---------- */
-  _alcInitMoneyInput('alc_dep_monto');
-  _alcInitMoneyInput('alc_real_monto');
-  /* ---------- Motor de "Dividir ÷" (js/core/split.js) ---------- */
+  /* ---------- Motor de "Dividir" (js/core/split.js) ---------- */
   if(typeof crearSplitWidget === 'function'){
     crearSplitWidget('alcancia', {
       simpleId: 'alc_origen_simple', splitId: 'alc_origen_split', toggleId: 'alc_split_toggle', rowsId: 'alc_split_rows',
@@ -455,43 +450,6 @@ function _inyectarAlcanciaSheets(){
 
 function closeSwipeSheet(sid, el){
   if(typeof closeSheet==='function') closeSheet(sid);
-}
-
-// RENOMBRADA (2026-09-10, ver CHANGELOG.md#infraestructura--seguridad):
-// se llamaba `_initMoneyInput`, mismo nombre EXACTO que la función global
-// de js/core/money-input.js — pero con firma incompatible (esta toma un
-// `id` de string, la de money-input.js toma el elemento DOM directo).
-// Al ser ambos <script> clásicos en el mismo scope global, cuando este
-// archivo cargaba (lazy, al entrar a Alcancía) su `function
-// _initMoneyInput` PISABA la definición real de money-input.js — y el
-// focusin global de money-input.js (usado por TODOS los inputs de plata
-// de la app, no solo los de Alcancía) empezaba a llamar a ESTA función en
-// su lugar, con un elemento DOM donde se esperaba un id de string. El
-// resultado: `document.getElementById(elementoDOM)` no encuentra nada,
-// esta función no hace nada, y el buffer de dígitos de money-input.js
-// nunca se inicializa — cualquier input de plata con un valor ya cargado
-// (ej. editar un gasto existente) mostraba "0,00" al primer click en vez
-// de conservar el valor. Bug real, no cosmético, y silencioso: no tira
-// ningún error, solo deja de funcionar. Ver también moneyInputAttach()
-// más abajo — nunca estuvo definida en ningún archivo del proyecto, así
-// que esta función SIEMPRE tomó la rama de fallback (que no usa el
-// mismo buffer/formateo de money-input.js) — hallazgo aparte, no
-// corregido acá porque cambiaría el comportamiento visible de los
-// inputs de Alcancía y no es lo mismo que la colisión de nombres.
-function _alcInitMoneyInput(id){
-  const el = document.getElementById(id);
-  if(!el || el._alcInited) return;
-  el._alcInited = true;
-  if(typeof moneyInputAttach === 'function'){
-    moneyInputAttach(el);
-  } else {
-    // Fallback: parseMoney/fmt nativo
-    el.addEventListener('input', function(){
-      const raw = this.value.replace(/[^\d,]/g,'').replace(',','.');
-      const n = parseFloat(raw) || 0;
-      el._rawVal = n;
-    });
-  }
 }
 
 function _getMoneyVal(id){
@@ -578,7 +536,7 @@ function _alcWrappedBarrasSvg(hist){
     const esUltimo = i === datos.length - 1;
     return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${barH.toFixed(1)}" rx="3" fill="${esUltimo?'var(--amber)':'var(--accent)'}" opacity="${esUltimo?'1':'0.5'}"/>`;
   }).join('');
-  return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" class="alc-svg-visible">${bars}</svg>`;
+  return `<svg aria-hidden="true" viewBox="0 0 ${w} ${h}" width="100%" height="${h}" class="alc-svg-visible">${bars}</svg>`;
 }
 
 /* Arma el HTML de la tarjeta persistente de progreso (pantalla principal de
@@ -599,7 +557,7 @@ function _alcWrappedProgresoHtml(hist, fmtFn){
       ${_alcWrappedBarrasSvg(hist)}
       <div class="alc-mt10">
         ${rachaMsg ? `<div class="alc-racha">${rachaMsg}</div>` : ''}
-        <div class="alc-prog-txt">Mejor alcancía hasta ahora: <span class="alc-prog-val">${fmt2(mejor.saldoRegistrado||0)}</span>${esMejorHastaAhora ? ' <span class="alc-c-amber">← tu última</span>' : ''}</div>
+        <div class="alc-prog-txt">Mejor alcancía hasta ahora: <span class="alc-prog-val">${fmt2(mejor.saldoRegistrado||0)}</span>${esMejorHastaAhora ? ' <span class="alc-c-amber">(tu última)</span>' : ''}</div>
       </div>
     </div>`;
 }
@@ -616,10 +574,10 @@ function _actualizarDiferenciaHint(){
     hint.textContent = 'Todo el dinero estaba registrado.';
   } else if(dif > 0){
     hint.style.color = 'var(--accent)';
-    hint.textContent = '+ ' + (typeof fmt==='function'?fmt(dif):dif) + ' encontrados sin registro → se suman al patrimonio.';
+    hint.textContent = '+ ' + (typeof fmt==='function'?fmt(dif):dif) + ' encontrados sin registro y se suman al patrimonio.';
   } else {
     hint.style.color = 'var(--red)';
-    hint.textContent = '− ' + (typeof fmt==='function'?fmt(Math.abs(dif)):Math.abs(dif)) + ' de diferencia → se restan del patrimonio.';
+    hint.textContent = '− ' + (typeof fmt==='function'?fmt(Math.abs(dif)):Math.abs(dif)) + ' de diferencia y se restan del patrimonio.';
   }
 }
 
@@ -631,7 +589,7 @@ hookGlobal('openSheet', function(id){
       const fd = document.getElementById('alc_dep_fecha');
       if(fd) fd.value = (typeof hoy==='function'?hoy():new Date().toISOString().slice(0,10));
       const mi = document.getElementById('alc_dep_monto');
-      if(mi){ mi.value = '0,00'; if(typeof moneyInputAttach==='function') moneyInputAttach(mi); }
+      if(mi) mi.value = '';
       const desc = document.getElementById('alc_dep_desc');
       if(desc) desc.value = '';
       // Reset de orígenes: salir del modo dividido, vaciar filas y repoblar el selector
@@ -661,7 +619,7 @@ hookGlobal('openSheet', function(id){
     _inyectarAlcanciaSheets();
     setTimeout(()=>{
       const mi = document.getElementById('alc_real_monto');
-      if(mi){ mi.value = '0,00'; if(typeof moneyInputAttach==='function') moneyInputAttach(mi); }
+      if(mi) mi.value = '';
       const dest = document.getElementById('alc_destino');
       if(dest && typeof buildFuentesOptsHtml==='function'){
         dest.innerHTML = buildFuentesOptsHtml({incluirTC:false,placeholder:'Seleccionar cuenta'});
@@ -739,7 +697,7 @@ window.renderAlcancia = function(){
       if(!movs.length){
         movsEl.innerHTML = '<div class="feed-empty">Aún no hay movimientos en esta alcancía.</div>';
       } else {
-        const tipoIcon = { yo: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="alc-ico-v"><ellipse cx="12" cy="17" rx="8" ry="5"/><path d="M4 17v-4c0-2.76 3.58-5 8-5s8 2.24 8 5v4"/><path d="M4 13c0-2.76 3.58-5 8-5s8 2.24 8 5"/></svg>', regalo: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="alc-ico-v"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>', mandado: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="alc-ico-v"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>', split: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="alc-ico-v"><path d="M17 11H9l-2-2H3v8h4l2 2h8l4-4v-4h-4z"/><path d="M9 11V7l4-4 4 4v4"/></svg>', 'cobro-deuda': '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="alc-ico-v"><circle cx="12" cy="12" r="10"/><polyline points="8 12 12 16 16 12"/><line x1="12" y1="8" x2="12" y2="16"/></svg>' };
+        const tipoIcon = { yo: '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="alc-ico-v"><ellipse cx="12" cy="17" rx="8" ry="5"/><path d="M4 17v-4c0-2.76 3.58-5 8-5s8 2.24 8 5v4"/><path d="M4 13c0-2.76 3.58-5 8-5s8 2.24 8 5"/></svg>', regalo: '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="alc-ico-v"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>', mandado: '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="alc-ico-v"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>', split: '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="alc-ico-v"><path d="M17 11H9l-2-2H3v8h4l2 2h8l4-4v-4h-4z"/><path d="M9 11V7l4-4 4 4v4"/></svg>', 'cobro-deuda': '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="alc-ico-v"><circle cx="12" cy="12" r="10"/><polyline points="8 12 12 16 16 12"/><line x1="12" y1="8" x2="12" y2="16"/></svg>' };
         const tipoColor = { yo: 'alc-c-accent', regalo: 'alc-c-amber', mandado: 'alc-c-amber', split: 'alc-c-amber', 'cobro-deuda': 'alc-c-accent' };
         // Orden por FECHA del depósito (más reciente arriba); si dos tienen la misma fecha, gana el que se
         // registró después (ts). Antes se usaba el orden de registro, así que un depósito olvidado y anotado
@@ -750,7 +708,7 @@ window.renderAlcancia = function(){
           return (y.ts || 0) - (x.ts || 0);
         });
         movsEl.innerHTML = movsOrdenados.map(m => {
-          const icon  = tipoIcon[m.tipo]  || '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="alc-ico-v"><ellipse cx="12" cy="17" rx="8" ry="5"/><path d="M4 17v-4c0-2.76 3.58-5 8-5s8 2.24 8 5v4"/><path d="M4 13c0-2.76 3.58-5 8-5s8 2.24 8 5"/></svg>';
+          const icon  = tipoIcon[m.tipo]  || '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="alc-ico-v"><ellipse cx="12" cy="17" rx="8" ry="5"/><path d="M4 17v-4c0-2.76 3.58-5 8-5s8 2.24 8 5v4"/><path d="M4 13c0-2.76 3.58-5 8-5s8 2.24 8 5"/></svg>';
           const color = tipoColor[m.tipo] || 'alc-c-accent';
           const label = m.tipoLabel || (m.fuenteOrigen ? 'Propio' : 'Externo');
           const fmtFuente = m.fuenteOrigen
@@ -768,7 +726,7 @@ window.renderAlcancia = function(){
             </div>
             <span class="alc-dep-monto alc-mov-monto" data-shown="0" data-mov-id="${m.id}" ${Events.attr('alcancia:toggleMontoDeposito', m.id)} title="Toca para ver el monto">${_ALC_ICONO_OCULTO}</span>
             <button type="button" class="btn-delete-hover alc-no-shrink" data-stop-propagation="true" ${Events.attr('alcancia:eliminarDeposito', m.id)} title="Eliminar este depósito">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+              <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
             </button>
           </div>`;
         }).join('');
@@ -793,9 +751,12 @@ window.renderAlcancia = function(){
 
     if(listaEl){
       const hist = a.historial || [];
+      // Sin alcancías destapadas no hay historial que mostrar: ni título ni mensaje
+      // (el estado vacío o la alcancía activa ya dicen en qué punto está la persona).
       if(tituloEl) tituloEl.style.display = hist.length ? '' : 'none';
+      listaEl.style.display = hist.length ? '' : 'none';
       if(!hist.length){
-        listaEl.innerHTML = '<div class="feed-empty">Aún no has destapado ninguna alcancía.</div>';
+        listaEl.innerHTML = '';
       } else {
         listaEl.innerHTML = [...hist].reverse().map((h,i) => {
           const dif = (h.saldoReal||0) - (h.saldoRegistrado||0);
@@ -811,7 +772,7 @@ window.renderAlcancia = function(){
           <div class="card card-sm alc-fila-mb8">
             <div class="row alc-fila-mb6">
               <span class="alc-hist-tit">Alcancía #${histIdx}</span>
-              <span class="alc-mov-fecha">${h.fechaInicio||''} → ${h.fechaFin||''}</span>
+              <span class="alc-mov-fecha">${h.fechaInicio||''} <i class="fa-solid fa-arrow-right"></i> ${h.fechaFin||''}</span>
             </div>
             <div class="row alc-fila-mb4">
               <span class="alc-mov-fecha">Duración</span>
@@ -836,8 +797,8 @@ window.renderAlcancia = function(){
             ${desgloseHtml ? `
             <div class="alc-hist-desg-box">
               <button type="button" ${Events.attr('alcancia:toggleDesglose', desgloseId)} class="alc-hist-btn">
-                <span class="alc-hist-btn-txt"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> Ver origen del dinero</span>
-                <svg class="alc-hist-chevron alc-hist-chev" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                <span class="alc-hist-btn-txt"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> Ver origen del dinero</span>
+                <svg aria-hidden="true" class="alc-hist-chevron alc-hist-chev" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
               </button>
               <div id="${desgloseId}" class="alc-mt4" style="display:none;">${desgloseHtml}</div>
             </div>` : ''}
@@ -1410,7 +1371,7 @@ async function _alcanciaEjecutarEliminarDeposito(a, idx, entry){
   if(typeof save==='function') save();
   if(typeof refresh==='function') refresh();
   window.renderAlcancia();
-  if(typeof toast==='function') toast('Depósito eliminado', 'info');
+  if(typeof toast==='function') toast('Depósito eliminado', 'ok');
 }
 
 /* Quita SOLO el lado de la alcancía de un depósito 'cobro-deuda', sin tocar
@@ -1474,7 +1435,7 @@ function _inyectarMasMenuItem(){
   item.setAttribute('data-screen','alcancia');
   item.innerHTML = `
     <div class="mas-item-icon alc-mas-ico">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
         <path d="M12 2a4 4 0 0 1 4 4v1h1a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1V6a4 4 0 0 1 4-4z"/>
         <circle cx="12" cy="14" r="1.5" fill="var(--amber)" stroke="none"/>
       </svg>

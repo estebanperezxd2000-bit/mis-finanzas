@@ -94,7 +94,7 @@ import { codificarPayload, decodificarPayload } from './payload-codec.js';
         }
         if(bytes > PAYLOAD_AVISO_BYTES && !window._avisoTamanoMostrado) {
           window._avisoTamanoMostrado = true;
-          if(typeof toast === 'function') toast('Tus datos ocupan ' + Math.round(bytes/1024) + ' KB de 1.000 KB en la nube. Conviene archivar meses antiguos pronto.', 'info', 8000);
+          if(typeof toast === 'function') toast('Tus datos ocupan ' + Math.round(bytes/1024) + ' KB de 1.000 KB en la nube. Conviene archivar meses antiguos pronto.', 'warn', 8000);
         }
         const savedAt = Date.now();
         // FIX (2026-08-17, hallazgo #2 — el toast falso pasaba INCLUSO sin
@@ -185,29 +185,24 @@ import { codificarPayload, decodificarPayload } from './payload-codec.js';
     (function(){
       const el=document.getElementById('nuTasaGlobal');
       if(el&&nuTasaConfigurada())el.value=nuTasaATexto(window.S.nuRate);
-      // FIX 2026-08-13: _renderTasaHistorialTag (cuentas.js) corre acá sin
-      // guard, dentro de _initAppUI() — que se ejecuta en CADA arranque de
-      // la app, no solo al visitar Cuentas. Con cuentas.js como grupo lazy
-      // (ver auditoria-tecnica.md), esto tumbaba el arranque completo con
-      // ReferenceError antes de llegar a _initEventListeners()/refresh().
-      // Lo demás de este bloque (registrarTasaNuHistorial) solo se dispara al
-      // escribir en #nuTasaGlobal, que vive en la pantalla de Cuentas; se guarda igual.
-      if(typeof _renderTasaHistorialTag==='function') _renderTasaHistorialTag();
       if(el){
         // La tasa es UNA para todas las cajitas (S.nuRate): solo números con coma o punto decimal, y no se puede dejar en
-        // blanco ni en 0. Mientras se escribe se quita lo que no sirve (letras, signos); un valor incompleto o inválido se
-        // ignora (se conserva la tasa anterior) y al salir del campo se restaura. Cambiarla NO recalcula nada hacia atrás:
-        // el historial de tasas (S.historialTasasNu) la aplica desde hoy y los intereses ya sellados no se reabren. Para
-        // contrastar con la app de Nu está el Chequeo rápido de cajitas.
+        // blanco ni en 0. Mientras se escribe solo se quita lo que no sirve (letras, signos): NO se guarda ni se anota nada
+        // a medias (antes cada tecla válida —«1» camino a «10,5»— guardaba una tasa de paso y la anotaba en el historial).
+        // El cambio se aplica al confirmar (salir del campo o Enter) y solo si el valor realmente cambió; un valor
+        // incompleto o inválido se descarta y se restaura la tasa anterior. Cambiarla NO recalcula nada hacia atrás: el
+        // historial interno de tasas (S.historialTasasNu) la aplica desde hoy y los intereses ya sellados no se reabren.
+        // Para contrastar con la app de Nu está el Chequeo rápido de cajitas.
         el.addEventListener('input',function(){
           const limpio=nuTasaSanear(this.value);
           if(limpio!==this.value)this.value=limpio;
-          const v=nuTasaDesdeTexto(limpio);
-          if(v==null)return;
-          window.S.nuRate=v;
-          if(typeof registrarTasaNuHistorial==='function') registrarTasaNuHistorial(hoy(),v);
-          save();refresh();
-          if(typeof _renderTasaHistorialTag==='function') _renderTasaHistorialTag();
+        });
+        el.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); this.blur(); } });
+        el.addEventListener('change',function(){
+          const r=nuAplicarTasaEscrita(this.value);
+          if(r==='invalida')return; // el blur restaura la tasa anterior
+          this.value=nuTasaATexto(window.S.nuRate);
+          if(r==='cambio'){save();refresh();}
         });
         el.addEventListener('blur',function(){
           if(nuTasaDesdeTexto(this.value)==null) this.value=nuTasaConfigurada()?nuTasaATexto(window.S.nuRate):'';
@@ -322,6 +317,10 @@ import { codificarPayload, decodificarPayload } from './payload-codec.js';
     // _initEventListeners() duplicando listeners si se llama dos veces.
     let _firstLoad = true;
     let _firstPaintDone = false;
+    // `updatedAt` de la última versión de la nube que ya se aplicó (carga inicial o actualización en vivo). `_lastSavedAt` solo cambia
+    // al guardar desde ESTE dispositivo, así que sin esto el mismo dato (caché → servidor → cambio de metadatos) seguía pareciendo
+    // «más nuevo que lo local» y se re-aplicaba avisando «Datos actualizados desde otro dispositivo» sin que nada hubiera cambiado.
+    let _remotoAplicadoTs = 0;
 
     _unsubscribeSnapshot = onSnapshot(docRef,
       { includeMetadataChanges: true },
@@ -348,6 +347,7 @@ import { codificarPayload, decodificarPayload } from './payload-codec.js';
 
         if(_firstLoad) {
           const estadoCarga = _applyCloudData(snap);
+          if(snap.exists()) _remotoAplicadoTs = Math.max(_remotoAplicadoTs, (snap.data() || {}).updatedAt || 0);
           const confiable = _cargaConfiable(estadoCarga);
           console.log('[Sync] carga: estado=' + estadoCarga + ' confiable=' + confiable);
           // "Sin documento" / "payload vacío" no se cree tal cual (ver
@@ -391,7 +391,8 @@ import { codificarPayload, decodificarPayload } from './payload-codec.js';
 
           // Si los datos remotos son más nuevos que lo que guardamos por última
           // vez (con margen de 5s para latencia de red y desfase de relojes), aplicar la actualización.
-          if(remoteTs > localTs + 5000) {
+          if(remoteTs > localTs + 5000 && remoteTs > _remotoAplicadoTs) {
+            _remotoAplicadoTs = remoteTs;
             console.log('[Sync] Datos más nuevos del servidor — aplicando actualización en tiempo real.');
             _applyCloudData(snap);
             // Materializar intereses antes de renderizar para minimizar diferencia con Nu
@@ -799,6 +800,8 @@ import { codificarPayload, decodificarPayload } from './payload-codec.js';
     const input = document.getElementById('del-account-input');
     if(input.value.trim() !== 'ELIMINAR') return;
     if(!window._fb || !window._fbUser) return;
+    // Con PIN activo, se vuelve a pedir antes de borrar la cuenta (mejora 13). Si se cancela no se toca nada.
+    if(typeof window.pedirPinAntesDe === 'function' && !(await window.pedirPinAntesDe('Para eliminar tu cuenta y todos tus datos'))) return;
 
     // FIX (2026-09-27): antes se podía cancelar el overlay (botón "Cancelar"
     // o clic afuera) mientras el borrado seguía en curso en segundo plano —
