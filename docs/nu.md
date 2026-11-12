@@ -1,4 +1,6 @@
-# Módulo Nu
+# Módulo Nu — cuentas de ahorro
+
+> **Modelo actual:** Nu ya no es una cuenta especial. Es una cuenta `tipo:'ahorro'` más: cada cuenta de ahorro tiene su propia tasa EA (`cuenta.tasaEA`, `historialTasas`), sus cajitas (`cajita.cuentaId`) y sus CDTs, y puede haber varias (o ninguna). Los nombres `nuTotal`, `nuValorEsperadoCajita`, `S.nuRate`, `S.chequeosNu` pasaron a `ahorroTotal(cuentaId)`, `ahorroValorEsperadoCajita`, `getTasaCuenta(cuentaId)`, `S.chequeosAhorro`. Donde este documento diga «Nu», léase «la cuenta de ahorro abierta».
 
 Documentación de la parte **Nu** de `mis-finanzas`: la cuenta con cajitas de ahorro, tasa EA, CDTs, metas y chequeo rápido (`index.html` → `js/modules/nu.js`, más el cálculo en `js/core/nu-calc.js`). Pensada para volver a leerla en unos meses y entender el módulo sin releer el código: qué problema resuelve, qué reglas no se deben romper, qué datos guarda y por qué se diseñó así.
 
@@ -10,7 +12,7 @@ Nu comparte pantalla, historial y botones de "Agregar/Retirar dinero" con el res
 |---|---|
 | `js/core/nu-calc.js` | **Núcleo.** Cálculo puro: `calcC` (interés diario compuesto por tramos de tasa y de encargos), `calcCDT`, `rendimientoCajitaPorMes`, `nuValorEsperadoCajita`, `nuTotal`, la tasa única (`nuTasaConfigurada`, `getNuTasaGlobal`, `nuTasaSanear/DesdeTexto/ATexto`) y la disponibilidad por cajita (`cajitaGeneraIntereses`, `cajitaChequeable`, `cajitasChequeables`). Vive en el núcleo porque el patrimonio, Inicio y Encargos lo necesitan en cualquier pantalla |
 | `js/modules/nu.js` | **Lo que muta datos y pinta pantallas de Nu:** tasa e historial, `materializarIntereses`, cajitas (crear/eliminar/lista/detalle), "Agregar/Retirar dinero" de una cajita, CDTs, metas, chequeo rápido, y qué acciones están disponibles (`actualizarBotonesNu`). Registra sus botones como `data-action="nu:…"` |
-| `js/modules/cuentas.js` | La capa genérica de cuentas (selector, detalle simple, historial, Agregar/Retirar/Transferir). `nu.js` y `cuentas.js` son el grupo lazy `cuentas`. **La dependencia va en un solo sentido: Nu usa a Cuentas, Cuentas no nombra nada de Nu** (la lista de lo que Nu toma está en la cabecera de `nu.js`). Nu se presenta a Cuentas registrándose en `CuentaPantallas` (`core-state.js`): `paneles`, `panel`, `reiniciar()`, `render()` y `actualizarBotones()` |
+| `js/modules/cuentas.js` | La capa genérica de cuentas (selector, detalle simple, historial, Agregar/Retirar/Transferir). `nu.js` y `cuentas.js` son el grupo lazy `cuentas`. **La dependencia va en un solo sentido: Nu usa a Cuentas, Cuentas no nombra nada de Nu** (la lista de lo que Nu toma está en la cabecera de `nu.js`). Nu se presenta a Cuentas registrándose en `CuentaPantallas` (`js/core/cuentas-fuentes.js`): `paneles`, `panel`, `reiniciar()`, `render()` y `actualizarBotones()` |
 
 ---
 

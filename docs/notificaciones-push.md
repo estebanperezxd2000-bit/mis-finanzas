@@ -3,6 +3,10 @@
 No usa Cloud Functions ni requiere el plan Blaze — corre como un job
 programado de GitHub Actions, igual que ya corren tus tests.
 
+## Qué avisa el push
+
+Gastos fijos por vencer o vencidos (hasta 7 días de atraso), Spotify vencido, CDT por vencer o vencido, partes comprometidas de encargos y el aviso de Wrapped. Todo sale de las reglas de `js/core/reglas.js` con el canal `push`.
+
 ## Qué va dónde
 
 | Archivo acá | Va en tu repo en |
@@ -41,7 +45,7 @@ Functions, puedes borrarla — no hace falta desplegarla a ningún lado.)
 ## Para ver la notificación de verdad
 
 Igual que antes: edita manualmente en Firestore una fecha que dispare
-alguno de los 3 chequeos (ej. un CDT que venza mañana), corré el
+alguno de los chequeos (ej. un CDT que venza mañana), corré el
 workflow a mano (paso 5), y con el celular con la app cerrada del todo
 deberías recibir el push del sistema.
 
@@ -52,9 +56,18 @@ deberías recibir el push del sistema.
   solo tú (con permisos de administrador del repo) puedes verlo/
   editarlo — ni siquiera se puede volver a leer una vez guardado,
   solo reemplazar.
-- Si `checks.js` cambia en el futuro (agregás un chequeo nuevo), se
-  edita en `scripts/notificaciones/checks.js` — es el mismo patrón de
-  registro extensible (`CHECKS`) que ya tenías.
+- Los chequeos ya no viven en `checks.js`: están en `js/core/reglas.js`
+  y los comparte con la sección «Necesita atención» de la app. Para
+  sumar un aviso al push se escribe una regla allí con el canal
+  `'push'` (ver el comentario de cabecera de `reglas.js`). `checks.js`
+  solo la evalúa con el estado `S` y la fecha de hoy, así que el
+  workflow tiene que hacer checkout del repo completo.
 - El cron de GitHub Actions es "mejor esfuerzo": en momentos de mucha
   carga en GitHub puede atrasarse algunos minutos respecto al horario
   exacto. Para un aviso diario esto no importa.
+
+## Formato del mensaje y Service Worker (M8)
+
+- El script de envío manda mensajes **solo-datos** (`data: {title, body, icon, link}`, sin campo `notification`). Así Firebase no pinta un segundo aviso por su cuenta y el SW (`onBackgroundMessage`) muestra exactamente uno.
+- `notificationclick` enfoca la ventana de la app si ya está abierta; si no, abre `link`.
+- La URL base de los íconos/enlaces sale de `APP_BASE_URL` (por defecto `https://drlight09.github.io/mis-finanzas/`). Si el repo cambia de nombre o dominio, define esa variable en el workflow de GitHub Actions.

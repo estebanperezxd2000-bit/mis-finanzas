@@ -19,7 +19,7 @@
    existen en `window`:
      - El núcleo compartido: S, save, refresh, escHtml, fmt, fmtInput,
        parseMoney, hoy, uid, toast, openSheet, closeSheet, dialogo,
-       buildFuentesOptsHtml, fuenteLabel, fuenteBadgeClass, getSaldoFuente,
+       opcionesCuenta, fuenteLabel, fuenteBadgeClass, getSaldoFuente,
        sumarFuente, descontarFuente, MC, nivelAntiguedadMovimiento,
        avisarMovimientoBloqueado, confirmarBorrarMovimientoViejo, html/raw.
      - js/core/calc-helpers.js: _ensureMesadas, getMesadaData, _getCuotaAnio,
@@ -71,9 +71,9 @@
 
 const MESADA_PADRES = ['papa', 'mama'];
 
-// ── Libro (core-state.js) ─────────────────────────────────────────────────────────────────────────────────
+// ── Libro (js/core/cuentas-fuentes.js) ─────────────────────────────────────────────────────────────────────────────────
 // _ogMes(ref, rev): cada sumar/descontarFuente deja en el libro { modulo:'mesada', ref:<id del movimiento espejo del abono> }. Con rev=true es una reversión (tipo 'reversion', mismo ref que lo que deshace).
-const _ogMes = (ref, rev) => ({ origen: { modulo: 'mesada', ref, rev: rev || undefined } });
+const _ogMes = Libro.origen('mesada');
 
 function mesadaNombrePadre(parent) { return parent === 'papa' ? 'Papá' : 'Mamá'; }
 
@@ -561,7 +561,7 @@ function renderMesada() {
   }
 
   _msEl('ms-total').textContent = fmt(r.totalAnio);
-  _msEl('ms-count').textContent = r.pagadosAnio + '/' + (r.esperadosAnio || '—');
+  _msEl('ms-count').textContent = r.pagadosAnio + '/' + (r.esperadosAnio || 0);
 }
 
 const _MES_DOT_CLASE = { pendiente: 'mes-dot on mes-dot-pend', pagado: 'mes-dot on', perdido: 'mes-dot perdido', vacio: 'mes-dot' };
@@ -592,18 +592,14 @@ function cambiarAnio(d) {
 crearSplitWidget('mp', {
   simpleId: 'mpModoSimple', splitId: 'mpModoDividido', toggleId: 'mpSplitToggle', rowsId: 'mpSplitRows',
   getModo: () => mpSplitMode, setModo: v => { mpSplitMode = v; },
-  getFuentesFn: getFuentesOptions,
+  getFuentesFn: selectedVal => opcionesCuenta({ selectedVal, placeholder: 'No especificar' }),
   onPreview: () => actualizarMpPreview(),
 });
-
-function getFuentesOptions(selectedVal) {
-  return buildFuentesOptsHtml({ selectedVal, placeholder: 'No especificar', incluirTC: false });
-}
 
 // <select> de destino: cuentas rastreables (sin TC: es plata que entra) + "no especificar".
 function _poblarDestinoMesada(selectId) {
   const sel = _msEl(selectId);
-  if (sel) sel.innerHTML = buildFuentesOptsHtml({ placeholder: 'No especificar / lo gasté', incluirTC: false });
+  if (sel) sel.innerHTML = opcionesCuenta({ placeholder: 'No especificar / lo gasté'});
 }
 
 // La Mesada cuenta como ingreso del mes en que te la PAGAN (la fecha), no del mes que cubre (la clave del pago). Si son
@@ -709,7 +705,7 @@ function _syncMpDebeWrap(v) {
 // y toast() inserta con innerHTML: se escapa acá.
 function _mesadaMostrarError(r, previewId) {
   if (r.motivo === 'encargo-invalido') toast('Selecciona un encargo válido', 'err');
-  else if (r.motivo === 'encargo-insuficiente') toast('Ahí solo hay ' + fmt(r.disponible) + ' guardados de ' + escHtml(r.encNombre), 'err');
+  else if (r.motivo === 'encargo-insuficiente') toast('Ahí solo hay ' + fmt(r.disponible) + ' guardados de ' + r.encNombre, 'err');
   else if (r.motivo === 'split-excede') {
     const prev = _msEl(previewId);
     prev.textContent = 'El total dividido supera el monto recibido';
@@ -786,7 +782,7 @@ function abrirDetalleMesada(parent, key, nombre) {
   _msEl('mdContent').innerHTML = html`
     <div class="card card-sm ms-card-mb">
       <div class="row ms-fila"><span class="ms-lbl">Monto</span><span class="row-amount c-green">${fmt(info.monto)}</span></div>
-      <div class="row ms-fila"><span class="ms-lbl">Fecha</span><span class="ms-mono">${info.fecha || '—'}</span></div>
+      <div class="row ms-fila"><span class="ms-lbl">Fecha</span><span class="ms-mono">${info.fecha || raw(SIN_DATO)}</span></div>
       ${raw(origenEncargoHtml)}${raw(destinoHtml)}
       ${info.nota ? html`<div class="ms-nota">${info.nota}</div>` : ''}
     </div>
@@ -892,7 +888,7 @@ function confirmarPendienteMesada() {
 async function deshacerPendienteMesada(parent, key, idx) {
   const info = getMesadaData(parent)[key];
   if (!info || !info.pendienteHistorial || !info.pendienteHistorial[idx]) return;
-  const ok = await dialogo('Deshacer abono', '¿Deshacer este abono de lo pendiente? La plata se restará de la cuenta donde la registraste y volverá a quedar como deuda.', 'Deshacer', true);
+  const ok = await confirmarEliminar({ titulo: 'Deshacer abono', verbo: 'Deshacer', etiqueta: 'Deshacer', objeto: 'este abono de lo pendiente', detalle: 'La plata se restará de la cuenta donde la registraste y volverá a quedar como deuda.', irreversible: false });
   if (!ok) return;
   mesadaDeshacerAbono(parent, key, idx);
   save(); refresh();
@@ -946,3 +942,5 @@ Events.registerAll('mesada', {
   marcarPendiente: marcarMesadaComoPendiente,
   deshacerPendiente: deshacerPendienteMesada,
 });
+
+Ui.pantalla('mesada', () => { if (typeof renderMesada === 'function') renderMesada(); }, { key: 'mesada-render' });

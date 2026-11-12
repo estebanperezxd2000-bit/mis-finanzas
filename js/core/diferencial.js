@@ -24,7 +24,7 @@
 
    ── ESTE ARCHIVO SE CARGA MUY TEMPRANO ──────────────────────────
    Justo después de js/core/events.js y antes que mesada.js/
-   spotify.js/gastos.js/prestado.js/encargos.js/tarjetas_credito.js
+   spotify.js/gastos.js/prestado.js/encargos.js/tarjetas-credito.js
    — todos ellos llaman a diffRegistrarInstancia()/diffAplicar()/
    diffValidarIntercambios()/diffRenderHistorial() durante su propia inicialización o al
    confirmar sus sheets. Esos módulos NO se tocaron acá: siguen
@@ -54,7 +54,7 @@
        actualizó igual para que quien la use de acá en más copie ya
        el patrón data-action correcto.
 
-   buildFuentesOptsHtml() se QUEDÓ en index.html a propósito: es
+   opcionesCuenta() se QUEDÓ en index.html a propósito: es
    canónica y la usan muchos módulos más, no es exclusiva de este
    motor (ver su propio comentario ahí). _diffFuentesOptsHtml() es
    un envoltorio delgado específico de este motor, así que sí se
@@ -62,7 +62,7 @@
    ═══════════════════════════════════════════════════════════════ */
 
 // Registro de instancias activas: { [instanciaId]: { cfg, partes, abierto } }
-const _diffInstancias = {};
+var _diffInstancias = _diffInstancias || {}; // `var`: cargarlo dos veces (tests con varios cargadores) no falla
 
 /**
  * Crea (o resetea) una instancia del motor de diferencial.
@@ -82,9 +82,25 @@ const _diffInstancias = {};
  *   descMargen: (movimiento) => string — prefijo de la descripción del ingreso del sobrante libre
  *   onToggle / onResumen: hooks opcionales para sheets con comportamiento extra (preview de saldos, etc.)
  */
+// Devuelve la API de la instancia (`const _dif_ctc = diffRegistrarInstancia('ctc', {...})` → `_dif_ctc.toggle()`, `_dif_ctc.resumen()`…):
+// los módulos ya no escriben un envoltorio de una línea por cada función y por cada instancia.
 function diffRegistrarInstancia(instId, cfg) {
   _diffInstancias[instId] = { cfg, partes: [], abierto: false };
-  return _diffInstancias[instId];
+  return {
+    instId,
+    toggle: () => diffToggle(instId),
+    addParte: () => diffAddParte(instId),
+    removeParte: i => diffRemoveParte(instId, i),
+    setNombre: (i, v) => diffSetNombre(instId, i, v),
+    setMonto: (i, v) => diffSetMonto(instId, i, v),
+    togglePagoYo: i => diffTogglePagoYo(instId, i),
+    setCuentaSalida: (i, v) => diffSetCuentaSalida(instId, i, v),
+    setCuentaEntrada: (i, v) => diffSetCuentaEntrada(instId, i, v),
+    resumen: () => diffResumen(instId),
+    validarIntercambios: () => diffValidarIntercambios(instId),
+    estaAbierto: () => diffEstaAbierto(instId),
+    reset: () => diffReset(instId),
+  };
 }
 
 function diffInst(instId) { return _diffInstancias[instId]; }
@@ -162,11 +178,10 @@ function diffSetCuentaSalida(instId, i, v) { const inst = diffInst(instId); if (
 function diffSetCuentaEntrada(instId, i, v) { const inst = diffInst(instId); if (inst) { inst.partes[i].miCuentaEntrada = v; diffResumen(instId); } }
 
 function _diffFuentesOptsHtml(selectedVal, soloConSaldo) {
-  return buildFuentesOptsHtml({
+  return opcionesCuenta({
     selectedVal,
     soloConSaldo,
     mostrarSaldo: soloConSaldo,
-    incluirTC: false,
     placeholder: soloConSaldo ? 'Seleccionar cuenta' : 'Sin especificar'
   });
 }
@@ -314,8 +329,7 @@ function _diffActualizarMiCuenta(instId, mostrar) {
   wrap.style.display = mostrar ? '' : 'none';
   if (mostrar) {
     const prevVal = sel.value;
-    sel.innerHTML = '<option value="">Sin especificar (queda como nota)</option>' +
-      getFuentesSinTC().map(f => `<option value="${f.val}"${f.val === prevVal ? ' selected' : ''}>${f.label}</option>`).join('');
+    sel.innerHTML = opcionesCuenta({ selectedVal: prevVal, placeholder: 'Sin especificar (queda como nota)' });
   }
 }
 
@@ -326,10 +340,10 @@ function diffValidarIntercambios(instId) {
   const intercambios = inst.partes.filter(b => b.pagadoPorMi && b.monto > 0);
   for (const b of intercambios) {
     if (!b.miCuentaSalida) continue;
-    const saldo = getSaldoFuente(b.miCuentaSalida);
-    if (b.monto > saldo + 0.5) {
-      const nombre = b.nombre ? `"${escHtml(b.nombre)}"` : 'una persona';
-      return `No tienes ${fmt(b.monto)} en ${escHtml(fuenteLabel(b.miCuentaSalida))} para pagarle a ${nombre}. Disponible: ${fmt(saldo)}.`;
+    const val = Plata.validarSalida(b.miCuentaSalida, b.monto);
+    if (!val.ok) {
+      const nombre = b.nombre ? `"${b.nombre}"` : 'una persona';   // texto plano: lo pinta toast()/textContent
+      return `${val.motivo} para pagarle a ${nombre}.`;
     }
   }
   return null;

@@ -38,8 +38,8 @@
    S, save, refresh, escHtml, fmt, fmtInput, parseMoney, uid, hoy,
    toast, dialogo, openSheet, closeSheet, showScreen, sumarFuente,
    descontarFuente, getFuentesSinTC, getFuentes, fuenteLabel,
-   fuenteLabel2, fuenteBadgeClass, poblarFuente, buildFuentesOptsHtml,
-   abrirDetalleMov, logCambio, _markError, calcC — y del motor
+   fuenteBadgeClass, poblarFuente, opcionesCuenta,
+   abrirDetalleMov, logCambio, Formulario, calcC — y del motor
    genérico de diferencial (diffRegistrarInstancia/diffToggle/
    diffResumen/diffReset/diffEstaAbierto/diffCalcular/diffAplicar) y
    de split (crearSplitWidget/splitToggle/splitAgregarRow/splitGetData/
@@ -66,10 +66,11 @@
    entre filas. */
 let _prestSplitMode = false;
 
-crearSplitWidget('prest', {
+const _sp_prest = crearSplitWidget('prest', {
   simpleId:'mov_fuente_simple', splitId:'mov_fuente_split', toggleId:'mov_split_toggle', rowsId:'mov_split_rows',
   getModo:()=>_prestSplitMode, setModo:v=>{_prestSplitMode=v;},
-  getFuentesFn:_getPrestSplitFuentesOptions,
+  // Solo cuentas con saldo >= $1: de una cuenta vacía no puede salir el préstamo.
+  fuentes:()=>({ sentido:'sale', extra:_optGanancia }),
   onPreview:_updatePrestSplitResumen
 });
 
@@ -79,7 +80,7 @@ crearSplitWidget('prest', {
    El margen (dijo - real) es un ingreso mío, pero nunca tocó una cuenta (quedó prestado
    directamente) → mismo criterio que "Préstamo con TC" (instancia 'prtc'): ingreso fantasma
    fuente:'' (permiteMiCuenta:false), enlazado al préstamo para poder borrarlo con él. */
-diffRegistrarInstancia('prestamoDif', {
+const _dif_prestamoDif = diffRegistrarInstancia('prestamoDif', {
   ids: { wrap: 'mov-dif-wrap', body: 'mov-dif-body', icon: 'mov-dif-icon', real: 'mov_dif_real', resumen: 'mov-dif-resumen' },
   permiteBeneficiarios: false,
   permiteIntercambio: false,
@@ -104,24 +105,15 @@ function _prestMontoSalida() {
   return (real > 0 && real < monto - 0.5) ? real : monto;
 }
 
-function _movDifToggle() { diffToggle('prestamoDif'); }
-function _movDifResumen() { diffResumen('prestamoDif'); }
 
-function togglePrestSplit(){ splitToggle('prest'); }
-function _prestAddSplitRow(){ splitAgregarRow('prest'); }
 
 // Un préstamo dado nunca sale de una tarjeta de crédito propia (eso es
 // "Préstamo con TC", un flujo aparte) — mismo filtro que ya usa
 // _getAbonoDestinoFuentesOptions más abajo. Se agrega además la opción
 // "ganancia" (plata virtual que nunca salió de ninguna cuenta), propia
 // de esta instancia.
-function _getPrestSplitFuentesOptions(selectedVal) {
-  // Solo cuentas con saldo >= $1,00: de una cuenta vacía no puede salir el préstamo
-  // (FuentesFiltro, js/core/fuentes-filtro.js). "Sin especificar" y "Ganancia" no se filtran.
-  let out = FuentesFiltro.optsHtml(getFuentesSinTC(), { ...FuentesFiltro.PRESET.SALIDA, selectedVal });
-  out += `<option value="ganancia"${selectedVal==='ganancia'?' selected':''}><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ico-inline"><ellipse cx="12" cy="17" rx="8" ry="5"/><path d="M4 17v-4c0-2.76 3.58-5 8-5s8 2.24 8 5v4"/><path d="M4 13c0-2.76 3.58-5 8-5s8 2.24 8 5"/></svg> Ganancia (no salió plata)</option>`;
-  return out;
-}
+// «Ganancia»: el préstamo no salió de ninguna cuenta (no filtra por saldo).
+const _optGanancia = selectedVal => `<option value="ganancia"${selectedVal==='ganancia'?' selected':''}><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ico-inline"><ellipse cx="12" cy="17" rx="8" ry="5"/><path d="M4 17v-4c0-2.76 3.58-5 8-5s8 2.24 8 5v4"/><path d="M4 13c0-2.76 3.58-5 8-5s8 2.24 8 5"/></svg> Ganancia (no salió plata)</option>`;
 
 function _updatePrestSplitResumen(){
   const splitData = splitGetData('prest');
@@ -147,7 +139,7 @@ function _updatePrestSplitResumen(){
     </div>`);
   }
   splitData.forEach(r=>{
-    if(!r.fuente || !r.fuente.startsWith('cajita:') || !r.monto) return;
+    if(!r.fuente || !Fuente.esCajita(r.fuente) || !r.monto) return;
     const cajitaId = r.fuente.split(':')[1];
     const c = (S.cajitas||[]).find(x=>x.id===cajitaId);
     if(!c || !c.meta || typeof calcC!=='function') return;
@@ -189,7 +181,7 @@ function _deudaCuentasDe(m) {
 }
 // Cantidad de movimientos posteriores de la misma deuda que tocaron alguna de
 // las mismas cuentas — criterio de "operaciones posteriores" de la
-// protección por antigüedad (ver core-state.js#nivelAntiguedadMovimiento y
+// protección por antigüedad (ver js/core/dialogos.js#nivelAntiguedadMovimiento y
 // docs/proteccion-antiguedad-movimientos.md §4).
 function _deudaOpsPosteriores(d, m) {
   if (!m.fecha) return 0;
@@ -237,13 +229,13 @@ function _verificarIntegridadSaldoDeudor(d, saldoAntes, deltaEsperado) {
   const deltaReal = saldoDespues - saldoAntes;
   if (Math.abs(deltaReal - deltaEsperado) > Deudas.TOL) {
     console.warn(`[Integridad] Saldo de ${escHtml(d.nombre)} cambió ${deltaReal} en vez de ${deltaEsperado} (antes: ${saldoAntes}, después: ${saldoDespues}). Revisa d.movimientos por duplicados.`, d.movimientos);
-    toast(`El saldo de ${escHtml(d.nombre)} no cambió como se esperaba (esperado: ${fmt(deltaEsperado)}, real: ${fmt(deltaReal)}). Revisa su historial antes de seguir.`, 'err', 6000);
+    toast(`El saldo de ${d.nombre} no cambió como se esperaba (esperado: ${fmt(deltaEsperado)}, real: ${fmt(deltaReal)}). Revisa su historial antes de seguir.`, 'err', 6000);
   }
 }
-// ── Libro (core-state.js): origen de cada cambio de saldo ────────────────────────────────────────────────
+// ── Libro (js/core/cuentas-fuentes.js): origen de cada cambio de saldo ────────────────────────────────────────────────
 // _og(ref): al aplicar un movimiento, cada sumar/descontarFuente deja en el libro { modulo:'prestado', ref:<id del movimiento> }.
 // _enReversion(ref, fn): al revertir, todo lo que fn() mueva queda como tipo 'reversion' con el id del movimiento revertido.
-const _og = ref => ({ origen: { modulo: 'prestado', ref } });
+const _og = Libro.origen('prestado');
 const _enReversion = (ref, fn) => Libro.conOrigen({ modulo: 'prestado', ref, rev: true }, fn);
 // Revierte el efecto de UN abono sobre su cuenta destino: quita el movimiento espejo del
 // historial y descuenta el saldo que había sumado. Si el abono guardó el id del espejo
@@ -380,10 +372,10 @@ const _UI_LISTA = {
     el: 'deudoresList', abrir: 'prestado:abrirDeudor',
     // Con persona vinculada, el avatar abre su perfil; si no, el detalle.
     avatarAccion: d => d.personaId ? ['prestado:abrirPerfilDeudor', d.id] : ['prestado:abrirDeudor', d.id],
-    // Estado vacío (emptyState de core-state.js): mismo molde en las dos listas; cambian el icono,
+    // Estado vacío (emptyState de js/core/utilidades-ui.js): mismo molde en las dos listas; cambian el icono,
     // el título y la descripción, que dicen quién le debe a quién. Los dos botones abren el mismo
     // selector de personas, por eso los dos se llaman «Agregar persona».
-    btnPie: 'btn-nueva-persona', btnAccion: 'prestado:abrirSheetNuevaPersona',
+    btnPie: 'btn-nueva-persona', titulo: 'titulo-deudores', btnAccion: 'prestado:abrirSheetNuevaPersona',
     vacioIcono: '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="1.8" stroke-linecap="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>',
     vacioTitulo: 'Nadie te debe por ahora',
     vacio: 'Agrega a quien le prestes plata para llevar el registro de lo que te debe.',
@@ -394,7 +386,7 @@ const _UI_LISTA = {
   contra: {
     el: 'misDeudasList', abrir: 'prestado:abrirMiDeuda',
     avatarAccion: d => d.personaId ? ['prestado:abrirPerfilPersonaDeDeuda', d.personaId] : ['prestado:abrirMiDeuda', d.id],
-    btnPie: 'btn-nueva-deuda', btnAccion: 'prestado:abrirSheetNuevaDeuda',
+    btnPie: 'btn-nueva-deuda', titulo: 'titulo-mis-deudas', btnAccion: 'prestado:abrirSheetNuevaDeuda',
     vacioIcono: '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="1.8" stroke-linecap="round"><line x1="17" y1="7" x2="7" y2="17"/><polyline points="17 17 7 17 7 7"/></svg>',
     vacioTitulo: 'No le debes a nadie por ahora',
     vacio: 'Agrega a quien te preste plata para llevar el registro de lo que le debes.',
@@ -419,6 +411,8 @@ function _renderListaDeudas(dir) {
   if (dir === 'favor' && typeof _actualizarMasPersonasSub === 'function') _actualizarMasPersonasSub();
   // El estado vacío ya trae su botón: el de pie solo aparece cuando hay personas.
   mostrarSi(document.getElementById(ui.btnPie), list.length > 0);
+  // Lo mismo con el título de la sección: sin personas, el estado vacío ya explica de qué va; el título aparece al agregar la primera.
+  mostrarSi(document.getElementById(ui.titulo), list.length > 0);
   if (!list.length) {
     el.innerHTML = emptyState(ui.vacioIcono, ui.vacioTitulo, ui.vacio, 'Agregar persona', { action: ui.btnAccion });
     return;
@@ -529,7 +523,7 @@ function abrirDeudor(id) {
   });
   const histEl = document.getElementById('ddHistorial');
   if (!movs.length) {
-    histEl.innerHTML = '<div class="pr-vacio">Sin movimientos aún.</div>';
+    histEl.innerHTML = emptyInline('Sin movimientos aún.');
   } else {
     let saldoCorriente = saldo; // saldo de deuda ANTES de descontar la entry actual (al iterar desc, arranca en el saldo actual = saldo "después" del primer item)
     // Los movimientos se siguen recorriendo TODOS juntos y en orden cronológico
@@ -554,16 +548,16 @@ function abrirDeudor(id) {
       } else if (m._viaAlcancia) {
         destinoInfo = html` <span class="pr-chip pr-chip-amber"><i class="fa-solid fa-arrow-right"></i> Alcancía</span>`;
       } else if (m.destinos && m.destinos.length) {
-        destinoInfo = html` ${arrowSvg} ${raw(m.destinos.map(r => _fuenteLabelHtml(r.fuente) + ' ' + fmt(r.monto)).join(' + '))}`;
+        destinoInfo = html` ${arrowSvg} ${raw(m.destinos.map(r => fuenteHtml(r.fuente) + ' ' + fmt(r.monto)).join(' + '))}`;
       } else if (m.destino) {
-        destinoInfo = html` ${arrowSvg} ${raw(_fuenteLabelHtml(m.destino))}`;
+        destinoInfo = html` ${arrowSvg} ${raw(fuenteHtml(m.destino))}`;
       }
       // Extra parts breakdown
       let extraHtml = '';
       if (!esPrestamo && m._extPartes && m._extPartes.length) {
         const extraTotal = m._extPartes.reduce((a,p)=>a+(p.monto||0),0);
         const partesTexto = m._extPartes.map(p => {
-          if (p.tipo === 'guardar') return `${_fuenteLabelHtml(p.cuenta)} ${fmt(p.monto)}`;
+          if (p.tipo === 'guardar') return `${fuenteHtml(p.cuenta)} ${fmt(p.monto)}`;
           if (p.tipo === 'gastar') return `Gasto ${fmt(p.monto)}`;
           if (p.tipo === 'regalar') return `Regalo ${fmt(p.monto)}`;
           if (p.tipo === 'pendiente') return `Sin asignar ${fmt(p.monto)}`;
@@ -593,7 +587,7 @@ function abrirDeudor(id) {
               ${m._viaTC ? html` <span class="pr-chip pr-chip-blue">TC${m._tcId ? ' · ' + ((S.tarjetasCredito||[]).find(t=>t.id===m._tcId)||{nombre:''}).nombre : ''}</span>` : ''}
               ${m.nota ? html` <span class="pr-nota">${m.nota}</span>` : ''}
             </div>
-            <div class="pr-fecha pr-mt-3">${m.fecha}${m._viaTC ? '' : raw(m.fuentes ? ' · ' + m.fuentes.map(f=>_fuenteLabelHtml(f.fuente)+' '+fmt(f.monto)).join(' + ') : (m.fuente ? ' · ' + _fuenteLabelHtml(m.fuente) : ''))}${destinoInfo}</div>
+            <div class="pr-fecha pr-mt-3">${m.fecha}${m._viaTC ? '' : raw(m.fuentes ? ' · ' + m.fuentes.map(f=>fuenteHtml(f.fuente)+' '+fmt(f.monto)).join(' + ') : (m.fuente ? ' · ' + fuenteHtml(m.fuente) : ''))}${destinoInfo}</div>
             ${extraHtml}
             ${esPrestamo && m.diferencial && !m._viaTC ? raw(diffRenderHistorial(m.diferencial)) : ''}
           </div>
@@ -665,11 +659,11 @@ async function eliminarDeudorActual() {
   if (!deudorActualId) return;
   const d = Deudas.lista('favor').find(x => x.id === deudorActualId);
   if (!d) return;
-  const ok = await dialogo('Eliminar persona', `¿Eliminar a ${escHtml(d.nombre)} y todo su historial? Esta acción no se puede deshacer.`, 'Eliminar', true);
+  const ok = await confirmarEliminar({ titulo: 'Eliminar persona', objeto: `a ${d.nombre} y todo su historial` });
   if (!ok) return;
   Deudas.quitar('favor', deudorActualId);
   save(); refresh(); volverDeudores();
-  toast(`${escHtml(d.nombre)} eliminado`, 'ok');
+  toast(`${d.nombre} eliminado`, 'ok');
 }
 
 // Alcancía es un grupo de carga diferida (Loader.GROUPS.alcancia, ver
@@ -821,11 +815,12 @@ async function eliminarMovDeudor(deudorId, movId, opts) {
   const efectoAviso = esPerdon
     ? 'El gasto que se registró al perdonarla también se borrará.'
     : `El saldo de ${cuentaAviso} se revertirá automáticamente.`;
-  const ok = await dialogo(
-    'Eliminar ' + label,
-    `¿Eliminar este ${label} de ${fmt(m.monto)}? ${efectoAviso} La deuda de ${escHtml(d.nombre)} pasará de ${fmt(_saldoAntesDel)} a ${fmt(_saldoTrasDel)}.${extraAviso}${tcAviso}${antiguedadAviso}`,
-    'Eliminar', true
-  );
+  const ok = await confirmarEliminar({
+    titulo: 'Eliminar ' + label,
+    objeto: `este ${label} de ${fmt(m.monto)}`,
+    detalle: `${efectoAviso} La deuda de ${d.nombre} pasará de ${fmt(_saldoAntesDel)} a ${fmt(_saldoTrasDel)}.${extraAviso}${tcAviso}${antiguedadAviso}`,
+    irreversible: false // los avisos de efecto ya dicen qué se revierte; el movimiento se puede volver a registrar
+  });
   if (!ok) return;
 
   const _histAntes = medirPatrimonioParaHistorial(); // el historial de patrimonio deja de contar este movimiento
@@ -863,7 +858,7 @@ function initMovSheet(tipo) {
   //    (confirmarPrestamoTC): valida cupo, pide la descripción de la compra, crea el
   //    cargo enlazado en S.tcMovimientos (tipo 'cargo_prestamo') y marca _viaTC. Por
   //    este camino simple tc.deuda subía (descontarFuente) pero sin ese cargo
-  //    enlazado, y calcDeudaAjenaDeTarjeta() (core-state.js) no lo veía como deuda
+  //    enlazado, y calcDeudaAjenaDeTarjeta() (js/core/patrimonio.js) no lo veía como deuda
   //    ajena → contaba como deuda PROPIA. Decisión 2026-09-19: no unir los sheets.
   // Los modos divididos de ambos campos ya excluían las TC (getFuentesSinTC).
   poblarFuente('mov_fuente', false, false);
@@ -1118,7 +1113,7 @@ function _errFilaSinCuenta(filas) {
 }
 // Muestra el error de un plan (los dos formularios): en el campo si trae `field`, o como aviso.
 function _mostrarErrorPlan(error) {
-  if (error.field) _markError(error.field, error.field + '_err', error.msg);
+  if (error.field) Formulario.error(error.field, error.msg);
   else toast(error.msg, 'err', error.dur || 4000);
 }
 
@@ -1200,8 +1195,12 @@ function _planPrestamo(base) {
     if (sinCuenta) return sinCuenta;
     const totalSplit = fuentes.reduce((a, r) => a + (r.monto || 0), 0);
     if (Math.abs(totalSplit - montoSalio) > Deudas.TOL) return _errSumaCuentas(totalSplit, montoSalio, hayMargen ? 'el valor real' : 'el monto');
+    const vs = Plata.validarSalidas(fuentes); // prestar es sacar plata: la cuenta debe alcanzar (suma por fuente)
+    if (!vs.ok) return _planErr(vs.motivo, 4000);
   } else {
     fuente = document.getElementById('mov_fuente').value;
+    const v = Plata.validarSalida(fuente, montoSalio);
+    if (!v.ok) return _planErr(v.motivo, 4000);
   }
   const regaloChk = document.getElementById('mov_regalo');
   return { ...base, montoSalio, hayMargen, fuentes, fuente, regalo: !!(regaloChk && regaloChk.checked) };
@@ -1317,7 +1316,7 @@ function _planAbonoEncargo(base) {
   // ¿La plata del encargo sale de VARIAS cuentas a la vez?
   let encCuentaSplits = null;
   if (_abonoEncCuentaSplitMode) {
-    const splits = _getAbonoEncCuentaSplitData().filter(s => s.fuente && s.monto > 0);
+    const splits = _sp_abonoEncCuenta.data().filter(s => s.fuente && s.monto > 0);
     if (!splits.length) return _planErr('Agrega al menos una cuenta del encargo con monto');
     const totalSplit = splits.reduce((a, s) => a + s.monto, 0);
     if (Math.abs(totalSplit - monto) > Deudas.TOL) {
@@ -1329,7 +1328,7 @@ function _planAbonoEncargo(base) {
     for (const cuenta in porCuenta) {
       const saldoEnCuenta = _getEncargoSaldoEnCuenta(enc, cuenta);
       if (porCuenta[cuenta] > saldoEnCuenta + Deudas.TOL_FINO) {
-        return _planErr(`En ${_fuenteLabelHtml(cuenta)} solo hay ${fmt(saldoEnCuenta)} de este encargo`);
+        return _planErr(`En ${fuenteHtml(cuenta)} solo hay ${fmt(saldoEnCuenta)} de este encargo`);
       }
     }
     encCuentaSplits = Object.entries(porCuenta).map(([fuente, m]) => ({ fuente, monto: m }));
@@ -1337,7 +1336,7 @@ function _planAbonoEncargo(base) {
     const esSinEsp = _abonoEncCuenta === '__sinesp__';
     const saldoEnCuenta = esSinEsp ? _getEncargoSaldoSinCuenta(enc) : _getEncargoSaldoEnCuenta(enc, _abonoEncCuenta);
     if (monto > saldoEnCuenta + Deudas.TOL_FINO) {
-      return _planErr(`En ${esSinEsp ? 'la parte sin especificar' : _fuenteLabelHtml(_abonoEncCuenta)} solo hay ${fmt(saldoEnCuenta)} de este encargo`);
+      return _planErr(`En ${esSinEsp ? 'la parte sin especificar' : fuenteHtml(_abonoEncCuenta)} solo hay ${fmt(saldoEnCuenta)} de este encargo`);
     }
   }
   // Extra: reparto y saldo del encargo para abono + extra (saldo antes de cualquier escritura)
@@ -1351,14 +1350,14 @@ function _planAbonoEncargo(base) {
       const esSinEsp2 = _abonoEncCuenta === '__sinesp__';
       const saldoEnCuenta2 = esSinEsp2 ? _getEncargoSaldoSinCuenta(enc) : _getEncargoSaldoEnCuenta(enc, _abonoEncCuenta);
       if (monto + ex.extraMonto > saldoEnCuenta2 + Deudas.TOL_FINO) {
-        return _planErr(`En ${esSinEsp2 ? 'la parte sin especificar' : _fuenteLabelHtml(_abonoEncCuenta)} solo hay ${fmt(saldoEnCuenta2)} — no alcanza para abono + extra`, 4500);
+        return _planErr(`En ${esSinEsp2 ? 'la parte sin especificar' : fuenteHtml(_abonoEncCuenta)} solo hay ${fmt(saldoEnCuenta2)} — no alcanza para abono + extra`, 4500);
       }
     }
   }
   // Destino(s) de la plata del abono
   let destinos = null, destino = '';
   if (_abonoSplitMode) {
-    destinos = _getAbonoDestinoSplitData().map(r => ({ ...r }));
+    destinos = _sp_abonoDestino.data().map(r => ({ ...r }));
     const sinCuentaPre = _errFilaSinCuenta(destinos);
     if (sinCuentaPre) return sinCuentaPre;
     const totalSplitPre = destinos.reduce((a, r) => a + (r.monto || 0), 0);
@@ -1461,7 +1460,7 @@ function _planAbonoNormal(base) {
   if (ex.error) return ex;
   let destinos = null, destino = '';
   if (_abonoSplitMode) {
-    destinos = _getAbonoDestinoSplitData().map(r => ({ ...r }));
+    destinos = _sp_abonoDestino.data().map(r => ({ ...r }));
     const sinCuenta = _errFilaSinCuenta(destinos);
     if (sinCuenta) return sinCuenta;
     const totalSplit = destinos.reduce((a, r) => a + (r.monto || 0), 0);
@@ -1525,18 +1524,14 @@ function _confirmarMovimientoInterno() {
   abrirDeudor(deudorActualId);
   if (enc) {
     const msgExtra = extraMonto > 0 ? ` + ${fmt(extraMonto)} de extra` : '';
-    toast(`${fmt(monto)}${msgExtra} descontados del encargo de ${escHtml(enc.nombre)}`, 'ok', 3500);
+    toast(`${fmt(monto)}${msgExtra} descontados del encargo de ${enc.nombre}`, 'ok', 3500);
   } else if (perdon) {
     toast(perdonTodo
-      ? `Deuda de ${escHtml(d.nombre)} perdonada — quedó como gasto de ${fmt(monto)}`
-      : `Le perdonaste ${fmt(monto)} a ${escHtml(d.nombre)} — quedó como gasto. Todavía te debe ${fmt(plan.saldoAntes - monto)}`, 'ok', 4000);
+      ? `Deuda de ${d.nombre} perdonada — quedó como gasto de ${fmt(monto)}`
+      : `Le perdonaste ${fmt(monto)} a ${d.nombre} — quedó como gasto. Todavía te debe ${fmt(plan.saldoAntes - monto)}`, 'ok', 4000);
   }
 }
 
-function fuenteLabel2(f){ return f ? fuenteLabel(f) : '—'; }
-
-// _fuenteLabelHtml() vive en js/core/movimientos.js (núcleo, eager, carga
-// antes que este módulo) — estaba redefinida acá idéntica, byte a byte.
 
 /* ── ABONO: desde un encargo ──────────────────────────────────────── */
 function toggleDesdeEncargo() {
@@ -1717,32 +1712,21 @@ let _abonoEncId        = '';
 let _abonoEncCuenta    = '';
 let _extPartes         = []; // sistema de partes libres del extra
 
-crearSplitWidget('abonoDestino', {
+const _sp_abonoDestino = crearSplitWidget('abonoDestino', {
   simpleId:'mov_destino_simple', splitId:'mov_destino_split', toggleId:'mov_dest_split_toggle', rowsId:'mov_dest_split_rows',
   getModo:()=>_abonoSplitMode, setModo:v=>{_abonoSplitMode=v;},
-  getFuentesFn:_getAbonoDestinoFuentesOptions,
+  fuentes:{},
   onPreview:abonoSplitResumen
 });
 
-function toggleAbonoSplit(){ splitToggle('abonoDestino'); }
-function abonoAddSplitRow(){ splitAgregarRow('abonoDestino'); }
-function _getAbonoDestinoSplitData(){ return splitGetData('abonoDestino'); }
 
 // El destino de un abono nunca es una tarjeta de crédito (una TC jamás es
 // destino de plata entrante) — mismo filtro que ya aplicaba getFuentesSinTC()
 // en el render casero que reemplaza este bloque.
-function _getAbonoDestinoFuentesOptions(selectedVal) {
-  const fuentes = getFuentesSinTC();
-  let out = '<option value="">Sin especificar</option>';
-  for (const f of fuentes) {
-    out += `<option value="${f.val}"${f.val===selectedVal?' selected':''}>${escHtml(f.label)}</option>`;
-  }
-  return out;
-}
 
 function abonoSplitResumen() {
   const monto = parseMoney(document.getElementById('mov_monto').value)||0;
-  const total = _getAbonoDestinoSplitData().reduce((a,r)=>a+(r.monto||0),0);
+  const total = _sp_abonoDestino.data().reduce((a,r)=>a+(r.monto||0),0);
   const diff  = monto - total;
   const el    = document.getElementById('mov_dest_split_resumen');
   if(!el) return;
@@ -1942,7 +1926,7 @@ function abrirMiDeuda(id) {
   });
   const histEl = document.getElementById('mdHistorial');
   if (!movs.length) {
-    histEl.innerHTML = '<div class="pr-vacio">Sin movimientos aún.</div>';
+    histEl.innerHTML = emptyInline('Sin movimientos aún.');
   } else {
     const _porGrupo = {}; // grupoId -> [tarjetas html``]
     movs.forEach(m => {
@@ -1956,7 +1940,7 @@ function abrirMiDeuda(id) {
               <span class="badge badge-xs ${esRecibido ? 'bg-amber' : esPerdon ? 'bg-blue' : 'bg-green'}">${esRecibido ? 'Me prestó' : esPerdon ? 'Perdonada' : 'Pago'}</span>
               ${m.nota ? html` <span class="pr-nota">${m.nota}</span>` : ''}
             </div>
-            <div class="pr-fecha pr-mt-3">${m.fecha}${cuentasRef.length ? raw(' · ' + cuentasRef.map(_fuenteLabelHtml).join(' + ')) : ''}</div>
+            <div class="pr-fecha pr-mt-3">${m.fecha}${cuentasRef.length ? raw(' · ' + cuentasRef.map(fuenteHtml).join(' + ')) : ''}</div>
             ${m.extra ? html`<div class="pr-extra-aviso">Pagaste de más ${fmt(m.extra.monto)} · queda como gasto</div>` : ''}
           </div>
           <div class="pr-der">
@@ -2008,17 +1992,12 @@ function volverMisDeudas() {
 let _mdMovTipo = 'recibido';
 let _mdSplitMode = false;
 
-function _getMdSplitFuentesOptions(selectedVal) {
-  // 'recibido' = plata que entra: sin tarjetas (nunca son destino) y sin filtrar por saldo.
-  // 'pago' = plata que sale: cuentas con saldo >= $1,00 y tarjetas con cupo disponible.
-  if (_mdMovTipo === 'recibido') return buildFuentesOptsHtml({ selectedVal, placeholder: 'Elige cuenta', incluirTC: false });
-  return FuentesFiltro.optsHtml(getFuentes(), { ...FuentesFiltro.PRESET.SALIDA, selectedVal, placeholder: 'Elige cuenta' });
-}
 
-crearSplitWidget('mdSplit', {
+const _sp_mdSplit = crearSplitWidget('mdSplit', {
   simpleId: 'md_cuenta_simple', splitId: 'md_cuenta_split', toggleId: 'md_split_toggle', rowsId: 'md_split_rows',
   getModo: () => _mdSplitMode, setModo: v => { _mdSplitMode = v; },
-  getFuentesFn: _getMdSplitFuentesOptions,
+  // 'recibido' = plata que entra: sin tarjetas ni filtro de saldo. 'pago' = plata que sale: cuentas con saldo y tarjetas con cupo.
+  fuentes: () => _mdMovTipo === 'recibido' ? { placeholder: 'Elige cuenta' } : { sentido: 'sale', tarjetas: true, placeholder: 'Elige cuenta' },
   onPreview: _updateMdSplitResumen
 });
 
@@ -2037,8 +2016,6 @@ function _mdExtra() {
 function _mdTotalCuentas() {
   return (parseMoney((_mdEl('md_monto') || {}).value) || 0) + _mdExtra();
 }
-function toggleMdSplit() { splitToggle('mdSplit'); }
-function _mdAddSplitRow() { splitAgregarRow('mdSplit'); }
 
 function _updateMdSplitResumen() {
   const resEl = _mdEl('md_split_resumen');
@@ -2098,7 +2075,7 @@ function abrirMovMiDeuda(tipo) {
   // 'recibido' = plata que entra (sin tarjetas ni filtro de saldo); 'pago' = plata que sale: cuentas con
   // saldo >= $1,00 y tarjetas de crédito con cupo disponible (el pago queda como deuda de la tarjeta).
   sel.innerHTML = tipo === 'recibido'
-    ? buildFuentesOptsHtml({ incluirTC: false })
+    ? opcionesCuenta({})
     : FuentesFiltro.optsHtml(getFuentes(), FuentesFiltro.PRESET.SALIDA);
   _mdEl('md_monto').value = '';
   _mdEl('md_fecha').value = hoy();
@@ -2148,12 +2125,12 @@ function _planMovMiDeuda() {
       cuentas = [{ cuenta: cuentaSimple, monto: total }];
     }
     // Una tarjeta nunca es destino de plata que entra (regla del proyecto).
-    if (tipo === 'recibido' && cuentas.some(c => c.cuenta.startsWith('tc:'))) return _planErr('Una tarjeta de crédito no puede recibir plata');
+    if (tipo === 'recibido' && cuentas.some(c => Fuente.esTC(c.cuenta))) return _planErr('Una tarjeta de crédito no puede recibir plata');
     if (tipo === 'pago') {
       for (const c of cuentas) {
         const disponible = getSaldoFuente(c.cuenta); // en una tarjeta es el cupo disponible
         if (c.monto > disponible + Deudas.TOL_FINO) {
-          return _planErr(c.cuenta.startsWith('tc:')
+          return _planErr(Fuente.esTC(c.cuenta)
             ? `Cupo insuficiente en ${escHtml(fuenteLabel(c.cuenta))} — disponible: ${fmt(disponible)}`
             : `En ${escHtml(fuenteLabel(c.cuenta))} solo hay ${fmt(disponible)}`);
         }
@@ -2174,7 +2151,7 @@ function _aplicarMovMiDeuda(p) {
   const movId = uid();
   const efectos = cuentas.map(c => {
     if (entra) sumarFuente(c.cuenta, c.monto, _og(movId)); else descontarFuente(c.cuenta, c.monto, _og(movId));
-    if (c.cuenta.startsWith('tc:')) {
+    if (Fuente.esTC(c.cuenta)) {
       // Pago con tarjeta: sube la deuda de la TC. descontarFuente ya la subió; falta el cargo que la respalda
       // (tcRecalcular reconstruye tc.deuda desde sus registros en cada refresh). Es deuda PROPIA, no ajena.
       const tcMovId = uid();
@@ -2245,7 +2222,7 @@ function _revertirMovMiDeudaImpl(m) {
   else filas = (m.fuentes && m.fuentes.length) ? m.fuentes : (m.fuente ? [{ fuente: m.fuente, monto: total, _movId: m._movSecId, _tcMovId: m._tcMovId }] : []);
   filas.forEach(r => {
     if (!r.fuente) return;
-    if (r.fuente.startsWith('tc:')) {
+    if (Fuente.esTC(r.fuente)) {
       // Pago con tarjeta: se quita el cargo y baja la deuda de la TC. Si el cargo ya no existe, no se resta otra vez.
       const antes = (S.tcMovimientos || []).length;
       if (r._tcMovId) S.tcMovimientos = (S.tcMovimientos || []).filter(x => x.id !== r._tcMovId);
@@ -2302,20 +2279,20 @@ async function eliminarMiDeuda() {
   if (!d) return;
   const saldo = getMiDeudaSaldo(d);
   if (Math.abs(saldo) > Deudas.TOL) {
-    await dialogo('No se puede eliminar', `Aún le debes ${fmt(saldo)} a ${escHtml(d.nombre)}. Registra el pago completo antes de eliminar.`, 'Entendido', false);
+    await avisarNoSePuede('No se puede eliminar', `Aún le debes ${fmt(saldo)} a ${d.nombre}. Registra el pago completo antes de eliminar.`);
     return;
   }
-  const ok = await dialogo('Eliminar deuda', `¿Eliminar el registro de deuda con ${escHtml(d.nombre)}? Esta acción no se puede deshacer.`, 'Eliminar', true);
+  const ok = await confirmarEliminar({ titulo: 'Eliminar deuda', objeto: `el registro de deuda con ${d.nombre}` });
   if (!ok) return;
   Deudas.quitar('contra', miDeudaActualId);
   save(); refresh();
   volverMisDeudas();
-  toast(`${escHtml(d.nombre)} eliminado`, 'ok');
+  toast(`${d.nombre} eliminado`, 'ok');
 }
 
 /* ── PRÉSTAMO CON TARJETA DE CRÉDITO ─────────────────────────────────────── */
 
-diffRegistrarInstancia('prtc', {
+const _dif_prtc = diffRegistrarInstancia('prtc', {
   ids: { wrap: 'prtc-dif-wrap', body: 'prtc-dif-body', icon: 'prtc-dif-icon', real: 'prtc_dif_real', resumen: 'prtc-dif-resumen' },
   permiteBeneficiarios: false,
   permiteIntercambio: false,
@@ -2326,8 +2303,6 @@ diffRegistrarInstancia('prtc', {
 });
 
 // Wrappers con los nombres viejos — el HTML del sheet sigue llamándolos igual
-function _prtcDifToggle() { diffToggle('prtc'); }
-function _prtcDifResumen() { diffResumen('prtc'); }
 
 // El botón "Préstamo con TC" se ve atenuado (y al tocarlo explica por qué no se puede, ver
 // abrirSheetPrestamoTC) cuando ninguna TC activa tiene cupo disponible. No usa `disabled`
@@ -2390,14 +2365,14 @@ function confirmarPrestamoTC() {
   const montoTC = (real > 0) ? real : dijo;
   const margen  = dijo - montoTC; // >0 cuando dijiste más de lo que costó
 
-  // Validación de cupo — mismo patrón que tarjetas_credito.js:confirmarCompraTC.
+  // Validación de cupo — mismo patrón que tarjetas-credito.js:confirmarCompraTC.
   // A diferencia de un cargo bancario (interés/comisión), esto SÍ es una
   // compra que decidiste hacer con tu TC, así que sí debe respetar el cupo.
   // Se valida contra montoTC (lo que realmente carga la tarjeta), no contra
   // `dijo` (lo que le dijiste al deudor) — con diferencial activo esos dos
   // valores pueden ser distintos, y lo que importa acá es cuánto va a la TC.
   if (tc.cupo && tcCupoDisponible(tc) < montoTC) {
-    toast('Cupo insuficiente en '+escHtml(tc.nombre)+' — cupo disponible: '+fmt(tcCupoDisponible(tc)), 'err', 4000);
+    toast('Cupo insuficiente en '+tc.nombre+' — cupo disponible: '+fmt(tcCupoDisponible(tc)), 'err', 4000);
     return;
   }
 
@@ -2447,24 +2422,21 @@ function confirmarPrestamoTC() {
   save(); refresh();
   closeSheet('prestamo-tc');
   abrirDeudor(deudorActualId);
-  toast(`Préstamo con TC registrado — ${escHtml(d.nombre)} te debe ${fmt(dijo)}`, 'ok', 3500);
+  toast(`Préstamo con TC registrado — ${d.nombre} te debe ${fmt(dijo)}`, 'ok', 3500);
 }
 /* ── ABONO desde encargo: dividir entre VARIAS cuentas del encargo ──────────
    (ej: el encargo tiene 400mil en Nequi y 100mil en efectivo, y el abono de
    500mil sale de ambas a la vez). Reutiliza el motor genérico de splits. ── */
 let _abonoEncCuentaSplitMode = false;
 
-crearSplitWidget('abonoEncCuenta', {
+const _sp_abonoEncCuenta = crearSplitWidget('abonoEncCuenta', {
   simpleId: 'mov_enc_cuenta_simple', splitId: 'mov_enc_cuenta_split',
   toggleId: 'mov_enc_cuenta_split_toggle', rowsId: 'mov_enc_cuenta_split_rows',
   getModo: () => _abonoEncCuentaSplitMode, setModo: v => { _abonoEncCuentaSplitMode = v; },
-  getFuentesFn: _getAbonoEncCuentaFuentesOptions,
+  fuentes: () => { const enc = _abonoEncId ? (S.encargos || []).find(e => e.id === _abonoEncId) : null; return { mostrarSaldo: true, soloDe: enc ? _getEncargoSaldoPorCuenta(enc) : [] }; },
   onPreview: _abonoEncCuentaSplitPreview
 });
 
-function _abonoEncCuentaSplitToggle() { splitToggle('abonoEncCuenta'); }
-function _abonoEncCuentaAgregarSplitRow() { splitAgregarRow('abonoEncCuenta'); }
-function _getAbonoEncCuentaSplitData() { return splitGetData('abonoEncCuenta'); }
 
 // Resetea el botón "Dividir" de abonoEncCuenta a su estado visual por defecto
 // (texto Y color). Antes había 3 resets parciales sueltos que solo tocaban el
@@ -2479,22 +2451,17 @@ function _resetEncCuentaSplitToggleStyle() {
   btn.style.color = 'var(--accent)';
 }
 
-function _getAbonoEncCuentaFuentesOptions(selectedVal) {
-  const enc = _abonoEncId ? (S.encargos || []).find(e => e.id === _abonoEncId) : null;
-  const cuentasConSaldo = enc ? _getEncargoSaldoPorCuenta(enc) : [];
-  return buildFuentesOptsHtml({ selectedVal, mostrarSaldo: true, fuentesCustom: cuentasConSaldo });
-}
 
 function _abonoEncCuentaSplitPreview() {
   const el = document.getElementById('mov_enc_cuenta_split_resumen');
   if (!el) return;
   const monto = parseMoney(document.getElementById('mov_monto').value) || 0;
   const enc = _abonoEncId ? (S.encargos || []).find(e => e.id === _abonoEncId) : null;
-  const splits = _getAbonoEncCuentaSplitData();
+  const splits = _sp_abonoEncCuenta.data();
   if (!splits.length) { el.textContent = ''; return; }
   const total = splits.reduce((a, s) => a + (s.monto || 0), 0);
   const restante = monto - total;
-  const lines = raw(splits.map(s => `${s.fuente ? _fuenteLabelHtml(s.fuente) : 'Sin esp.'}: ${fmt(s.monto)}`).join(' · '));
+  const lines = raw(splits.map(s => `${s.fuente ? fuenteHtml(s.fuente) : 'Sin esp.'}: ${fmt(s.monto)}`).join(' · '));
 
   // Validar que ninguna cuenta del encargo se pase de lo que tiene guardado
   let excedeCuenta = false;
@@ -2541,7 +2508,8 @@ function editarDeudorActual() {
    ═══════════════════════════════════════════════════════════════ */
 
 function _abrirSheetNuevaPersona() {
-  openSheet('nueva-persona');
+  _inyectarPersonaSheets();
+  abrirSelPersona(_onSelPersonaMeDeben, '¿Quién te debe?', { excluir: pe => !!Deudas.porPersona('favor', pe.id) });
 }
 
 // Wrapper para el avatar del header de "Me deben" — el HTML es estático
@@ -2578,7 +2546,8 @@ function _abrirSheetPagoCompleto() {
 }
 
 function _abrirSheetNuevaDeuda() {
-  openSheet('nueva-deuda'); // el hook de openSheet (más abajo) abre el selector de personas
+  _inyectarPersonaSheets();
+  abrirSelPersona(_onSelPersonaYoDebo, '¿A quién le debes?', { excluir: pe => !!Deudas.porPersona('contra', pe.id) });
 }
 
 function _abrirMovMiDeudaRecibido() {
@@ -2637,21 +2606,21 @@ Events.registerAll('prestado', {
   abrirSheetAbono: _abrirSheetAbono,
   abrirSheetPagoCompleto: _abrirSheetPagoCompleto,
   confirmarMovimientoGuard: _confirmarMovimientoConGuard,
-  togglePrestSplit: togglePrestSplit,
-  prestAddSplitRow: _prestAddSplitRow,
-  toggleMdSplit: toggleMdSplit,
-  mdAddSplitRow: _mdAddSplitRow,
-  movDifToggle: _movDifToggle,
-  toggleAbonoSplit: toggleAbonoSplit,
-  abonoAddSplitRow: abonoAddSplitRow,
+  togglePrestSplit: _sp_prest.toggle,
+  prestAddSplitRow: _sp_prest.addRow,
+  toggleMdSplit: _sp_mdSplit.toggle,
+  mdAddSplitRow: _sp_mdSplit.addRow,
+  movDifToggle: _dif_prestamoDif.toggle,
+  toggleAbonoSplit: _sp_abonoDestino.toggle,
+  abonoAddSplitRow: _sp_abonoDestino.addRow,
   extAddParte: extAddParte,
   extDelParte: extDelParte,
-  abonoEncCuentaSplitToggle: _abonoEncCuentaSplitToggle,
-  abonoEncCuentaAgregarSplitRow: _abonoEncCuentaAgregarSplitRow,
+  abonoEncCuentaSplitToggle: _sp_abonoEncCuenta.toggle,
+  abonoEncCuentaAgregarSplitRow: _sp_abonoEncCuenta.addRow,
 
   // Préstamo con TC
   abrirSheetPrestamoTC: abrirSheetPrestamoTC,
-  prtcDifToggle: _prtcDifToggle,
+  prtcDifToggle: _dif_prtc.toggle,
   confirmarPrestamoTC: confirmarPrestamoTC,
 
   // Yo debo
@@ -2678,7 +2647,7 @@ Events.registerAll('prestado', {
   if (movMonto) movMonto.addEventListener('input', () => {
     // Con "El valor era diferente" abierto, "dijiste" cambia con el monto: refresca el resumen
     // (que a su vez refresca el split si está abierto). Si no, solo el split.
-    if (diffEstaAbierto('prestamoDif')) _movDifResumen();
+    if (diffEstaAbierto('prestamoDif')) _dif_prestamoDif.resumen();
     else if (_prestSplitMode) _updatePrestSplitResumen();
     _onMovMontoInput();
   });
@@ -2703,8 +2672,8 @@ Events.registerAll('prestado', {
   ['md_monto', 'input', _updateMdSplitResumen],
   ['md_extra_monto', 'input', _updateMdSplitResumen],
   ['mov_extra_monto', 'input', extResumenPartes],
-  ['prtc_dif_real', 'input', _prtcDifResumen],
-  ['mov_dif_real', 'input', _movDifResumen],
+  ['prtc_dif_real', 'input', _dif_prtc.resumen],
+  ['mov_dif_real', 'input', _dif_prestamoDif.resumen],
 ].forEach(([elId, evt, fn]) => {
   const el = document.getElementById(elId);
   if (el) el.addEventListener(evt, fn);
@@ -2724,11 +2693,11 @@ if (movFuente) movFuente.addEventListener('change', () => mostrarAlertaFuente('m
 
    A diferencia de encargos-personas.js/spotify-personas.js, ESTE
    archivo sí tenía una dependencia real de nivel superior contra
-   personas.js (PERSONA_COLORES, _guardarEditarPersonaGlobal, leídos
+   personas.js (PERSONA_COLORES, leído
    al parsear, no dentro de una función) — confirmado, no una premisa
    falsa. Por eso el archivo fusionado completo (prestado.js +
    prestado-personas.js + deudores-personas.js) se movió a cargar
-   después de personas.js Y después de sheet-stack.js (que define
+   después de personas.js Y después de navegacion.js (que define
    openSheet, necesario por deudores-personas.js más abajo) — ver el
    nuevo comentario de posición en index.html y CHANGELOG.md#préstamos.
    ═══════════════════════════════════════════════════════════════ */
@@ -2738,19 +2707,15 @@ function _irADeudor(deudorId) {
   setTimeout(() => { showScreen('prestamos'); abrirDeudor(deudorId); }, 180);
 }
 
-/* ── Hook: si el detalle de un deudor (Préstamos > me deben) está abierto */
-/* y se guarda desde el sheet unificado "Editar persona", refrescar su    */
-/* encabezado (nombre/avatar) para reflejar el cambio al instante. ────── */
-const _origGuardarEditarPersonaGlobalDeudor = _guardarEditarPersonaGlobal;
-_guardarEditarPersonaGlobal = function() {
-  const idEditado = _editPersonaGlobalId;
-  _origGuardarEditarPersonaGlobalDeudor.apply(this, arguments);
+/* Si el detalle de un deudor (Préstamos > me deben) está abierto y se guarda desde el sheet unificado «Editar persona»,
+   refrescar su encabezado (nombre/avatar) al instante. personas.js emite 'persona-editada' (js/core/ui.js). */
+Ui.en('persona-editada', function(personaId) {
   const d = Deudas.lista('favor').find(x => x.id === deudorActualId);
-  if (d && d.personaId === idEditado) {
+  if (d && d.personaId === personaId) {
     const detalle = document.getElementById('deudorDetalle');
     if (detalle && detalle.style.display !== 'none') abrirDeudor(deudorActualId);
   }
-};
+}, { key: 'prestado-detalle-deudor' });
 
 
 /* ── Abrir perfil desde una misDeuda (crea persona si no tiene) ── */
@@ -2802,6 +2767,8 @@ function editarMiDeudaActual() {
   window._miDeudaEditColor = (_pEdit && _pEdit.color) ? _pEdit.color : (d.color || PERSONA_COLORES[4]);
   const inp = document.getElementById('md_edit_nombre');
   if (inp) inp.value = d.nombre || '';
+  const inpTasa = document.getElementById('md_edit_tasa');
+  if (inpTasa) inpTasa.value = d.tasaEA > 0 ? String(d.tasaEA).replace('.', ',') : '';
   _renderColorPicker('md_edit_colores', '_miDeudaEditColor');
   if (typeof openSheet === 'function') openSheet('editar-mi-deuda');
 }
@@ -2818,6 +2785,11 @@ function guardarEditarMiDeuda() {
   const nombre = (document.getElementById('md_edit_nombre').value || '').trim();
   if (!nombre) { if (typeof toast === 'function') toast('Ingresa el nombre', 'err'); return; }
   const nuevoColor = window._miDeudaEditColor || d.color;
+  // Tasa E.A. opcional (P2): vacío = sin intereses conocidos. Entre 0 y 100 %.
+  const tasaTxt = ((document.getElementById('md_edit_tasa') || {}).value || '').trim().replace(',', '.');
+  const tasaEA = tasaTxt === '' ? null : Number(tasaTxt);
+  if (tasaEA !== null && (!isFinite(tasaEA) || tasaEA < 0 || tasaEA > 100)) { if (typeof toast === 'function') toast('La tasa E.A. debe estar entre 0 y 100', 'err'); return; }
+  if (tasaEA > 0) d.tasaEA = tasaEA; else delete d.tasaEA;
   d.nombre = nombre;
   d.color = nuevoColor;
   // Sincronizar en S.personas si está vinculada (persona es la fuente de verdad)
@@ -2829,7 +2801,7 @@ function guardarEditarMiDeuda() {
   if (typeof refresh === 'function') refresh();
   abrirMiDeuda(miDeudaActualId);
   if (typeof closeSheet === 'function') closeSheet('editar-mi-deuda');
-  if (typeof toast === 'function') toast(escHtml(nombre) + ' actualizado', 'ok');
+  if (typeof toast === 'function') toast(nombre + ' actualizado', 'ok');
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -2865,7 +2837,7 @@ Events.registerAll('prestado-personas', {
    Mismo selector de persona (existente o nueva) en "Agregar persona"
    (Me deben) y "Nueva deuda" (Yo debo): cada uno con su título y sin
    ofrecer a quien ya está en esa lista. Necesita openSheet definido
-   (sheet-stack.js). Ver prestado.md.
+   (navegacion.js). Ver prestado.md.
    ═══════════════════════════════════════════════════════════════ */
 
 
@@ -2881,8 +2853,7 @@ function _onSelPersonaMeDeben(personaId) {
   // lista. Mismo patrón que _onSelPersonaYoDebo (lado "Yo debo").
   const existente = Deudas.lista('favor').find(d => d.personaId === personaId);
   if (existente) {
-    closeSheet('nueva-persona');
-    toast(`${escHtml(p.nombre)} ya está en tu lista de "Me deben"`, 'info');
+    toast(`${p.nombre} ya está en tu lista de "Me deben"`, 'info');
     showScreen('prestamos');
     cambiarTabPrestamos('me-deben');
     setTimeout(() => abrirDeudor(existente.id), 200);
@@ -2890,7 +2861,7 @@ function _onSelPersonaMeDeben(personaId) {
   }
   const d = Deudas.agregar('favor', { id: uid(), nombre: p.nombre, color: p.color || '#60b0f0', personaId: p.id, movimientos: [] });
   save(); refresh();
-  toast(`${escHtml(p.nombre)} agregado/a`, 'ok');
+  toast(`${p.nombre} agregado/a`, 'ok');
   showScreen('prestamos');
   cambiarTabPrestamos('me-deben');
   abrirDeudor(d.id);
@@ -2906,7 +2877,7 @@ function _onSelPersonaYoDebo(personaId) {
   // Red de seguridad: el selector ya no ofrece a quien tiene deuda (excluir), pero si llegara, se abre la existente.
   const existente = Deudas.porPersona('contra', personaId);
   if (existente) {
-    toast(`Ya tienes una deuda registrada con ${escHtml(p.nombre)}`, 'info');
+    toast(`Ya tienes una deuda registrada con ${p.nombre}`, 'info');
     showScreen('prestamos');
     cambiarTabPrestamos('yo-debo');
     setTimeout(() => abrirMiDeuda(existente.id), 200);
@@ -2914,26 +2885,32 @@ function _onSelPersonaYoDebo(personaId) {
   }
   const d = Deudas.agregar('contra', { id: uid(), nombre: p.nombre, color: p.color || '#f06868', personaId: p.id, movimientos: [] });
   save(); refresh();
-  toast(`${escHtml(p.nombre)} agregado/a`, 'ok');
+  toast(`${p.nombre} agregado/a`, 'ok');
   showScreen('prestamos');
   cambiarTabPrestamos('yo-debo');
   abrirMiDeuda(d.id);
 }
 
-/* ── Hook en openSheet: 'nueva-persona' (Me deben) y 'nueva-deuda' (Yo debo)
-     abren el selector de personas directo, cada uno con su título y su filtro ── */
-const _origOpenSheetMeDebenYoDebo = openSheet;
-openSheet = function(id) {
-  if (id === 'nueva-persona') {
-    _inyectarPersonaSheets();
-    abrirSelPersona(_onSelPersonaMeDeben, '¿Quién te debe?', { excluir: pe => !!Deudas.porPersona('favor', pe.id) });
-    return;
-  }
-  if (id === 'nueva-deuda') {
-    _inyectarPersonaSheets();
-    abrirSelPersona(_onSelPersonaYoDebo, '¿A quién le debes?', { excluir: pe => !!Deudas.porPersona('contra', pe.id) });
-    return;
-  }
-  _origOpenSheetMeDebenYoDebo.apply(this, arguments);
-};
+/* «Nueva persona» (Me deben) y «Nueva deuda» (Yo debo) ya no son hojas: los botones abren directo el selector de personas
+   (_abrirSheetNuevaPersona / _abrirSheetNuevaDeuda). Antes se parcheaba openSheet() para interceptar esos dos ids (M1/M3). */
 
+
+/* ── Ciclo de vida de la UI (antes ramas dentro de showScreen, navegacion.js) ───────────────────────────── */
+// Al salir de Préstamos se cierra el detalle abierto y se restaura la pestaña activa; al entrar se pinta la lista de esa pestaña.
+Ui.pantalla('*', nombre => {
+  if (nombre === 'prestamos') return;
+  deudorActualId = null;
+  miDeudaActualId = null;
+  const ver = (id, v) => { const el = document.getElementById(id); if (el) el.style.display = v; };
+  // #prestamos-tabs trae display:flex inline; '' caería al block por defecto del div.
+  ver('prestamos-tabs', 'flex');
+  ver('deudorDetalle', 'none');
+  ver('miDeudaDetalle', 'none');
+  const yoDebo = prestamosTabActiva === 'yo-debo';
+  ver('deudoresView', yoDebo ? 'none' : '');
+  ver('misDeudasView', yoDebo ? '' : 'none');
+}, { key: 'prestado-reset' });
+Ui.pantalla('prestamos', () => {
+  if (prestamosTabActiva === 'yo-debo') { if (typeof renderMisDeudasList === 'function') renderMisDeudasList(); }
+  else if (typeof renderDeudoresList === 'function') renderDeudoresList();
+}, { key: 'prestado-render' });

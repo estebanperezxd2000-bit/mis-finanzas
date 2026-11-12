@@ -31,9 +31,12 @@ Fuente de verdad: `index.html` (los `<script src>`) y `Loader.GROUPS` en `js/cor
 
 Es la trampa más frecuente al buscar una función.
 
-- **`js/core/calc-helpers.js`** — funciones puras (solo `S`/`MC`, sin DOM) de Mesada, Tarjetas de crédito, Préstamos y Spotify que Inicio necesita en el primer render sin cargar esos módulos completos. `mesada.js`, `tarjetas_credito.js`, `prestado.js` y `spotify.js` **ya no las definen**; las usan como globales.
+- **`js/core/calc-helpers.js`** — funciones puras (solo `S`/`MC`, sin DOM) de Mesada, Tarjetas de crédito, Préstamos y Spotify que Inicio necesita en el primer render sin cargar esos módulos completos. `mesada.js`, `tarjetas-credito.js`, `prestado.js` y `spotify.js` **ya no las definen**; las usan como globales.
+- **`js/core/umbrales.js`** — los límites de «qué es sano» (fondo de 3/6 meses, 1,5×/3× de deuda de tarjeta, gasto sobre ingreso, runway, racha de déficit, hero, Atención, Proyección), congelados y en un solo sitio; solo los lee `inicio.js`. Carga de entrada, antes de `periodo.js`/`inicio.js`. **Todo test que cargue `inicio.js` tiene que cargar también `umbrales.js`.** La ventana de «meses recientes» del ingreso/gasto típicos (`VENTANA_REFERENCIA_MESES`) vive en `periodo.js`, a propósito: es cálculo puro y se carga solo en muchas pruebas.
   - Si se mueve una función acá: todo test que cargue el archivo de origen y la use tiene que cargar también `calc-helpers.js`. En modo `permissive` la omisión no falla: da resultados en silencio.
-- **`js/core/core-state.js`** — el estado `S`, `save()`, el cálculo y el snapshot de patrimonio (`calcPatrimonioTotal`, `snapshotPatrimonio`), la deuda de TC propia (`calcDeudaTcPropia` y sus auxiliares), `getIngresosFijosMes`, los helpers que deciden qué es ingreso/gasto real (`_esEntradaEspejoNoIngreso`, `_esGastoVarNoReal`) y los saldos de fuentes (`getSaldoFuente`).
+- **`js/core/huella.js`** y **`js/core/cierre.js`** — cierre de períodos, etapa 1, solo lectura (`docs/cierre-de-periodos.md`). **Se cargan bajo demanda** (grupo `cierre` del Loader, fuera de la precarga de `ensureAll()`): los módulos registran sus sondas con `registrarSonda` (`js/core/persistencia.js`), que las deja en cola hasta que `huella.js` exista. `huella.js` es el registro de sondas que miden lo que no puede cambiar si se reorganiza el almacenamiento; los módulos con historia registran la suya al cargarse (`tarjetas-credito.js`, `encargos.js`, `alcancia.js`, `wrapped.js`). `cierre.js` describe las fuentes de historia, calcula la vista previa del cierre y mide el tamaño. Un módulo nuevo con historia propia se integra registrando una sonda y una fuente, sin tocar estos archivos.
+- **`js/core/fecha.js`** — `Fecha`: la única forma de trabajar con fechas (hoy, mes, sumarDias, diasEntre, nombreMes…), en hora local y sin `toISOString()`. Carga ANTES del núcleo, que delega aquí `hoy()`, `mesActual()`, `_fechaSafe()` y `MC`. En tests, `loadApp()` lo precarga solo. `salud.js`/`reglas.js` (los carga también el push en Node) y `respaldos.js` (módulo ES) no dependen de él a propósito. `tests/fecha.test.js` corre en varios husos horarios y prohíbe `toISOString().slice`, `getMonth()+1…padStart` y `86400000` sueltos.
+- **El núcleo (`js/core/estado.js` … `refresh.js`)** — el estado `S`, `save()`, el cálculo y el snapshot de patrimonio (`calcPatrimonioTotal`, `snapshotPatrimonio`), la deuda de TC propia (`calcDeudaTcPropia` y sus auxiliares), `getIngresosFijosMes`, los helpers que deciden qué es ingreso/gasto real (`_esEntradaEspejoNoIngreso`, `_esGastoVarNoReal`) y los saldos de fuentes (`getSaldoFuente`).
 - Al revés también pasa: `calcHealthScore` vive en `inicio.js`, no en un archivo de "salud financiera".
 
 ---
@@ -44,3 +47,41 @@ El núcleo y Inicio llaman a lo que viva en un módulo lazy **siempre con guard 
 
 - `snapshotPatrimonio()` **no graba** el punto del historial hasta que `calcC`, `calcCDT` y `Deudas` existan (`_patrimonioDependenciasListas`): sin ese guard, un snapshot tomado antes de que carguen grabaría un patrimonio artificialmente bajo de forma permanente.
 - **Regla práctica:** un archivo de entrada que llame a una función de un módulo lazy la llama con guard `typeof`. Si es un cálculo que Inicio necesita en el primer render, la solución es moverlo a `calc-helpers.js`, no forzar la carga del módulo.
+
+## 5. Convención de nombres
+
+- **Idioma por capa:** lo técnico en inglés (`render`, `state`, `loader`, `hook`); el vocabulario del dominio en español (`mesada`, `encargo`, `cajita`); un nombre = verbo técnico + sustantivo de dominio (`getSaldoFuente`). Prueba rápida: «¿lo ve o lo nombra el usuario en la app?» → español; «¿es mecánica interna?» → inglés.
+- **Un concepto, una palabra.** El vocabulario oficial y los sinónimos que no se usan están en [`glosario-dominio.md`](./glosario-dominio.md); un término de dominio nuevo se agrega ahí antes de usarlo.
+- **Sin abreviaturas opacas** (`ctc`, `prtc`, `mpp`, `gv`, `gf`, `cp`, `enc`…): se escriben completas. Las oficiales (`tc`, `cdt`, `ea`…) están en el glosario.
+- **Archivos:** `kebab-case`, minúsculas, sin `_` ni tildes. Los de dominio en español (`tarjetas-credito.js`), los técnicos en inglés (`lazy-loader.js`), los mixtos «tema + rol» (`nu-calc.js`, `personas-init.js`). Excepciones: `README.md`, `CHANGELOG.md`.
+- **Carpetas:** plural si agrupan elementos del mismo tipo (`modules`, `docs`, `scripts`, `tests`); singular si son un concepto único (`core`, `support`, `css`, `js`).
+- **No se cambia por uniformar:** un nombre existente solo cambia si rompe el formato o confunde de verdad. Las claves de datos, ids del HTML y clases CSS no se renombran sin una razón de producto.
+- **Cómo se hace cumplir:** `tests/convenciones.test.js` (formato de archivos, abreviaturas que no pueden crecer y glosario al día). Si una abreviatura baja, `node scripts/convenciones.js --actualizar` registra la mejora.
+
+## Piezas de pantalla únicas (en el núcleo)
+
+Lo que se repite en varios módulos vive una sola vez en el núcleo; un módulo nuevo NO arma el suyo (lo vigila `tests/estados-vacios.test.js`).
+
+| Pieza | Para qué | Notas |
+|---|---|---|
+| `confirmarEliminar({titulo, objeto, detalle, irreversible, etiqueta, verbo})` | Todo «¿Eliminar…?» (también «Borrar» y «Deshacer») | Arma «¿Eliminar `objeto`? `detalle` Esta acción no se puede deshacer.» y el botón rojo. `irreversible:false` cuando se puede volver a registrar. Texto **sin** `escHtml`: `dialogo()` pinta con `textContent` y `escHtml` mostraría «&amp;». Tampoco admite markup ni iconos. Los saltos de línea (`\n\n`) sí se respetan. |
+| `avisarNoSePuede(titulo, motivo)` | La acción está bloqueada y se explica por qué | Un solo botón «Entendido». |
+| `dialogo(titulo, msg, btn, peligro)` | Confirmaciones que no son eliminar (cerrar sesión, quitar PIN, importar) | El color del botón sale de las clases `dialog-ok-peligro` / `dialog-ok-normal`, no de estilos en línea. |
+| `emptyState(icono, título, texto, etiquetaBotón, {action,args}, {compacto})` | Lista o pantalla sin registros (con icono, título y botón opcional) | Las partes vacías no se dibujan. `compacto` para dentro de una tarjeta. |
+| `emptyInline(texto, {centro, grande, clase})` | Una línea de aviso dentro de una tarjeta o historial («Sin movimientos aún») | El texto se escapa aquí. Dentro de `html```…` se envuelve con `raw()`. |
+
+Quedan como están a propósito: la tarjeta-invitación de Inicio (`ix-cuentas-vacio`, lleva su botón ×) y los bloques estáticos de `index.html` (alcancía sin iniciar, personas) que se muestran u ocultan.
+
+## Ganchos de hojas y pantallas (`js/core/ui.js`)
+
+Un módulo que necesita reaccionar a «se abrió la hoja X» o «se mostró la pantalla Y» **se registra en `Ui`**; nunca reasigna `openSheet`/`showScreen` ni envuelve una función con `const _orig = X; X = function(){…}` (un test, `tests/ui.test.js`, lo prohíbe).
+
+| Necesidad | API |
+|---|---|
+| Preparar una hoja antes de abrirla (o cancelarla devolviendo `false`) | `Ui.hoja('id', fn, { key })` |
+| Hacer algo cuando la hoja ya está abierta (enfocar, pintar) | `Ui.hoja('id', fn, { fase: 'despues', key })` (`'*'` = cualquier hoja) |
+| Reaccionar a una pantalla | `Ui.pantalla('nombre', fn, { key })` |
+| Eventos de dominio | `Ui.en('modulos' \| 'atencion' \| 'persona-editada' \| 'fuente-alerta', fn, { key })`; quien los origina llama `Ui.emitir(evento, …)` |
+
+Reglas: toda key es única y registrar otra vez la misma la **reemplaza** (un módulo lazy cargado dos veces no duplica); cada gancho corre en su propio try/catch. Cuando una función base necesita lógica de otro módulo que SÍ siempre carga con ella (p. ej. Personas dentro de Spotify/Encargos), esa lógica vive **dentro de la función base** (o en un helper llamado explícitamente), no como parche encima.
+

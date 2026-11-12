@@ -1,12 +1,7 @@
 // Barra de progreso de "gastos fijos pagados este mes" en panel-fijo —
 // extraído de index.html. Depende de S (bloque S/save, carga antes).
 //
-// El hook a window.refresh() pasa por hookGlobal() (js/core/hook-global.js):
-// antes esto era un wrap manual que asumía sin guard que window.refresh ya
-// existía en este punto (cierto solo por el orden de <script> en
-// index.html, no por ninguna garantía real — el mismo tipo de suposición
-// implícita que ya causó bugs en otros archivos). hookGlobal() resuelve
-// eso solo: si refresh ya existe lo envuelve de inmediato, si no, espera.
+// Se engancha a refresh() con Refresh.registrar() (js/core/refresh.js), no envolviendo la global.
 // Ver auditoria-tecnica.md #2/#4.
 
 // ── 4. GASTOS FIJOS PROGRESS BAR ─────────────────────────────────────────────
@@ -27,7 +22,7 @@
 
   function updateFijosProgress() {
     if(typeof S === 'undefined' || !S.gastosFijos) return;
-    const mes = (function(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');})();
+    const mes = Fecha.mes();
     const fijos = S.gastosFijos || [];
     const total = fijos.length;
     if(total === 0) {
@@ -45,7 +40,7 @@
       pagados === total ? 'Sin pagos pendientes' : `${total-pagados} pendiente${total-pagados!==1?'s':''}`;
   }
 
-  // Hook into refresh — ver js/core/hook-global.js
-  hookGlobal('refresh', updateFijosProgress);
+  // Hook into refresh — ver Refresh en js/core/refresh.js
+  Refresh.registrar('gastos-fijos-progress', updateFijosProgress);
   setTimeout(updateFijosProgress, 200);
 })();

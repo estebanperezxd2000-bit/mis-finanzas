@@ -1,16 +1,114 @@
 // ── Mis Finanzas — Service Worker ────────────────────────────────────────────
-const VERSION = 'mis-finanzas-v79'; // v79 (2026-10-29): Gastos: el filtro por mes solo aparece desde el segundo mes con gastos y el «Total mensual fijo» se oculta sin gastos fijos. v78 (2026-10-29): patrimonio y liquidez con una sola definición (calcPatrimonioDesglose/calcLiquidez en core-state.js): el hero de Inicio ahora resta lo que debes a personas, igual que el historial y la Proyección; Salud financiera resta «Yo debo» y la plata ajena de su liquidez; el texto bajo el hero nombra solo los pasivos que existen. v77 (2026-10-29): PIN más seguro: se guarda con hash y sal, bloqueo progresivo tras 5 fallos (persiste al recargar), bloqueo automático tras 2 min en segundo plano, PINs débiles rechazados y cambiar el PIN pide el actual. v76 (2026-10-29): la huella ya no crea una passkey: credencial local no descubrible (no la guarda ni la ofrece el gestor de contraseñas), sin uid ni correo en la credencial, y las huellas activadas antes se piden activar de nuevo (mf_bio_ver). v75 (2026-10-29): Salud financiera mide deuda de TC, gasto/ingreso y «sin ingresos» contra el ingreso de referencia (el mayor entre este mes y el típico de los últimos 3 meses), no solo contra lo que ya entró este mes (Periodo.ingresoPromedioPrevio). v74 (2026-10-28): el gasto de «Pagar Spotify» se guarda con la fecha en que pagaste (antes siempre hoy), y el script de conciliación cuenta las cuotas de Spotify y los cobros de ingresos fijos. v73 (2026-10-28): Spotify en el balance: cada cuota cobrada (y cada abono de lo pendiente) cuenta como ingreso en su fecha y el extra sin cuenta también (Periodo.spotifyEntradas); las estadísticas por ciclo de la pantalla Spotify no cambian. v72 (2026-10-28): regla de caja completa: los ingresos fijos cuentan cuando registras su COBRO (js/core/cobros.js, sheet «Registrar cobro» en Análisis: monto, mes que cubre, fecha en que te pagaron y destino o dividir), y los gastos fijos cuentan en el mes de la fecha del pago. v71 (2026-10-27): revisión de Análisis/Salud/Proyección (ingresos por regla de caja: la Mesada cuenta en el mes en que te pagan; fondo de emergencia contra el gasto típico de 3 meses, bono de CDT proporcional, proyección desde 30 días, aviso de Mesada que cubre otro mes, historial de patrimonio con eje por fecha y sin «+0.0%»). v70 (2026-10-27): Alcancía sin «Historial de alcancías» ni mensaje cuando no hay ninguna destapada. v69 (2026-10-27): estado vacío de Alcancía igual al estándar (.empty-state suelto, botón .empty-state-btn, sin .card ni botón ámbar; fuera .ix-button-045). v68 (2026-10-27): fila de movimiento compartida (filaMovimiento/botonEliminarFila en core-state.js) en Tarjetas, Encargos, Gastos y Cuentas; planes .md retirados. v67 (2026-10-27): mejoras de la lista de octubre: precarga de dinero con miles (setMoneyInput), héroes con color propio, chips de acción unificados, estados vacíos estándar, toasts por resultado (nuevo tipo warn) sin aviso duplicado de «otro dispositivo», iconos de pestaña (apple-touch-icon correcto, favicon PNG, manifest.webmanifest con icono 512). v66 (2026-10-26): PIN antes de las acciones destructivas (borrar todo, eliminar cuenta, importar backup, quitar PIN/huella) y PIN con el teclado del PC (mejora 13). v65 (2026-10-26): Nu sin mensaje de historial de tasas; la tasa se aplica al confirmar y solo si cambió (mejora 10). v64 (2026-10-26): Salud financiera con tipos de consejo (mejora 11), abono+extra en un solo movimiento por cuenta (mejora 5), sin símbolos de texto como íconos y aria-hidden en los SVG decorativos. v63 (2026-10-25): Préstamos: «Nueva deuda» y validaciones comunes (mejora 4); balance de Análisis por escenario, comparación «por ahora» y extra «gastar» como ingreso+gasto (mejora 6). v62 (2026-10-25): .money-input con cursor libre, miles al escribir y decimales opcionales (se retira el estilo calculadora y su buffer de dígitos). v61 (2026-10-25): toda la app en tuteo (sin voseo), con prueba que lo vigila; se mantiene .miles-input en Presupuestos. v60 (2026-10-25): un solo botón por estado vacío (mejora 1) y separador de miles en Presupuestos mensuales (mejora 8). v59 (2026-10-24): eliminar un movimiento ya no deja rastro en el historial de patrimonio y la gráfica queda neutra con cambio $0 (mejora 14). v58 (2026-10-24): requisitos de «Pagar Spotify» y «Registrar gasto», sin tarjetas de crédito en «Me lo regalaron»/«Mover entre cuentas»/«Compra con TC», tope de filas al dividir, estilo del selector de mes (mejoras 2 y 3). v57 (2026-10-24): «+ Agregar» de Ingresos fijos abre el sheet; «Borrar todos los datos» también quita el PIN y la huella (mejoras 7 y 9). v56 (2026-10-24): correcciones tras verificar con jsdom (CSS inválido en .cp-dev-tag, margen condicional de Alcancía, #gv_fuente_hint). v55 (2026-10-23): estilos inline → clases en index.html (Paso 5, tanda 18). v54 (2026-10-23): estilos inline → clases en Plata comprometida (Paso 5, tanda 17). v53 (2026-10-23): estilos inline → clases en Personas (Paso 5, tanda 16). v52 (2026-10-23): estilos inline → clases en Encargos (Paso 5, tanda 15). v51 (2026-10-23): estilos inline → clases en Tarjetas de crédito (Paso 5, tanda 14). v50 (2026-10-23): estilos inline → clases en Alcancía (Paso 5, tanda 13). v49 (2026-10-23): estilos inline → clases en Nu (Paso 5, tanda 12); los colores por estado de la meta son clases (nu-estado-*, nu-fill-*). v48 (2026-10-23): estilos inline → clases en el detalle de movimientos (Paso 5, tanda 11); fuera los últimos restos de `_esAlcancia` en gastosVar. v47 (2026-10-23): estilos inline → clases en Prestado (Paso 5, tanda 10); el botón de quitar una parte del extra ahora sí se oculta con una sola parte. v46 (2026-10-22): estilos inline → clases en Spotify (Paso 5, tanda 9). v45 (2026-10-22): estilos inline → clases en Análisis (Paso 5, tanda 8). v44 (2026-10-21): estilos inline → clases en Cuentas (Paso 5, tanda 7). v43 (2026-10-21): estilos inline → clases en los archivos sueltos (mesada, wrapped-gate, core-state, pin-bio, gastos-fijos-progress; Paso 5, tanda 6). v42 (2026-10-21): estilos inline → clases en Wrapped (Paso 5, tanda 5). v41 (2026-10-21): estilos inline → clases en Inicio (Paso 5, tanda 4). v40 (2026-10-20): estilos inline → clases en la lista de Gastos (Paso 5, tanda 3). v39 (2026-10-20): estilos inline → clases en búsqueda global y chips de categorías (Paso 5, tanda 2). v38 (2026-10-20): estilos inline → clases en diferencial.js y split.js (Paso 5, tanda 1); limpieza de código de compatibilidad con datos anteriores (grupos de deudor, Spotify, alcancía 'split', alias getSaldoActual). v37 (2026-10-18): esquema 9 sin migraciones (la app nace limpia), sin restos de compatibilidad con formatos viejos de gastos fijos y de Diferencial. v36 (2026-10-18): todo el estado de Spotify en S.spotify (migración v9, esquema 9). v35 (2026-10-18): sin tipo 'egreso' (toda salida manual es 'salida_manual', etiqueta "Retiro"), 4 registros de acciones muertos fuera. v34 (2026-10-18): frontera limpia entre cuentas.js y nu.js (Nu se apoya en Cuentas, nunca al revés; CuentaPantallas en core-state.js). v33 (2026-10-17): cuentas.js se parte en nu.js + cuentas.js (botones de Nu: data-action nu:), vocabulario "Agregar/Retirar dinero" en todo, toast de salida en gastos. v32 (2026-10-17): sin aviso "Cajitas recalculadas", tasa solo numérica, "Agregar/Retirar dinero" en todas las cuentas, toast de salida (rojo) y rediseñado, Chequeo rápido con el total de Nu (encargos incluidos). v31 (2026-10-16): una sola tasa de Nu (S.nuRate, migración v8), color-picker.js cargado, acciones de Nu y retiros que se deshabilitan sin saldo ni cajitas, chequeo rápido por cajita con un día de intereses. v30 (2026-10-13): el payload de Firestore viaja comprimido (js/core/payload-codec.js), margen de Préstamo con TC enlazado al préstamo, saldo inicial de encargos sin descuento, origen en diffAplicar. v29 (2026-10-12): app limpia (esquema 7): el libro vive en core-state.js (sin libro.js), se retiran las migraciones v3-v6. v28 (2026-10-12): historial de TODAS las cuentas en S.movimientos (migración v6), cuenta-efectos escribe solo ahí. v27 (2026-10-11): libro de movimientos (S.libro, migración v5, js/core/libro.js). v26 (2026-10-10): interruptor "¿Es plata nueva?" en préstamos y migración v4. v25: préstamos/abonos sin cuenta = ajuste de base (tendencia y proyección). v24: Gastos muestra los retiros manuales, E5 (reglas históricas congeladas). v23: clase explícita en movimientos, Restar dinero = gasto, rendimientos de Nu (en el balance de Análisis), migraciones v1/v2 retiradas
+const VERSION = 'mis-finanzas-v124'; // bump manual en cada despliegue; qué cambió en cada versión vive en docs/CHANGELOG.md (no aquí)
+// Huella del contenido desplegable: la sella `node scripts/sellar-sw.js` (y `npm test` falla si quedó vieja). Así, aunque se olvide
+// subir VERSION, la caché cambia de nombre en cuanto cambia cualquier archivo y no se sirven los .js anteriores.
+const BUILD = '68c0b34bd378'; // sellado por scripts/sellar-sw.js — NO editar a mano (huella del contenido desplegable)
+const CACHE = VERSION + '-' + BUILD;
+// Caché que SÍ sobrevive entre versiones: fuentes y SDK de Firebase (de otro origen, no forman parte de la versión de la app).
+const CACHE_EXT = 'mis-finanzas-ext';
 
-const APP_SHELL = [
-  '/mis-finanzas/',
-  '/mis-finanzas/index.html'
+// Base del sitio, derivada de dónde está registrado este SW (nada de «/mis-finanzas/» escrito a mano: si el repo cambia de nombre
+// o se sirve desde otro dominio, sigue funcionando).
+const BASE = new URL('./', self.registration.scope).pathname;
+
+// ── Precaché atómico ────────────────────────────────────────────────────────
+// scripts/sellar-sw.js escribe acá TODOS los archivos desplegables. install los baja juntos a la caché de ESTA versión: si uno falla,
+// la versión nueva no se instala y la gente sigue con la anterior completa. fetch sirve de esa misma caché: una versión = un
+// conjunto coherente (nunca un index nuevo con JS viejo) y la app funciona completa sin conexión.
+// <PRECACHE> — lo escribe scripts/sellar-sw.js: todo lo desplegable (una versión = un conjunto coherente y offline completo)
+const PRECACHE = [
+  "./",
+  "css/desktop.css",
+  "css/fa-solid-subset.woff2",
+  "css/fa-subset.css",
+  "css/styles.css",
+  "icons/apple-touch-icon.png",
+  "icons/favicon-32.png",
+  "icons/icon-192.png",
+  "icons/icon-512.png",
+  "icons/icon-maskable-512.png",
+  "index.html",
+  "js/core/arranque-ui.js",
+  "js/core/async-css.js",
+  "js/core/bootstrap.js",
+  "js/core/busqueda-global.js",
+  "js/core/calc-helpers.js",
+  "js/core/cierre.js",
+  "js/core/cobros.js",
+  "js/core/color-picker.js",
+  "js/core/cuenta-efectos.js",
+  "js/core/cuentas-fuentes.js",
+  "js/core/dialogos.js",
+  "js/core/diferencial.js",
+  "js/core/estado.js",
+  "js/core/eventos-base.js",
+  "js/core/events.js",
+  "js/core/fecha.js",
+  "js/core/firebase-init.js",
+  "js/core/firebase-sync.js",
+  "js/core/formulario.js",
+  "js/core/formularios-ui.js",
+  "js/core/fuentes-filtro.js",
+  "js/core/gastos-fijos-progress.js",
+  "js/core/html-tag.js",
+  "js/core/huella.js",
+  "js/core/ingresos.js",
+  "js/core/lazy-loader.js",
+  "js/core/mas-menu.js",
+  "js/core/modulos-activos.js",
+  "js/core/money-input.js",
+  "js/core/movimientos.js",
+  "js/core/navegacion.js",
+  "js/core/notificaciones-push.js",
+  "js/core/nu-calc.js",
+  "js/core/patrimonio.js",
+  "js/core/payload-codec.js",
+  "js/core/periodo.js",
+  "js/core/persistencia.js",
+  "js/core/personas-init.js",
+  "js/core/pin-bio.js",
+  "js/core/plan-deudas.js",
+  "js/core/refresh.js",
+  "js/core/reglas.js",
+  "js/core/reordenable.js",
+  "js/core/respaldos.js",
+  "js/core/saldos-ocultos.js",
+  "js/core/salud.js",
+  "js/core/sheet-behavior.js",
+  "js/core/split.js",
+  "js/core/sw-registro.js",
+  "js/core/ui.js",
+  "js/core/umbrales.js",
+  "js/core/utilidades-ui.js",
+  "js/core/wait-for-module.js",
+  "js/core/wait-for.js",
+  "js/core/wrapped-gate.js",
+  "js/modules/actividad-reciente.js",
+  "js/modules/alcancia.js",
+  "js/modules/analisis.js",
+  "js/modules/configuracion.js",
+  "js/modules/cuentas.js",
+  "js/modules/encargos.js",
+  "js/modules/gastos.js",
+  "js/modules/inicio.js",
+  "js/modules/mesada.js",
+  "js/modules/nu.js",
+  "js/modules/personas.js",
+  "js/modules/plata-comprometida.js",
+  "js/modules/prestado.js",
+  "js/modules/spotify.js",
+  "js/modules/tarjetas-credito.js",
+  "js/modules/wrapped.js",
+  "manifest.webmanifest"
 ];
+// </PRECACHE>
 
 // ── Firebase Cloud Messaging (notificaciones en segundo plano) ─────────────
 // Mismo config que en js/core/notificaciones-push.js. Tiene que repetirse
 // acá porque el Service Worker corre en su propio contexto global, sin
 // acceso a `window` ni a lo que carga firebase-init.js en la página — no
-// hay forma de compartir el objeto entre los dos archivos.
+// hay forma de compartir el objeto entre los dos archivos (tests/paridad.test.js
+// vigila que no se desfasen).
 // Requiere sumar https://www.gstatic.com a worker-src en la CSP de
 // index.html (importScripts() cae bajo worker-src, no bajo script-src) y
 // https://fcm.googleapis.com, https://fcmregistrations.googleapis.com,
@@ -27,20 +125,33 @@ firebase.initializeApp({
   appId: '1:469399538471:web:adaf95bc43b3355b087702',
 });
 
+// Los avisos llegan como mensajes SOLO-DATOS ({title, body, link, icon}; ver scripts/notificaciones/run.js) y este handler es el único
+// que los muestra: con un campo `notification` en el mensaje, FCM podía mostrar uno propio además de este (aviso doble).
 const _messaging = firebase.messaging();
 _messaging.onBackgroundMessage((payload) => {
-  const { title, body, icon } = payload.notification || {};
-  self.registration.showNotification(title || 'Mis Finanzas', {
-    body: body || '',
-    icon,
-    data: { url: (payload.fcmOptions && payload.fcmOptions.link) || '/mis-finanzas/' },
+  const d = payload.data || {};
+  const n = payload.notification || {};
+  return self.registration.showNotification(d.title || n.title || 'Mis Finanzas', {
+    body: d.body || n.body || '',
+    icon: d.icon || n.icon || BASE + 'icons/icon-192.png',
+    data: { url: d.link || (payload.fcmOptions && payload.fcmOptions.link) || BASE },
   });
 });
 
+// Tocar el aviso: si la app ya está abierta se enfoca esa ventana (en vez de abrir otra); si no, se abre.
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();
-  const url = (e.notification.data && e.notification.data.url) || '/mis-finanzas/';
-  e.waitUntil(clients.openWindow(url));
+  const url = new URL((e.notification.data && e.notification.data.url) || BASE, self.registration.scope).href;
+  e.waitUntil((async () => {
+    const ventanas = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const propia = ventanas.find(w => w.url.startsWith(self.registration.scope));
+    if (propia) {
+      await propia.focus();
+      if (propia.navigate && propia.url !== url) { try { await propia.navigate(url); } catch (_) { /* misma página: basta con el foco */ } }
+      return;
+    }
+    await clients.openWindow(url);
+  })());
 });
 
 const CACHE_FONTS = [
@@ -49,21 +160,27 @@ const CACHE_FONTS = [
 ];
 
 self.addEventListener('install', e => {
+  // Sin skipWaiting automático: una pestaña abierta sigue con su versión completa (JS + caché) hasta que la persona toque
+  // «Actualizar» (js/core/sw-registro.js manda {tipo:'SKIP_WAITING'}). Así nunca se mezclan dos versiones en una pestaña.
   e.waitUntil(
-    caches.open(VERSION)
-      .then(cache => cache.addAll(APP_SHELL))
-      .catch(() => {})
+    caches.open(CACHE).then(cache =>
+      // cache:'reload' salta la caché HTTP (GitHub Pages: 10 min): sin esto un SW nuevo podía guardar una copia vieja.
+      cache.addAll(PRECACHE.map(p => new Request(BASE + (p === './' ? '' : p), { cache: 'reload' })))
+    )
   );
-  self.skipWaiting();
+});
+
+self.addEventListener('message', e => {
+  if (e.data && e.data.tipo === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== VERSION).map(k => caches.delete(k)))
-    )
+      // Solo se borran las cachés de versiones anteriores de la app; la de fuentes/SDK se conserva.
+      Promise.all(keys.filter(k => k.startsWith('mis-finanzas-v') && k !== CACHE).map(k => caches.delete(k)))
+    ).then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
 self.addEventListener('fetch', e => {
@@ -78,14 +195,9 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // FIX (2026-09-19): Firestore y Auth NO pasan por el SW. El canal de
-  // escucha de Firestore (onSnapshot) es una respuesta larga que no termina
-  // hasta que el SDK la corta; clonarla para cache.put() dejaba la escritura
-  // de caché colgada y, al cortarse el stream, fallaba con "Cache.put()
-  // encountered a network error". Además el fallback de networkFirst
-  // respondía a una request de Firestore con una página HTML con status 200
-  // en vez de un error de red, que el SDK no sabe interpretar. Sin
-  // respondWith, el navegador las maneja normal y el SDK ve errores reales.
+  // Firestore y Auth NO pasan por el SW. El canal de escucha de Firestore (onSnapshot) es una respuesta larga que no termina
+  // hasta que el SDK la corta; clonarla para cache.put() colgaba la escritura de caché, y el fallback respondía con una página
+  // HTML 200 que el SDK no sabe interpretar. Sin respondWith, el navegador las maneja normal y el SDK ve errores reales.
   if (
     url.includes('firestore.googleapis.com') ||
     url.includes('identitytoolkit.googleapis.com') ||
@@ -100,20 +212,32 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  if (url.endsWith('/') || url.endsWith('/index.html')) {
-    e.respondWith(networkFirst(e.request));
-    return;
+  // La app (mismo origen): SIEMPRE de la caché de esta versión.
+  if (new URL(url).origin === self.location.origin) {
+    e.respondWith(servirDeLaVersion(e.request));
   }
-
-  e.respondWith(staleWhileRevalidate(e.request));
 });
 
-// Escribir en caché es "mejor esfuerzo": si falla (respuesta cortada por una
-// recarga, sin conexión, cuota), no debe convertirse en un error sin manejar.
-function guardarEnCache(request, response) {
-  return caches.open(VERSION)
+// Mejor esfuerzo: si falla (respuesta cortada, sin conexión, cuota) no debe convertirse en un error sin manejar.
+function guardarEnCache(request, response, nombre) {
+  return caches.open(nombre || CACHE_EXT)
     .then(cache => cache.put(request, response))
     .catch(() => {});
+}
+
+async function servirDeLaVersion(request) {
+  const cache = await caches.open(CACHE);
+  const hit = await cache.match(request, { ignoreSearch: true });
+  if (hit) return hit;
+  if (request.mode === 'navigate') {
+    const shell = await cache.match(BASE);
+    if (shell) return shell;
+  }
+  try {
+    return await fetch(request);
+  } catch (_) {
+    return new Response('', { status: 503 });
+  }
 }
 
 async function cacheFirst(request) {
@@ -139,24 +263,6 @@ async function networkFirst(request) {
     return response;
   } catch {
     const cached = await caches.match(request);
-    return cached || new Response(
-      `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Sin conexión</title></head>
-      <body style="font-family:sans-serif;text-align:center;padding:60px;background:#0f0f0f;color:#f0ede8">
-      <h2 style="color:#c8f060">Sin conexión</h2>
-      <p>Vuelve a abrir la app cuando tengas internet para sincronizar.</p>
-      </body></html>`,
-      { headers: { 'Content-Type': 'text/html' } }
-    );
+    return cached || new Response('', { status: 503 });
   }
-}
-
-async function staleWhileRevalidate(request) {
-  const cached = await caches.match(request);
-  const fetchPromise = fetch(request).then(response => {
-    if (response.ok && request.url.startsWith('http')) {
-      guardarEnCache(request, response.clone());
-    }
-    return response;
-  }).catch(() => cached);
-  return cached || fetchPromise;
 }

@@ -7,9 +7,9 @@
 // conocidos, revisar función por función). Eso nunca cierra el hallazgo de
 // raíz — solo lo reduce hasta la próxima vez que se agregue un campo de
 // texto libre nuevo o se lo envuelva en una función auxiliar nueva
-// (spNombreDe, fuenteLabel, _cpFuenteLabel... ya pasó con las tres).
+// (spNombreDe, fuenteLabel... ya pasó con las dos; por eso hoy hay fuenteTexto/fuenteHtml explícitas).
 //
-// Este archivo no reemplaza escHtml() (sigue existiendo en core-state.js,
+// Este archivo no reemplaza escHtml() (sigue existiendo en js/core/estado.js,
 // se sigue usando igual en sitios que arman un string suelto, no un
 // template completo). Agrega un segundo primitivo, html``, para construir
 // markup: escapa automáticamente TODO valor interpolado, salvo que se pida
@@ -37,9 +37,9 @@
 // ya por otro motivo.
 //
 // Carga como <script> clásico (no type="module"), mismo criterio que
-// core-state.js/sheet-stack.js: sus globales (html, raw) deben quedar
+// el núcleo/navegacion.js: sus globales (html, raw) deben quedar
 // disponibles como variables léxicas para el resto de los <script>
-// clásicos del documento. Depende de escHtml(), definida en core-state.js
+// clásicos del documento. Depende de escHtml(), definida en js/core/estado.js
 // — debe cargar después de ese archivo.
 
 function raw(value) {

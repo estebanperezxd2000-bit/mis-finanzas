@@ -8,7 +8,7 @@
    index.html DESPUÉS de ese script. No tuvo que partirse en dos
    archivos (a diferencia de Spotify/Encargos): su única integración
    es con las cuentas (`getSaldoFuente`, `sumarFuente`,
-   `buildFuentesOptsHtml`), ya definidas más arriba en index.html
+   `opcionesCuenta`), ya definidas más arriba en index.html
    antes de que este script se cargue — mismo caso que Mesada.
 
    Todas las funciones y el estado (`window.S.alcancia`) siguen
@@ -24,9 +24,9 @@
 const _ALC_KEY = 0x4D;
 // Ícono (SVG inline) que reemplaza al texto "••••" cuando el monto de un depósito está oculto.
 const _ALC_ICONO_OCULTO = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="6" viewBox="0 0 32 6" fill="currentColor" role="img" aria-label="Monto oculto" class="alc-svg-block"><circle cx="2" cy="3" r="2"/><circle cx="11.3333" cy="3" r="2"/><circle cx="20.6667" cy="3" r="2"/><circle cx="30" cy="3" r="2"/></svg>';
-// ── Libro (core-state.js) ─────────────────────────────────────────────────────────────────────────────────
+// ── Libro (js/core/cuentas-fuentes.js) ─────────────────────────────────────────────────────────────────────────────────
 // _ogAlc(ref, rev): cada sumar/descontarFuente deja en el libro { modulo:'alcancia', ref:<id del depósito> }. Con rev=true es una reversión (tipo 'reversion', mismo ref que lo que deshace).
-const _ogAlc = (ref, rev) => ({ origen: { modulo: 'alcancia', ref, rev: rev || undefined } });
+const _ogAlc = Libro.origen('alcancia');
 
 function _alcEncode(saldo){
   const raw = JSON.stringify({s: saldo});
@@ -49,7 +49,7 @@ function _initA(){
     window.S.alcancia = {
       saldoRegistrado: 0,
       depositos: 0,
-      fechaInicio: (typeof hoy==='function'?hoy():new Date().toISOString().slice(0,10)),
+      fechaInicio: hoy(),
       movimientos: [],
       historial: []
     };
@@ -71,9 +71,7 @@ function _getSaldoOfuscado(){
 /* ─── TIEMPO ────────────────────────────────────────────────────────────── */
 function _diasDesde(fechaStr){
   if(!fechaStr) return 0;
-  const inicio = new Date(fechaStr + 'T12:00:00');
-  const ahora  = new Date();
-  return Math.max(0, Math.round((ahora - inicio) / 86400000));
+  return Math.max(0, Fecha.diasEntre(fechaStr, hoy()));   // días de calendario (un solo criterio: Fecha.diasEntre)
 }
 function _fmtTiempo(dias){
   if(dias === 0) return 'Hoy';
@@ -91,7 +89,7 @@ function _fmtTiempo(dias){
  */
 function _alcDesgloseHtml(movimientos, fmtFn){
   if(!movimientos || !movimientos.length) return '';
-  const f = typeof fmtFn === 'function' ? fmtFn : v => '$' + Math.round(v).toLocaleString('es-CO');
+  const f = typeof fmtFn === 'function' ? fmtFn : fmt;
 
   // Acumular por categoría
   let yo      = 0; // yo-directo + yo-cuenta + tu parte del split + cobro-deuda (es plata tuya)
@@ -166,30 +164,31 @@ let _alcSplitMode = false; // true = "Dividir" activo (varios orígenes)
 function _alcNombreFuente(f){
   if(!f) return '';
   if(typeof fuenteLabel === 'function'){ try { const l = fuenteLabel(f); if(l) return l; } catch(e){} }
-  if(f === 'nequi') return 'Nequi';
-  if(f === 'efectivo') return 'Efectivo';
-  if(f.startsWith('cajita:')){ const c=(window.S&&window.S.cajitas||[]).find(x=>x.id===f.split(':')[1]); return c?c.nombre:'Cajita'; }
-  if(f.startsWith('custom:')){ const c=getCuentaCustom(f.split(':')[1]); return c?c.nombre:'Cuenta'; }
+  if(Fuente.esCajita(f)){ const c=(window.S&&window.S.cajitas||[]).find(x=>x.id===f.split(':')[1]); return c?c.nombre:'Cajita'; }
+  if(esFuenteCuenta(f)){ const c=getCuentaDeFuente(f); return c?c.nombre:'Cuenta'; }
   return f;
 }
 
 // <option>s del selector de origen: cuentas con saldo + orígenes sin cuenta (+ deuda si aplica).
 // `conDeuda` solo en modo de un único origen (un cobro de deuda necesita elegir persona/préstamo).
 function _alcOrigenOptsHtml(selected, conDeuda){
-  const tmp = document.createElement('select');
-  tmp.innerHTML = (typeof buildFuentesOptsHtml === 'function')
-    ? buildFuentesOptsHtml({incluirTC:false, placeholder:'Elige de dónde viene'})
-    : '<option value="">Elige de dónde viene</option>';
-  _alcFiltrarFuentesPorSaldo(tmp);
-  const ph = tmp.querySelector('option[value=""]');
-  if(ph) ph.textContent = 'Elige de dónde viene'; // _alcFiltrarFuentesPorSaldo pone un texto de "sin cuentas" que aquí no aplica
-  let extra = '<optgroup label="Sin cuenta">'
-    + Object.keys(_ALC_ORIGENES_SIN_CUENTA).map(v => `<option value="${v}">${_ALC_ORIGENES_SIN_CUENTA[v].label}</option>`).join('')
-    + '</optgroup>';
-  if(conDeuda && Deudas.lista('favor').some(d => typeof getDeudorSaldo === 'function' && getDeudorSaldo(d) > 0.5)){
-    extra += `<optgroup label="Deudas"><option value="${_ALC_VALOR_DEUDA}">Me pagaron una deuda</option></optgroup>`;
-  }
-  return tmp.innerHTML + extra;
+  // Cuentas con más de $50 (preset ALCANCIA; las tarjetas no se ofrecen) + los orígenes sin cuenta como extra.
+  return opcionesCuenta({
+    selectedVal: selected,
+    sentido: 'sale',
+    preset: 'ALCANCIA',
+    placeholder: 'Elige de dónde viene',
+    sinOpcionesTexto: 'Elige de dónde viene',
+    extra: () => {
+      let extra = '<optgroup label="Sin cuenta">'
+        + Object.keys(_ALC_ORIGENES_SIN_CUENTA).map(v => `<option value="${v}">${_ALC_ORIGENES_SIN_CUENTA[v].label}</option>`).join('')
+        + '</optgroup>';
+      if(conDeuda && Deudas.lista('favor').some(d => typeof getDeudorSaldo === 'function' && getDeudorSaldo(d) > 0.5)){
+        extra += `<optgroup label="Deudas"><option value="${_ALC_VALOR_DEUDA}">Me pagaron una deuda</option></optgroup>`;
+      }
+      return extra;
+    },
+  });
 }
 
 // valor de un <select> de origen → parte { origen, monto, [fuente] }
@@ -459,30 +458,6 @@ function _getMoneyVal(id){
   return parseFloat((el.value||'').replace(/\./g,'').replace(',','.')) || 0;
 }
 
-/* ─── FILTRAR SELECTOR DE FUENTE POR SALDO ─────────────────────────────────
-   Solo aplica a selectores de ORIGEN de plata (de dónde sale el dinero que
-   entra a la alcancía) — nunca al selector de destino del destape, donde la
-   plata entra a la cuenta y no hace falta saldo previo. Umbral fijo: se
-   considera "sin plata utilizable" una cuenta con saldo <= 50 pesos.        */
-const _ALC_SALDO_MIN_FUENTE = 50;
-function _alcFiltrarFuentesPorSaldo(selectEl){
-  if(!selectEl || typeof getSaldoFuente !== 'function') return;
-  let quedanCuentas = false;
-  Array.from(selectEl.querySelectorAll('option')).forEach(opt => {
-    if(!opt.value) return; // placeholder ("Seleccionar cuenta"), nunca se filtra
-    const saldo = getSaldoFuente(opt.value) || 0;
-    if(saldo <= _ALC_SALDO_MIN_FUENTE){
-      opt.remove();
-    } else {
-      quedanCuentas = true;
-    }
-  });
-  if(!quedanCuentas){
-    const ph = selectEl.querySelector('option[value=""]');
-    if(ph) ph.textContent = 'No tienes cuentas con saldo disponible';
-  }
-}
-
 /* ─── "WRAPPED" DE ALCANCÍA: progreso de ahorro entre ciclos ──────────────
    Todo se calcula en vivo desde S.alcancia.historial — no se guarda ningún
    número nuevo aparte (mismo principio que el resto de la app: los
@@ -543,7 +518,7 @@ function _alcWrappedBarrasSvg(hist){
    Alcancía). '' si no hay al menos 2 ciclos destapados para comparar. */
 function _alcWrappedProgresoHtml(hist, fmtFn){
   if(!hist || hist.length < 2) return '';
-  const fmt2 = fmtFn || (typeof fmt==='function' ? fmt : v=>'$'+Math.round(v).toLocaleString('es-CO'));
+  const fmt2 = fmtFn || fmt;
   const racha = _alcRachaAhorro(hist);
   const mejor = _alcMejorCiclo(hist);
   const ultimo = hist[hist.length-1];
@@ -581,13 +556,13 @@ function _actualizarDiferenciaHint(){
   }
 }
 
-/* ─── OPEN SHEET HOOK ─── ver js/core/hook-global.js ───────────────────── */
-hookGlobal('openSheet', function(id){
-  if(id === 'alcancia-depositar'){
+/* ─── OPEN SHEET HOOK ─── ver js/core/ui.js ───────────────────────────── */
+Ui.hoja('alcancia-depositar', function(){
+  {
     _inyectarAlcanciaSheets();
     setTimeout(()=>{
       const fd = document.getElementById('alc_dep_fecha');
-      if(fd) fd.value = (typeof hoy==='function'?hoy():new Date().toISOString().slice(0,10));
+      if(fd) fd.value = hoy();
       const mi = document.getElementById('alc_dep_monto');
       if(mi) mi.value = '';
       const desc = document.getElementById('alc_dep_desc');
@@ -615,15 +590,15 @@ hookGlobal('openSheet', function(id){
       _alcOrigenActualizar();
     }, 30);
   }
-  if(id === 'alcancia-destapar'){
+}, { fase: 'despues', key: 'alcancia-depositar' });
+Ui.hoja('alcancia-destapar', function(){
+  {
     _inyectarAlcanciaSheets();
     setTimeout(()=>{
       const mi = document.getElementById('alc_real_monto');
       if(mi) mi.value = '';
       const dest = document.getElementById('alc_destino');
-      if(dest && typeof buildFuentesOptsHtml==='function'){
-        dest.innerHTML = buildFuentesOptsHtml({incluirTC:false,placeholder:'Seleccionar cuenta'});
-      }
+      if(dest) dest.innerHTML = opcionesCuenta({placeholder:'Seleccionar cuenta'});
       const hint = document.getElementById('alc_diferencia_hint');
       if(hint) hint.textContent = '';
       // Resumen
@@ -649,7 +624,7 @@ hookGlobal('openSheet', function(id){
       }
     }, 30);
   }
-});
+}, { fase: 'despues', key: 'alcancia-destapar' });
 
 /* ─── RENDER PANTALLA ───────────────────────────────────────────────────── */
 window.renderAlcancia = function(){
@@ -695,7 +670,7 @@ window.renderAlcancia = function(){
       movsEl.style.display = '';
       const movs = (a.movimientos || []);
       if(!movs.length){
-        movsEl.innerHTML = '<div class="feed-empty">Aún no hay movimientos en esta alcancía.</div>';
+        movsEl.innerHTML = emptyInline('Aún no hay movimientos en esta alcancía.',{grande:true});
       } else {
         const tipoIcon = { yo: '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="alc-ico-v"><ellipse cx="12" cy="17" rx="8" ry="5"/><path d="M4 17v-4c0-2.76 3.58-5 8-5s8 2.24 8 5v4"/><path d="M4 13c0-2.76 3.58-5 8-5s8 2.24 8 5"/></svg>', regalo: '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="alc-ico-v"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>', mandado: '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="alc-ico-v"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>', split: '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="alc-ico-v"><path d="M17 11H9l-2-2H3v8h4l2 2h8l4-4v-4h-4z"/><path d="M9 11V7l4-4 4 4v4"/></svg>', 'cobro-deuda': '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="alc-ico-v"><circle cx="12" cy="12" r="10"/><polyline points="8 12 12 16 16 12"/><line x1="12" y1="8" x2="12" y2="16"/></svg>' };
         const tipoColor = { yo: 'alc-c-accent', regalo: 'alc-c-amber', mandado: 'alc-c-amber', split: 'alc-c-amber', 'cobro-deuda': 'alc-c-accent' };
@@ -766,8 +741,7 @@ window.renderAlcancia = function(){
           const difColor = Math.abs(dif) < 1 ? 'alc-c-text3' : dif > 0 ? 'alc-c-accent' : 'alc-c-red';
           const histIdx = hist.length - i; // número de alcancía (1-based, más reciente = mayor)
           const desgloseId = 'alc-hist-desglose-' + histIdx;
-          const desgloseFmt = typeof fmt === 'function' ? fmt : v => '$' + Math.round(v).toLocaleString('es-CO');
-          const desgloseHtml = _alcDesgloseHtml(h.movimientos || [], desgloseFmt);
+          const desgloseHtml = _alcDesgloseHtml(h.movimientos || [], fmt);
           return `
           <div class="card card-sm alc-fila-mb8">
             <div class="row alc-fila-mb6">
@@ -817,7 +791,7 @@ window.alcanciaIniciarNueva = function(){
   const a = window.S.alcancia;
   a.saldoRegistrado = 0;
   a.depositos = 0;
-  a.fechaInicio = (typeof hoy==='function'?hoy():new Date().toISOString().slice(0,10));
+  a.fechaInicio = hoy();
   a.movimientos = [];
   if(!a.historial) a.historial = [];
   delete a._destapada;
@@ -864,13 +838,8 @@ window.alcanciaConfirmarDeposito = function(){
   const unica = partes.length === 1;
 
   /* ── 2. Validar ── */
-  for(const p of partes){
-    if(p.origen !== 'cuenta') continue;
-    const saldoDisp = typeof getSaldoFuente==='function' ? getSaldoFuente(p.fuente) : 0;
-    if(p.monto > saldoDisp + 0.5){
-      err(unica ? 'Saldo insuficiente en la cuenta seleccionada' : 'Saldo insuficiente en ' + _alcNombreFuente(p.fuente)); return;
-    }
-  }
+  const vSal = Plata.validarSalidas(partes.filter(p => p.origen === 'cuenta')); // suma por cuenta (núcleo)
+  if(!vSal.ok){ err(vSal.motivo); return; }
 
   // Cobro de deuda: persona + (si aplica) préstamo, y que el monto no supere lo que todavía debe.
   let cobroDeudorId = '', cobroGrupoId = '', cobroDeudorNombre = '';
@@ -888,7 +857,7 @@ window.alcanciaConfirmarDeposito = function(){
     }
     const saldoDisp = cobroGrupoId ? getGrupoSaldo(dCheck, cobroGrupoId) : getDeudorSaldo(dCheck);
     if(monto > saldoDisp + 0.5){
-      err(`${escHtml(dCheck.nombre)} solo debe ${typeof fmt==='function'?fmt(saldoDisp):saldoDisp}`); return;
+      err(`${dCheck.nombre} solo debe ${typeof fmt==='function'?fmt(saldoDisp):saldoDisp}`); return;
     }
   }
 
@@ -903,7 +872,7 @@ window.alcanciaConfirmarDeposito = function(){
     if(p.origen === 'cuenta'){
       // Cambio 2026-09-27: un depósito desde una cuenta real es un TRASLADO, no un
       // gasto — antes vivía en S.gastosVar con _esAlcancia:true, obligando a que
-      // _esGastoVarNoReal()/busqueda-global.js/actividad_reciente.js lo excluyeran
+      // _esGastoVarNoReal()/busqueda-global.js/actividad-reciente.js lo excluyeran
       // a mano en cada pantalla. Ahora se registra como transferencia (origen: la
       // cuenta, destino: 'alcancia'), igual que cualquier traslado entre cuentas
       // (ver docs/alcancia.md §4 y CHANGELOG.md#alcancia). El monto sigue oculto en
@@ -929,10 +898,9 @@ window.alcanciaConfirmarDeposito = function(){
       window.S.movimientos.push({
         id: p.movId,
         tipo: 'entrada',
-        // NO cambiar `fuente`: inicio.js (ingresosMes) solo suma entradas de S.movimientos cuya fuente sea
-        // nequi/efectivo/cajita:/custom:, así que con otra fuente este ingreso dejaría de contar en el mes.
-        // No mueve ningún saldo y no aparece en el historial de Efectivo (cuentas.js lo salta).
-        fuente: 'efectivo',
+        // Plata que nunca estuvo en una cuenta: la fuente es la propia alcancía, no una cuenta (el ingreso cuenta en el mes
+        // igual: entradasIngresoReal() no mira la fuente). No mueve ningún saldo y ningún historial de cuenta lo lista.
+        fuente: 'alcancia',
         monto: p.monto,
         fecha,
         desc: unica ? (descVal || info.desc) : (descVal ? descVal + ' (' + info.corto + ')' : info.desc),
@@ -1027,7 +995,7 @@ window.alcanciaConfirmarDestapar = function(){
   const a = window.S.alcancia;
   const saldoReg = a.saldoRegistrado || 0;
   const dif = saldoReal - saldoReg;
-  const hoyStr = typeof hoy==='function' ? hoy() : new Date().toISOString().slice(0,10);
+  const hoyStr = hoy();
 
   // ── Movimiento 1: transferir saldo registrado desde alcancía → destino
   // Los gastos marcados _esAlcancia ya descontaron el dinero de las cuentas.
@@ -1093,7 +1061,7 @@ window.alcanciaConfirmarDestapar = function(){
 
   // ── Resetear saldoRegistrado: ya se transfirió arriba a la cuenta destino
   // vía _sumarASaldo(). Si se deja el valor viejo, calcPatrimonioTotal()
-  // (core-state.js) lo sigue sumando SIEMPRE (tapada o destapada, por
+  // (el núcleo) lo sigue sumando SIEMPRE (tapada o destapada, por
   // diseño — es plata real), y como la alcancía queda en estado
   // `_destapada` sin reiniciar hasta que el usuario elija "Iniciar nueva
   // alcancía", ese monto queda contado DOS veces (una en la cuenta destino,
@@ -1131,7 +1099,7 @@ window.alcanciaConfirmarDestapar = function(){
   // ── Preparar resultado para mostrar
   const resBody = document.getElementById('alc-resultado-body');
   if(resBody){
-    const fmt2 = typeof fmt==='function' ? fmt : v=>'$'+Math.round(v).toLocaleString('es-CO');
+    const fmt2 = fmt;
     const hist = a.historial;
     const prev = hist.length >= 2 ? hist[hist.length - 2] : null;
     let comparHtml = '';
@@ -1196,7 +1164,7 @@ window.alcanciaConfirmarDestapar = function(){
   // del DOM: no hay nada que sincronizar. Las cajitas Nu sí siguen espejadas en su input.
   if(typeof fmtInput === 'function'){
     // Si el destino fue una cajita, sincronizar su input de saldo
-    if(destino && destino.startsWith('cajita:')){
+    if(destino && Fuente.esCajita(destino)){
       const _cajId = destino.split(':')[1];
       const _cajEl = document.getElementById('cs_' + _cajId);
       const _caj = (window.S.cajitas||[]).find(c=>c.id===_cajId);
@@ -1234,7 +1202,7 @@ function _sumarASaldo(fuente, monto){
   // c.movimientos: las filas del destape ya viven en S.movimientos (transferencia y "Dinero extra…") y S.gastosVar
   // (faltante), y el historial de la cuenta las lee de ahí. Antes se duplicaban acá como 'ingreso'/'egreso'
   // (2026-09-29), y ese 'ingreso' de "Alcancía destapada" (plata que ya era tuya) contaba como ingreso del mes.
-  const cuenta = fuente.startsWith('cajita:')
+  const cuenta = Fuente.esCajita(fuente)
     ? (window.S.cajitas||[]).find(x=>x.id===fuente.split(':')[1])
     : getCuentaDeFuente(fuente);
   if(cuenta) ajustarSaldoCuenta(fuente, (cuenta.saldo||0) + monto, {tipo:'movimiento', desc:'Alcancía', origen:{modulo:'alcancia'}});
@@ -1317,10 +1285,10 @@ window.alcanciaEliminarDeposito = async function(movId){
     }
   }
 
-  const dialogoTexto = entry.tipo === 'cobro-deuda'
-    ? `¿Eliminar este depósito de ${typeof fmt==='function'?fmt(entry.monto):entry.monto} del ${entry.fecha}? Se le volverá a sumar esa plata a la deuda de la persona.`
-    : `¿Eliminar este depósito de ${typeof fmt==='function'?fmt(entry.monto):entry.monto} del ${entry.fecha}? ${entry.fuenteOrigen || (entry.tipo === 'multi' && (entry.partes||[]).some(pt => pt.origen === 'cuenta')) ? 'Se devolverá el dinero a la cuenta de origen.' : 'No afecta ningún saldo (fue un ingreso registrado sin mover plata real).'}`;
-  const ok = await dialogo('Eliminar depósito', dialogoTexto, 'Eliminar', true);
+  const dialogoDetalle = entry.tipo === 'cobro-deuda'
+    ? 'Se le volverá a sumar esa plata a la deuda de la persona.'
+    : (entry.fuenteOrigen || (entry.tipo === 'multi' && (entry.partes||[]).some(pt => pt.origen === 'cuenta')) ? 'Se devolverá el dinero a la cuenta de origen.' : 'No afecta ningún saldo (fue un ingreso registrado sin mover plata real).');
+  const ok = await confirmarEliminar({ titulo: 'Eliminar depósito', objeto: `este depósito de ${fmt(entry.monto)} del ${entry.fecha}`, detalle: dialogoDetalle });
   if(!ok) return;
 
   return _alcanciaEjecutarEliminarDeposito(a, idx, entry);
@@ -1462,10 +1430,8 @@ function _inyectarMasMenuItem(){
   });
 }
 
-/* ─── showScreen HOOK — ver js/core/hook-global.js ──────────────────────── */
-hookGlobal('showScreen', function(name){
-  if(name === 'alcancia') window.renderAlcancia();
-});
+/* ─── showScreen HOOK — ver js/core/ui.js ──────────────────────── */
+Ui.pantalla('alcancia', function(){ window.renderAlcancia(); }, { key: 'alcancia-render' });
 
 /* ─── INTEGRACIÓN CON data-screen en el mas-menu ────────────────────────── */
 // El sistema nativo usa data-screen en .mas-item → querySelectorAll detecta el click.
@@ -1516,5 +1482,18 @@ if(window._dataLoaded){
     onGiveUp: () => console.warn('[alcancia] window.S/_dataLoaded no aparecieron tras 40 intentos (~12s) — Alcancía no se inicializó.')
   });
 }
+
+// Sonda de la huella (js/core/huella.js): saldo registrado y su copia ofuscada, depósitos y cada ciclo ya destapado (con la suma de
+// los movimientos que guarda). Vive dentro de la IIFE porque _getSaldoOfuscado es privado; corre aislada (lee el S de la copia).
+registrarSonda('alcancia',function(st){
+  const a=st.alcancia;
+  if(!a) return {existe:false,entidades:{}};
+  const suma=l=>(l||[]).reduce((x,m)=>x+((m&&m.monto)||0),0);
+  return {
+    existe:true, entidades:{alcancia:{saldo:a.saldoRegistrado||0}}, destapada:!!a._destapada, saldoRegistrado:a.saldoRegistrado||0, depositos:a.depositos||0,
+    ofuscado:st.alcanciaSaldoOfuscado?_getSaldoOfuscado():null, sumaMovimientos:suma(a.movimientos),
+    ciclos:(a.historial||[]).map(h=>({fechaFin:h.fechaFin||null,saldoRegistrado:h.saldoRegistrado||0,depositos:h.depositos||0,saldoReal:h.saldoReal==null?null:h.saldoReal,diferencia:h.diferencia==null?null:h.diferencia,sumaMovimientos:suma(h.movimientos)}))
+  };
+});
 
 })(); // end IIFE

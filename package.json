@@ -4,7 +4,11 @@
   "description": "Tests unitarios de las funciones de cálculo puras de mis-finanzas. No es parte del deploy (GitHub Pages solo sirve index.html/js/css) — es tooling de desarrollo, sin bundler ni transpilado, en línea con la arquitectura sin build tool de la app.",
   "scripts": {
     "test": "node --test",
-    "smoke": "node scripts/smoke-browser.js"
+    "smoke": "node scripts/smoke-browser.js",
+    "smoke:wrapped": "node scripts/smoke-wrapped.js",
+    "smoke:cierre": "node scripts/smoke-cierre.js",
+    "sellar": "node scripts/sellar-sw.js",
+    "sellar:check": "node scripts/sellar-sw.js --check"
   },
   "engines": {
     "node": ">=20"

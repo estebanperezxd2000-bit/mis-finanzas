@@ -10,17 +10,12 @@
    Piloto: "alcancia" y "comprometida" en GROUPS por ahora (ver
    CHANGELOG.md). El resto de las pantallas sigue cargando de entrada
    como siempre — Loader.GROUPS[name] === undefined para ellas, así
-   que showScreen() (sheet-stack.js) ni siquiera pasa por este archivo
+   que showScreen() (navegacion.js) ni siquiera pasa por este archivo
    para esos casos.
 
    ── Por qué en orden y no en paralelo (Promise.all) ──────────────
-   El patrón "parchar la función original" (const _orig = X; X =
-   function(){...}) usado en spotify-personas.js/encargos-personas.js/
-   prestado-personas.js/deudores-personas.js/alcancia.js exige que cada
-   archivo cargue DESPUÉS de que el anterior ya haya definido lo que va
-   a parchar. Cargar los archivos de un grupo en paralelo podría hacer
-   que el segundo intente parchar una función que el primero todavía no
-   definió. Se cargan uno por vez, en el orden declarado en GROUPS.
+   Un archivo de un grupo puede usar, al cargar, lo que definió el anterior (p. ej. registrar ganchos de Ui sobre funciones del
+   primero). Se cargan uno por vez, en el orden declarado en GROUPS.
    ═══════════════════════════════════════════════════════════════ */
 
 const Loader = (function () {
@@ -35,7 +30,7 @@ const Loader = (function () {
   const GROUPS = {
     alcancia: ['js/modules/alcancia.js'],
     // (docs/auditoria-tecnica.md #4) Segundo grupo lazy. A diferencia de
-    // Alcancía, plata_comprometida.js NO tenía su pantalla ni su ítem de
+    // Alcancía, plata-comprometida.js NO tenía su pantalla ni su ítem de
     // menú "Más" como HTML estático — los auto-inyectaba en tiempo de
     // ejecución (_injectScreen()/_injectMasItem(), ambas con guard por
     // id, así que siguen ahí sin cambios y ahora son no-op). Se copió
@@ -43,12 +38,12 @@ const Loader = (function () {
     // #mas-comprometida) para que el ítem de menú exista desde el
     // arranque — si no, no habría nada que el usuario pudiera tocar
     // para disparar la carga lazy en primer lugar. Ver CHANGELOG.md#arranque.
-    comprometida: ['js/modules/plata_comprometida.js'],
+    comprometida: ['js/modules/plata-comprometida.js'],
     // Tercer grupo lazy. Más simple que los dos anteriores: #screen-config
     // y #mas-config YA eran HTML estático desde antes (no hubo que copiar
     // nada), y el único caller externo de una función suya (renderCatsConfig,
-    // desde sheet-stack.js) ya tenía guard `typeof` desde la sesión del
-    // piloto de Alcancía. gastos.js quedó afuera a propósito: sheet-stack.js
+    // desde navegacion.js) ya tenía guard `typeof` desde la sesión del
+    // piloto de Alcancía. gastos.js quedó afuera a propósito: navegacion.js
     // (núcleo) parchea addGastoVar/addGastoFijo a nivel superior de SU
     // propio archivo — haría lazy-loading imposible sin tocar antes ese
     // núcleo. Ver CHANGELOG.md#arranque.
@@ -69,13 +64,13 @@ const Loader = (function () {
     // y el botón que dispara la carga ya son estáticos, y ese botón vive
     // en configuracion.js, que solo es alcanzable si Configuración ya
     // cargó — mismo prerequisito que ya existía antes de esto.
-    // Requirió UN cambio real en actividad_reciente.js (no solo sacar el
+    // Requirió UN cambio real en actividad-reciente.js (no solo sacar el
     // <script>): el módulo se auto-renderizaba por DOMContentLoaded/
     // appDataLoaded/clic, los 3 eventos que con carga lazy ya pasaron
     // para cuando el archivo llega a existir — se agregó un cuarto
     // trigger sin condición de evento al final del archivo. Ver ese
     // archivo y CHANGELOG.md#arranque para el detalle.
-    historial: ['js/modules/actividad_reciente.js'],
+    historial: ['js/modules/actividad-reciente.js'],
     // Quinto grupo lazy (2026-08-02). #screen-mesada y #mas-mesada ya eran
     // HTML estático desde antes, así que no hubo que copiar/inyectar nada
     // (mismo caso que Configuración/Actividad Reciente, a diferencia de
@@ -91,12 +86,12 @@ const Loader = (function () {
     // guard — queda anotado como hallazgo abierto, no investigado acá.
     mesada: ['js/modules/mesada.js'],
     // Sexto grupo lazy (2026-08-02, ronda de resolver de raíz el acoplamiento
-    // spotify↔tarjetas_credito). A diferencia de los 5 anteriores, este no
+    // spotify↔tarjetas-credito). A diferencia de los 5 anteriores, este no
     // partió de "¿cuál es la próxima pantalla candidata?" sino de un bug de
     // acoplamiento ya encontrado: spotify.js llamaba funciones de
-    // tarjetas_credito.js (getTCById/tcCupoDisponible/tcRecalcular) asumiendo
+    // tarjetas-credito.js (getTCById/tcCupoDisponible/tcRecalcular) asumiendo
     // que ya estaba cargado porque siempre cargaba eager. En vez de solo
-    // documentar la decisión de producto, se resolvió de raíz: tarjetas_credito
+    // documentar la decisión de producto, se resolvió de raíz: tarjetas-credito
     // pasa a ser lazy de verdad, y los 3 puntos en spotify.js (más 2 en
     // movimientos.js: tcEliminarCompraInterna/tcEliminarPagoInterna) ya esperan
     // Loader.ensure('tarjetas') antes de usar esas funciones — ver
@@ -105,18 +100,18 @@ const Loader = (function () {
     // Mesada/Configuración). Sí requirió 2 cambios reales dentro del propio
     // archivo (ver su header): el wiring de botones que esperaba
     // 'DOMContentLoaded' se corrigió a top-level (mismo fix que
-    // actividad_reciente.js), y tcNormalizarTarjetas()/renderTCDashboard()
-    // (llamadas desde refresh()/save() en core-state.js, no desde acá) ya
+    // actividad-reciente.js), y tcNormalizarTarjetas()/renderTCDashboard()
+    // (llamadas desde refresh()/save() en js/core/refresh.js, no desde acá) ya
     // tienen guard typeof — confirmado con el archivo real, ver
     // auditoria-tecnica.md. Su wrapper de abrirDetalleMov (Events.registerAll
     // más abajo en el archivo) ya resolvía el nombre en tiempo de click, no
     // de carga, así que es lazy-safe sin tocarlo. Efecto secundario aceptado,
-    // no corregido: el parche a window.mostrarAlertaFuente al final del
+    // no corregido: el gancho Ui.en("fuente-alerta") al final del
     // archivo (hint "se carga a la TC" al elegir una tarjeta como fuente en
     // Gastos/Encargos/Préstamos) no aplica hasta que el usuario visite
     // Tarjetas por primera vez — el hint simplemente no aparece hasta
     // entonces, no rompe nada.
-    tarjetas: ['js/modules/tarjetas_credito.js'],
+    tarjetas: ['js/modules/tarjetas-credito.js'],
     // Séptimo a undécimo grupo lazy (ronda de modularización de spotify/
     // prestado/cuentas/analisis/encargos — ver auditoria-tecnica.md). Los 5
     // se auditaron línea por línea contra el mismo criterio de siempre
@@ -128,18 +123,16 @@ const Loader = (function () {
     //    DOMContentLoaded que, con carga lazy, nunca dispara (el evento ya
     //    pasó) — se corrigió a top-level, ver cabecera de ese bloque en
     //    spotify.js.
-    // 2. sheet-stack.js (núcleo, siempre eager) tenía dos referencias sin
+    // 2. navegacion.js (núcleo, siempre eager) tenía dos referencias sin
     //    guard a globales de estos módulos que corrían en CADA llamada a
     //    showScreen(), no solo al entrar a esas pantallas: el bloque de
     //    reset de Préstamos (deudorActualId/miDeudaActualId/
-    //    prestamosTabActiva) y la captura de addSpotify dentro de
-    //    _injectErrorSpans(). Ambos ya tienen guard typeof — ver
-    //    sheet-stack.js.
+    //    prestamosTabActiva), que ya tiene guard typeof — ver navegacion.js.
     // #screen-spotify/#screen-prestamos/#screen-cuentas/#screen-encargos ya
     // eran HTML estático desde antes (mismo caso que Mesada/Tarjetas), y
     // #screen-analisis vive dentro de "Más", también estático — ninguno
     // necesitó copiar/inyectar HTML. Se agregaron ramas de re-render en
-    // showScreen() (sheet-stack.js) para spotify y prestamos, replicando el
+    // showScreen() (navegacion.js) para spotify y prestamos, replicando el
     // fix que ya se había hecho para tarjetas — cuentas/encargos/analisis ya
     // las tenían desde antes (antes de volverse lazy, esas ramas ya
     // corrían, solo que sobre un módulo cargado de entrada).
@@ -147,18 +140,14 @@ const Loader = (function () {
     prestamos: ['js/modules/prestado.js'],
     // cuentas: REACTIVADO como lazy (2026-08-13, segundo intento). El primer
     // intento se revirtió por 3 ReferenceError encadenados al arrancar
-    // (nuTotal/getNuTasaGlobal llamados sin guard
-    // desde core-state.js y firebase-sync.js). Se recibieron y auditaron
-    // los 5 archivos núcleo que faltaban (core-state.js, firebase-sync.js,
-    // pin-bio.js, gastos-fijos-progress.js, mejoras.js — este último
-    // fusionado con mejoras-adicionales.js el 2026-09-10, ver CHANGELOG.md):
+    // (ahorroTotal/getTasaCuenta llamados sin guard
+    // desdel núcleo y firebase-sync.js). Se recibieron y auditaron
+    // los archivos núcleo (el núcleo, firebase-sync.js, pin-bio.js, gastos-fijos-progress.js, …):
     // los tres puntos del error, más calcC/calcCDT/materializarIntereses/
-    // registrarTasaNuHistorial/verificarVencimientosCDT (todo lo demás que
+    // registrarTasaHistorial/verificarVencimientosCDT (todo lo demás que
     // cuentas.js expone y que estos archivos llegan a tocar), ya tienen
     // guard `typeof` — confirmado contra el código real, no por inferencia.
-    // pin-bio.js/mejoras-adicionales.js/gastos-fijos-progress.js no llaman
-    // ninguna función de cuentas.js. Ver auditoria-tecnica.md, corrección
-    // del 2026-08-13.
+    // pin-bio.js/gastos-fijos-progress.js no llaman ninguna función de cuentas.js.
     // El grupo carga DOS archivos, uno tras otro: nu.js (cajitas, tasa, CDTs, metas, chequeo) y cuentas.js (selector, cuentas
     // simples, historial, agregar/retirar/transferir). Ninguno usa al otro al cargar, solo cuando una función corre, así que el
     // orden no es obligatorio; se deja nu.js primero por convención.
@@ -173,9 +162,9 @@ const Loader = (function () {
     // diferencia de Mesada/Tarjetas, que sí tenían callers externos con
     // guard typeof que auditar), y sus únicas dependencias de datos
     // (_esGastoVarNoReal, _esEntradaEspejoNoIngreso) viven en archivos
-    // núcleo eager (calc-helpers.js/core-state.js), no en otro módulo
+    // núcleo eager (calc-helpers.js y el núcleo), no en otro módulo
     // lazy — así que no hace falta Loader.ensure() encadenado como sí
-    // necesita spotify.js con tarjetas_credito.js. La única lectura
+    // necesita spotify.js con tarjetas-credito.js. La única lectura
     // cross-módulo (racha de Alcancía) es opcional y con guard typeof —
     // si Alcancía no cargó todavía, esa cifra puntual simplemente no se
     // muestra (ver wrapped.js).
@@ -184,6 +173,11 @@ const Loader = (function () {
     // recién cerrado — ver js/core/wrapped-gate.js y wrapped.md §7decies).
     // ensureAll() más abajo ya no lo precarga fuera de esa ventana.
     wrapped: ['js/modules/wrapped.js'],
+    // Grupo SOLO bajo demanda (2026-10-31): huella de invariantes y cierre de períodos (~34 KB, ~12 KB comprimidos). Se usa al abrir
+    // Configuración (medidor «Tamaño de tus datos») y desde la consola. A diferencia del resto, ensureAll() NO lo precarga (ver
+    // SOLO_BAJO_DEMANDA). Orden: huella.js antes que cierre.js. Las sondas de los módulos (tarjetas, encargos, alcancía, Wrapped) llegan
+    // antes y esperan en cola (registrarSonda, js/core/persistencia.js); huella.js la vacía al cargarse.
+    cierre: ['js/core/huella.js', 'js/core/cierre.js'],
   };
 
   const loaded = new Set();   // grupos ya cargados (no se vuelven a pedir)
@@ -224,9 +218,9 @@ const Loader = (function () {
   // ── Precarga total en segundo plano ───────────────────────────────────────
   // Por qué existe: dos módulos lazy alimentan cálculos que corren fuera de
   // sus propias pantallas — cuentas.js (calcC, calcCDT, calcRendimientoCDTsMes,
-  // nuTotal) y prestado.js (getDeudorSaldoPatrimonio, totalMisDeudasPendiente,
+  // ahorroTotal) y prestado.js (getDeudorSaldoPatrimonio, totalMisDeudasPendiente,
   // totalPrestadoPendiente):
-  //   - snapshotPatrimonio() (core-state.js, corre en cada save()) no graba el
+  //   - snapshotPatrimonio() (js/core/patrimonio.js, corre en cada save()) no graba el
   //     punto del historial de patrimonio hasta que calcC, calcCDT,
   //     getDeudorSaldoPatrimonio y totalMisDeudasPendiente existan
   //     (_patrimonioDependenciasListas): sin la precarga, una sesión donde el
@@ -272,8 +266,12 @@ const Loader = (function () {
   // ensureAll() corre tras 'appDataLoaded', así que S.modulos ya es el real.
   const _MODULO_DE_GRUPO = { mesada: 'mesada', spotify: 'spotify' };
 
+  // Grupos que NUNCA se precargan: se piden solo cuando se necesitan (ensure('cierre')).
+  const SOLO_BAJO_DEMANDA = new Set(['cierre']);
+
   function ensureAll() {
     const grupos = Object.keys(GROUPS).filter(g => {
+      if (SOLO_BAJO_DEMANDA.has(g)) return false;
       if (g === 'wrapped') {
         return typeof window._wrappedDisponible === 'function' && window._wrappedDisponible();
       }
@@ -290,7 +288,7 @@ const Loader = (function () {
   // CHANGELOG.md#infraestructura--seguridad): el disparo inmediato de acá
   // abajo SÍ contaba dentro de la ventana que Lighthouse mide como Total
   // Blocking Time. Prueba encontrada en los propios reportes: "Avoid long
-  // main-thread tasks" mostraba tareas de cuentas.js/plata_comprometida.js/
+  // main-thread tasks" mostraba tareas de cuentas.js/plata-comprometida.js/
   // alcancia.js/import-validado.js corriendo varios segundos después del
   // primer pintado (una de 106ms a los 8.6s de carga), y "Reduce unused
   // JavaScript" marcaba cuentas.js con 76% de su peso sin usar — confirma

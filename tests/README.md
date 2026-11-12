@@ -1,16 +1,18 @@
 # Tests unitarios — funciones de cálculo puras
 
+**Organización (2026-11-06):** un archivo por sección, con un bloque `describe` por tema. `nucleo`, `cuentas`, `libro`, `prestamos`, `mesada`, y los agrupados: `finanzas` (escenarios, salud, reglas, plan de deudas, cobros), `cierre-wrapped` (huella, cierre, Wrapped guardado), `sesion-y-despliegue` (PIN, sync, sello del SW) e `interfaz` (estilos, innerHTML, Refresh, filtros de Gastos). Los nombres de los `describe` son los de los archivos de antes, así que `node --test --test-name-pattern="huella"` sigue encontrando cada suite.
+
 Cubre, corridas contra el código real de la app (sin copiarlo ni
 modificarlo, usando `vm` para simular cómo el navegador carga
 `<script defer>` clásicos — ver `tests/support/load-app.js`):
 
-- `calcPatrimonioTotal()` y su fuente única `calcPatrimonioDesglose()` / `calcPatrimonioVisible()` / `calcLiquidez()` — `js/core/core-state.js`. La suite «patrimonio — fuente única» (`nucleo.test.js`) comprueba que hero, historial, `medirPatrimonioParaHistorial` y Salud dan el mismo número con deudas y alcancía, y recorre `js/` para que nadie vuelva a armar el patrimonio a mano
+- `calcPatrimonioTotal()` y su fuente única `calcPatrimonioDesglose()` / `calcPatrimonioVisible()` / `calcLiquidez()` — `js/core/patrimonio.js`. La suite «patrimonio — fuente única» (`nucleo.test.js`) comprueba que hero, historial, `medirPatrimonioParaHistorial` y Salud dan el mismo número con deudas y alcancía, y recorre `js/` para que nadie vuelva a armar el patrimonio a mano
 - `calcHealthScore()` — `js/modules/inicio.js`
 - `calcC()`/`calcCDT()` (interés compuesto real de Nu, por tramos de
   tasa, redondeo de CDT) — `js/core/nu-calc.js`
 - `Periodo` (ingresos, gastos y balance de un mes: la única definición para
   Inicio, Análisis, cierre de mes, CSV y Wrapped) — `js/core/periodo.js`
-- `aplicarMigraciones()` / `S.schemaVersion` — `js/core/core-state.js`
+- `aplicarMigraciones()` / `S.schemaVersion` — `js/core/persistencia.js`
 - `Deudas` (capa de acceso a Me deben / Yo debo), `totalPrestadoPendiente()`/
   `totalMisDeudasPendiente()` — `js/core/calc-helpers.js`
 - Tasa única de Nu (`S.nuRate`, CDT con tasa propia), acciones de Nu que dependen de la tasa y de las cajitas, Chequeo rápido por
@@ -23,8 +25,11 @@ modificarlo, usando `vm` para simular cómo el navegador carga
 - Me deben (registrar con `_aplicarMovimiento`, revertir con `_revertirMovDeudor`) y Yo debo (pago dividido, perdón, pago de más, pago con tarjeta) y
   `registrarMovEspejo()`/`borrarMovEspejo()` — `js/modules/prestado.js`,
   `js/core/cuenta-efectos.js`
-
-- Paso 5 (estilos inline → clases): `tests/estilos.test.js` vigila los archivos ya convertidos (ningún `style=""` estático nuevo, toda clase usada existe en `css/styles.css` o en el CSS propio del archivo, y los colores de Wrapped tienen clase). **La herramienta de conversión y sus verificadores (`scripts/paso5/`) se retiraron al cerrar el Paso 5 (2026-10-24)**; siguen en el tag de git `paso5-cerrado` por si hace falta convertir o verificar otra vez (ver `docs/guia-estilo-sheets.md` §0).
+- Cierre de períodos, etapa 1 (`docs/cierre-de-periodos.md`): la huella de invariantes y su registro de sondas, `conEstadoAislado`, la verificación de transformaciones (con una transformación de referencia sin pérdida y una poda ingenua que debe detectar) — `js/core/huella.js` (`tests/cierre-wrapped.test.js`); la vista previa de solo lectura (grafo de enlaces por valor, entidades, clasificación de las claves de `S`) y el medidor de tamaño — `js/core/cierre.js` (`tests/cierre-wrapped.test.js`). Ambas usan historia sintética de 2,7 años de `tests/support/datos-sinteticos.js`, construida con las funciones reales de la app.
+- Carga bajo demanda de la huella y el cierre (`docs/cierre-de-periodos.md`): la prueba «ORDEN DE CARGA» de `tests/cierre-wrapped.test.js` (módulos antes que `huella.js`, ninguna sonda se pierde) y `npm run smoke:cierre` (`scripts/smoke-cierre.js`, necesita jsdom: no se carga al arrancar, `ensureAll()` no lo precarga, abrir Configuración lo carga, sin conexión no se rompe).
+- Wrapped sin datos suficientes («no alcanzó el tiempo») y Wrapped guardado por año (`docs/wrapped.md` §7quaterdecies): criterio y límites exactos, banco de frases, instantáneas y contrato de CSS — `js/core/wrapped-gate.js` y `js/modules/wrapped.js` (`tests/cierre-wrapped.test.js`, con `tests/fixtures/wrapped-clases.json`). El recorrido completo en la página real (abrir, guardar, reabrir, ocultar saldos, «Mis Wrapped») es `npm run smoke:wrapped` (`scripts/smoke-wrapped.js`, necesita jsdom; recorre el guardado explícito, la actualización en enero, ocultar saldos y listar/abrir/eliminar con confirmación y PIN).
+- Respaldos automáticos (`docs/respaldos-automaticos.md`): ids y poda, copia a la nube idéntica byte a byte, índice, 31 días seguidos, previos, copia al dispositivo, fusión, lectura con caída a la copia local y borrado total (Firestore e IndexedDB simulados; la transacción simulada exige leer antes de escribir como la real), más la integración con `firebase-sync.js` real: primer guardado del día, un respaldo roto nunca impide guardar (reglas denegadas: avisa una vez y no insiste), importar deja un «previo» y «borrar todo» limpia — `js/core/respaldos.js`, `js/core/firebase-sync.js` (`tests/respaldos.test.js`).
+- Paso 5 (estilos inline → clases): `tests/interfaz.test.js` vigila los archivos ya convertidos (ningún `style=""` estático nuevo, toda clase usada existe en `css/styles.css` o en el CSS propio del archivo, y los colores de Wrapped tienen clase). **La herramienta de conversión y sus verificadores (`scripts/paso5/`) se retiraron al cerrar el Paso 5 (2026-10-24)**; siguen en el tag de git `paso5-cerrado` por si hace falta convertir o verificar otra vez (ver `docs/guia-estilo-sheets.md` §0).
 
 Corren contra tus archivos reales, sin copiarlos.
 
@@ -63,7 +68,7 @@ MIS_FINANZAS_CORE_DIR=./ruta/a/core MIS_FINANZAS_MODULES_DIR=./ruta/a/modules np
 - **`permissive: true`** — usado por las suites `calcC-calcCDT` (`cuentas.test.js`) y
   `totalPrestadoPendiente` (`prestamos.test.js`), que cargan `cuentas.js`/`prestado.js`
   reales. Esos archivos referencian funciones de UI de otros core (
-  `openSheet`/`toast`/`dialogo`, viven en `sheet-stack.js`/`events.js`,
+  `openSheet`/`toast`/`dialogo`, viven en `navegacion.js`/`events.js`,
   no incluidos acá) a nivel de módulo — permissive las deja caer a
   no-op. **Ojo:** en este modo, `typeof cualquierCosa==='function'`
   siempre da `true` (el fallback fabrica una función para todo), así
@@ -74,9 +79,11 @@ MIS_FINANZAS_CORE_DIR=./ruta/a/core MIS_FINANZAS_MODULES_DIR=./ruta/a/modules np
 
 ## Orden de carga del núcleo (2026-10-08)
 
-Todo test que cargue `core-state.js` debe cargar también `periodo.js` y
+Todo test que cargue el núcleo (`core-state.js` en `loadApp`, que se expande a las 8 partes de `js/core/`: `estado.js` … `refresh.js`) debe cargar también `periodo.js` y
 `nu-calc.js`, en el mismo orden que `index.html`:
-`core-state.js` → `periodo.js` → `nu-calc.js` → `calc-helpers.js` → `cuenta-efectos.js` → módulos.
+el núcleo → `periodo.js` → `nu-calc.js` → `calc-helpers.js` → `cuenta-efectos.js` → módulos.
+Todo test que cargue `inicio.js` o `gastos.js` tiene que cargar además `umbrales.js` (antes que ellos): los límites de Salud, Atención y Proyección salen de ahí.
+`tests/finanzas.test.js` fija los escenarios negativos y de borde (deuda, patrimonio negativo, CDT vencido o sin tasa, caída sostenida, Wrapped con base ≤ 0, presupuestos, push).
 `calcPatrimonioTotal()` llama a `calcC`/`calcCDT` (nu-calc.js) sin guards,
 `_getCuotaAnio()` (calc-helpers.js) delega en `Periodo.cuotaMesada`, y Inicio,
 Análisis y Wrapped leen el mes de `Periodo`. Sin ellos: `ReferenceError` en modo
@@ -91,7 +98,7 @@ no es propiedad del contexto), así que los tests lo leen como `ctx.Periodo`.
 `spotify.js`, igual que las funciones puras de Mesada y Tarjetas. Si un test
 carga `prestado.js` o `spotify.js` y ejercita algo que las llama (por ejemplo
 `totalPrestadoPendiente()`), tiene que cargar también `calc-helpers.js`, en el
-mismo orden que `index.html`: `core-state.js` → `cuenta-efectos.js` → `calc-helpers.js` → módulo. `prestado.js` y `mesada.js` además necesitan `cuenta-efectos.js` (movimiento espejo en cuentas) para registrar o revertir movimientos.
+mismo orden que `index.html`: el núcleo → `cuenta-efectos.js` → `calc-helpers.js` → módulo. `prestado.js` y `mesada.js` además necesitan `cuenta-efectos.js` (movimiento espejo en cuentas) para registrar o revertir movimientos.
 
 Ojo en modo `permissive`: no falla con un error, **da resultados en silencio**
 (la función faltante cae a un no-op que devuelve `undefined`, y
@@ -114,7 +121,7 @@ y como check en cada commit/PR.
 ## Qué NO cubre (todavía)
 
 - **Amortización** — **confirmado que no existe en este proyecto.**
-  Revisé `core-state.js`, `calc-helpers.js`, `inicio.js`, `cuentas.js` y
+  Revisé el núcleo, `calc-helpers.js`, `inicio.js`, `cuentas.js` y
   `prestado.js`: ninguno tiene lógica de amortización francesa, cuota
   fija ni tasa mensual. `prestamo_jfk_tracker.html` es un proyecto
   aparte — no aplica acá. Si esta línea sigue en `auditoria-tecnica.md`
@@ -124,7 +131,7 @@ y como check en cada commit/PR.
 
 ## Cuentas y Nu son dos archivos (2026-10-17; frontera limpia 2026-10-18)
 
-`js/modules/cuentas.js` (capa genérica de cuentas) y `js/modules/nu.js` (todo lo de Nu) forman el grupo lazy `cuentas`. **La dependencia va en un solo sentido: Nu usa a Cuentas, Cuentas no nombra nada de Nu.** Nu se le presenta a `cuentas.js` registrándose en `CuentaPantallas` (`core-state.js`) al cargar. **Todo test que cargue `cuentas.js` tiene que cargar también `nu.js`**: `modulo('nu.js'), modulo('cuentas.js')` (el orden no importa), porque sin `nu.js` Cuentas no tiene pantalla de Nu. En modo `permissive` su falta no da error: da resultados distintos en silencio. La guardia `cuentas-nu-archivos` de `cuentas.test.js` comprueba la carga, que `cuentas.js` no use nada de `nu.js` y la lista exacta de lo que Nu toma de Cuentas.
+`js/modules/cuentas.js` (capa genérica de cuentas) y `js/modules/nu.js` (todo lo de Nu) forman el grupo lazy `cuentas`. **La dependencia va en un solo sentido: Nu usa a Cuentas, Cuentas no nombra nada de Nu.** Nu se le presenta a `cuentas.js` registrándose en `CuentaPantallas` (el núcleo) al cargar. **Todo test que cargue `cuentas.js` tiene que cargar también `nu.js`**: `modulo('nu.js'), modulo('cuentas.js')` (el orden no importa), porque sin `nu.js` Cuentas no tiene pantalla de Nu. En modo `permissive` su falta no da error: da resultados distintos en silencio. La guardia `cuentas-nu-archivos` de `cuentas.test.js` comprueba la carga, que `cuentas.js` no use nada de `nu.js` y la lista exacta de lo que Nu toma de Cuentas.
 
 ## Prueba de humo con la página real (2026-10-18)
 

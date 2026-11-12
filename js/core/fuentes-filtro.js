@@ -12,7 +12,7 @@
      al confirmar.
    - Una tarjeta de crédito solo se ofrece si tiene cupo disponible
      (mínimo del flujo). El cupo es obligatorio al crear/editar una TC
-     (ver guardarTC en tarjetas_credito.js), así que una TC sin cupo
+     (ver guardarTC en tarjetas-credito.js), así que una TC sin cupo
      configurado se considera SIN cupo disponible (datos anteriores a
      esta regla).
    - Valores que no son una cuenta (''/"Sin especificar", 'ganancia',
@@ -27,12 +27,12 @@
    selector y otra vez al confirmar.
 
    Núcleo, carga de entrada (<script defer>) justo después de
-   calc-helpers.js — usa getSaldoFuente/getFuentesSinTC (core-state.js)
+   calc-helpers.js — usa getSaldoFuente/getFuentesSinTC (js/core/cuentas-fuentes.js)
    y tcCupoDisponible/getTCById (calc-helpers.js) SOLO al ser llamado,
-   nunca al cargar. No modifica buildFuentesOptsHtml/poblarFuente: los
+   nunca al cargar. No modifica opcionesCuenta/poblarFuente: los
    consume (vía fuentesCustom) o poda el <select> ya poblado (patrón:
    poblarFuente(id) seguido de FuentesFiltro.podar(id, ...), ver openSheet
-   en sheet-stack.js).
+   en navegacion.js).
    ═══════════════════════════════════════════════════════════════ */
 const FuentesFiltro = (() => {
   // Mínimos por flujo. Se comparan en centavos (los saldos son floats).
@@ -47,6 +47,7 @@ const FuentesFiltro = (() => {
   const PRESET = Object.freeze({
     SALIDA:   Object.freeze({ minSaldo: MIN.GENERAL }),
     SPOTIFY:  Object.freeze({ minSaldo: MIN.SPOTIFY }),
+    ALCANCIA: Object.freeze({ minSaldo: MIN.SPOTIFY }), // origen del depósito en la alcancía: mismo umbral de $50 que Spotify
     PAGO_TC:  Object.freeze({ minSaldo: MIN.PAGO_TC, minEfectivo: MIN.PAGO_TC_EFECTIVO, incluirTC: false })
   });
 
@@ -58,8 +59,7 @@ const FuentesFiltro = (() => {
   // 'ganancia', opciones especiales) nunca se filtra.
   function esCuenta(val) {
     if (!val || typeof val !== 'string') return false;
-    return val === 'nequi' || val === 'efectivo' ||
-      val.startsWith('cajita:') || val.startsWith('custom:') || val.startsWith('tc:');
+    return esFuenteCuenta(val) || Fuente.esCajita(val) || Fuente.esTC(val);
   }
 
   // ¿Esta TC tiene cupo disponible >= min? Sin cupo configurado = sin cupo.
@@ -76,7 +76,8 @@ const FuentesFiltro = (() => {
   // Mínimo aplicable a una cuenta concreta (efectivo puede tener el suyo).
   function _minPara(val, opts) {
     const base = opts.minSaldo == null ? MIN.GENERAL : opts.minSaldo;
-    if (val === 'efectivo' && opts.minEfectivo != null) return opts.minEfectivo;
+    const c = getCuentaDeFuente(val);
+    if (c && c.tipo === 'efectivo' && opts.minEfectivo != null) return opts.minEfectivo;
     return base;
   }
 
@@ -88,7 +89,7 @@ const FuentesFiltro = (() => {
   function utilizable(val, opts) {
     opts = opts || PRESET.SALIDA;
     if (!esCuenta(val)) return true;
-    if (val.startsWith('tc:')) {
+    if (Fuente.esTC(val)) {
       if (opts.incluirTC === false) return false;
       const min = opts.minCupo != null ? opts.minCupo : (opts.minSaldo == null ? MIN.GENERAL : opts.minSaldo);
       return tcConCupo(getTCById(val.slice(3)), min);
@@ -108,7 +109,7 @@ const FuentesFiltro = (() => {
     opts = opts || {};
     const lista = filtrar(fuentes, opts);
     const placeholder = (!lista.length && opts.sinOpcionesTexto) ? opts.sinOpcionesTexto : (opts.placeholder || 'Sin especificar');
-    return buildFuentesOptsHtml({ selectedVal: opts.selectedVal || '', placeholder, fuentesCustom: lista });
+    return opcionesCuenta({ selectedVal: opts.selectedVal || '', placeholder, soloDe: lista });
   }
 
   // Quita de un <select> ya poblado las opciones-cuenta no utilizables.
@@ -147,7 +148,7 @@ const FuentesFiltro = (() => {
 
   // ¿La fuente es una tarjeta de crédito?
   function esTC(val) {
-    return typeof val === 'string' && val.startsWith('tc:');
+    return typeof val === 'string' && Fuente.esTC(val);
   }
 
   // ¿Puede RECIBIR plata propia (traspasos, reubicaciones)? Todo menos una TC. Sin filtro de saldo.

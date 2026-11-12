@@ -35,9 +35,13 @@ Función principal que renderiza toda la pantalla: **`renderAnalisis()`**.
   | Escenario | Estado | Monto | Mensaje |
   |---|---|---|---|
   | Sin ingresos ni gastos | neutro | `$0` | «Aún no hay ingresos ni gastos que cuenten para este mes.» |
-  | Sin ingresos y con gastos | rojo | `-$X` | «Has gastado $X y aún no registras ingresos este mes. Registra tus ingresos para ver el balance del mes.» |
+  | Sin ingresos y con gastos | neutro | `—` | «Registra tus ingresos para ver el balance del mes.» (falta información, no un déficit; el gasto ya se ve en las tarjetas de abajo) |
   | Ingresos > gastos | verde | `+$X` | «Por ahora vas bien: has gastado menos de lo que has recibido este mes.» |
   | Ingresos = gastos | neutro | `$0` | «Por ahora has gastado todo lo que has recibido este mes.» |
+
+  **Sin base (usuario nuevo).** Mientras `calcSinBase()` (inicio.js, ver `salud-financiera.md`) sea verdadero, el hero pinta en neutro también con ingresos > gastos o gastos > ingresos, con el mismo texto corto de siempre pero sin «vas bien». La gráfica de patrimonio con una ventana menor a 30 días de historial muestra el cambio en gris, sin porcentaje ni «causa principal» (no es una tendencia). La «causa principal» tampoco se dice si ningún mes de la ventana tiene ingresos registrados.
+
+  **Un saldo inicial no es ingreso ni gasto.** Los movimientos `tipo: 'apertura'` (`clase: 'ajuste'`) quedan fuera de ingresos y gastos y entran al historial como `montoBase`. Un mes con gastos y **sin ingresos registrados** no se evalúa (`Periodo.balanceEvaluable`): no cuenta como déficit en la racha, el resumen de flujo, los pilares ni el plan de deudas.
 
   **Regla de caja de los ingresos.** Un ingreso cuenta en el mes en que la plata ENTRÓ. La Mesada también: cuenta en el mes de la fecha en que te la pagaron (y cada abono de un pendiente, en la suya), no en el mes que cubre su clave (`S.mesadas[padre].pagos['YYYY-<mes 0-11>']`, que solo sirve para saber qué mes está pagado en la pantalla de Mesada). Así el balance del mes y el historial de patrimonio dicen lo mismo: una mesada de enero que te pagan el 26 de octubre es ingreso de octubre. Es la única definición, en `Periodo.mesadaEntradas()`/`mesadaDelMes()`; Inicio, Salud, Análisis, cierre de mes y Wrapped la piden ahí.
   | Gastos > ingresos | rojo | `-$X` | «Por ahora has gastado más de lo que has recibido este mes.» |
@@ -57,6 +61,7 @@ Cada ingreso fijo vive en `S.ingresosFijos` (sueldo, freelance, etc.) y es solo 
 - **Por qué un solo camino:** «Agregar dinero» a una cuenta es otro ingreso distinto; el cobro es el único camino para el sueldo, así no se cuenta dos veces. Si el cobro entra a una cuenta deja un espejo `neutro` (el ingreso se cuenta una sola vez, en Periodo).
 - **Cargar historial:** si registras hoy un cobro de hace meses, pon la fecha real. Si esa plata ya estaba en tu saldo, elige «No especificar»: cuenta como ingreso de esa fecha y el saldo no cambia. Si eliges una cuenta, el saldo sube hoy.
 - **En la fila:** «Cobrado este mes · $X» (verde) o «Sin cobrar este mes» (ámbar, solo si ya se espera ese mes según «desde»); debajo, los 3 últimos cobros con ✕ para borrarlos (revierte la cuenta exacta, con la protección por antigüedad).
+- **Día en que te llega (opcional, `ing.dia`, 1–31):** campo «Día en que te llega» del sheet; se muestra en la fila («desde 2026-01 · día 30»). Si ese día ya pasó (un «31» cae el último día de un mes corto, `Periodo.diaDelMes`) y no hay **ningún** cobro registrado ese mes, «Necesita atención» de Inicio avisa («Sueldo debía llegar el día 30 y aún no lo registras»). Con un cobro parcial registrado, sin día, o antes del mes de «desde», no avisa. Vacío o fuera de 1–31 = sin aviso (fuera de rango se rechaza al guardar).
 - **Eliminar el ingreso fijo** revierte antes todos sus cobros que tocaron cuentas.
 - **Aviso:** si la fecha cae en otro mes que el que cubre, el sheet lo dice («Cubre Ene 2026, pero cuenta como ingreso de Feb 2026: el mes en que te pagaron.», `cobroAvisoMes`). Es solo informativo.
 
@@ -105,7 +110,7 @@ Esto es distinto del "Resumen del mes" y la "Comparación con el mes anterior" (
 
 ## 6. Top categorías este mes
 
-**ID:** `an-cats-mes`. Agrupa `gvMes` (gastos variables del mes, incluidos los retiros manuales bajo la categoría `Ajuste`) + gastos fijos pagados por categoría (`g.cat`), ordena de mayor a menor y muestra el top 5 con barra proporcional al máximo.
+**ID:** `an-cats-mes`. Agrupa `gastoVariableMes` (gastos variables del mes, incluidos los retiros manuales bajo la categoría `Ajuste`) + gastos fijos pagados por categoría (`g.cat`), ordena de mayor a menor y muestra el top 5 con barra proporcional al máximo.
 
 ## 7. Gastos por mes (últimos 12) y Ranking de meses
 
@@ -119,7 +124,13 @@ Recorren `S.gastosVar` (mismo criterio de gasto real que en §2, vía `_esGastoV
 
 ## 9. Presupuestos por categoría
 
-**ID:** `an-presupuestos`, función `renderPresupuestos()`. Los límites viven en `S.presupuestos` (objeto `categoría → monto`), editables desde el sheet "Presupuestos mensuales" (`abrirPresupuestos()`). El gasto por categoría se calcula con el mismo criterio de gasto real que el resto de la pantalla (`_esGastoVarNoReal()`). Por cada categoría con presupuesto, muestra una barra de progreso (gasto del mes / límite) en verde/ámbar/rojo según el %, y dispara un toast de aviso la primera vez que alguna categoría llega a 80–99%.
+**ID:** `an-presupuestos`, función `renderPresupuestos()`. Los límites viven en `S.presupuestos` (objeto `categoría → monto`), editables desde el sheet "Presupuestos mensuales" (`abrirPresupuestos()`). El gasto por categoría se calcula con el mismo criterio de gasto real que el resto de la pantalla (`_esGastoVarNoReal()`). Por cada categoría con presupuesto, muestra una barra de progreso (gasto del mes / límite) en verde/ámbar/rojo según el %, y dispara un toast de aviso la primera vez que alguna categoría llega a 80–99 % y otro **al superar el 100 %** («Superaste el presupuesto de X por $Y»). La barra se recorta al 100 %, pero el texto muestra el exceso («$180.000 / $100.000 · +$80.000»); un límite no positivo (dato corrupto) no se divide (antes `NaN%`). Los avisos ya mostrados se guardan también en `localStorage` (`mf-presup-avisos`, clave categoría_mes, solo el mes en curso) para no repetirse tras recargar la página.
+
+**Bienes:** una tarjeta «Bienes» (`renderBienes`, solo si hay) con el valor estimado de lo que registraste (una moto, un computador), el «Patrimonio con bienes» y cada bien con Editar y Quitar. Va **aparte** del patrimonio del inicio y de la gráfica de abajo, que siguen siendo financieros; el modelo y el porqué están en `docs/gastos.md` (`S.bienes[]`).
+
+**Compra grande en el balance del mes:** si el mes incluye compras marcadas como grandes (`gv.grande`), el héroe del balance añade «Incluye $X en una compra grande (Moto) · sin ella, tu balance del mes fue ±$Y». El balance real (el que decide el color y el mensaje) no cambia: el golpe se muestra, no se esconde; `Periodo.balanceDelMes` devuelve además `balanceRecurrente` y `extraordinarios`.
+
+**Patrimonio de los últimos N días (§5):** el porcentaje solo se calcula sobre un valor inicial **positivo**; con base ≤ 0 se muestra «—», y si el valor final sigue bajo cero, «En números rojos» (antes pasar de −$1.000.000 a −$500.000 decía «+50 %» en verde con el patrimonio todavía en deuda).
 
 ---
 
@@ -127,7 +138,7 @@ Recorren `S.gastosVar` (mismo criterio de gasto real que en §2, vía `_esGastoV
 
 > **La respuesta está guardada en el movimiento (desde 2026-10-09):** cada uno lleva `clase` (`ingreso` · `gasto` · `neutro` · `ajuste`), escrita por el módulo que lo crea. Los dos helpers de abajo solo leen `clase` (vía `claseEfectivaMovimiento()`): **no hay reglas de respaldo** que la deduzcan de etiquetas, descripciones o banderas (se retiraron el 2026-10-13: la app nace limpia y `tests/nucleo.test.js`, bloque `clase-cobertura`, exige que todo escritor la ponga al crear el movimiento). Un movimiento sin `clase` no cuenta como ingreso ni se excluye como gasto, y `save()` avisa de los que llegan sin ella (`movimientosSinClase`). Para un módulo nuevo basta escribir `clase` al crear el movimiento; los criterios que siguen explican **qué clase recibe** cada caso. Ver `libro-de-movimientos.md` (regla 7: el libro no clasifica).
 
-Ambos viven en `js/core/core-state.js`, no en `analisis.js` — por eso los puede usar cualquier pantalla sin cargar el módulo de Análisis. Todos los bloques de esta pantalla que suman ingresos o gastos (§2, §4, §7, §9) usan dos helpers centralizados, no un filtro propio cada uno:
+Ambos viven en `js/core/patrimonio.js`, no en `analisis.js` — por eso los puede usar cualquier pantalla sin cargar el módulo de Análisis. Todos los bloques de esta pantalla que suman ingresos o gastos (§2, §4, §7, §9) usan dos helpers centralizados, no un filtro propio cada uno:
 
 - **`_esEntradaEspejoNoIngreso(m)`** — devuelve `true` cuando la `clase` guardada del movimiento no es `ingreso` (sin respaldo por descripción ni por banderas). Qué movimientos `tipo:'entrada'` de `S.movimientos` reciben `clase: 'ingreso'` y cuáles quedan como espejo de plata que ya se contó en otro lado (reposición de plata comprometida, intercambio/traspaso de Encargos, Mesada, Prestado) lo decide el módulo que los crea. **Excepción:** lo que lleva `_esExtraIngreso` sí es ingreso real, aunque tenga `_origenSeccion` de Prestado o `_encMovId` de Encargos: el extra/propina de un pago de deuda guardado en una cuenta el traspaso "Me lo regalaron" de un encargo el margen de "Ya la usé" (`yoMeQuedo`), y todo margen que escribe el motor de diferencial (`_esDiferencialEncargo`: salida de encargo, compra con TC, Préstamo con TC).
 - **`_esGastoVarNoReal(g)`** — devuelve `true` si el gasto de `S.gastosVar` tiene una `clase` distinta de `gasto` (sin `clase` cuenta como real). Cada módulo le pone esa clase al crearlo; quedan fuera pagos de gasto fijo, pagos de TC (cancelación de deuda, no gasto nuevo), alcancía (sigue siendo plata propia) y extras de préstamo gastados de inmediato (`_esExtraPrestamo`, plata que nunca se contó como ingreso).
@@ -148,7 +159,7 @@ Estos dos bloques **no viven en `screen-analisis`**, sino en Inicio, pero se cal
 
 ## 10. Patrimonio total: `calcPatrimonioTotal()`
 
-**Ubicación:** el módulo de esta pantalla es [`js/modules/analisis.js`](../js/modules/analisis.js) (`renderAnalisis()`, ingresos fijos, presupuestos). `calcPatrimonioTotal()` y `snapshotPatrimonio()` viven en `js/core/core-state.js`, no en este módulo: `save()` las llama en cada guardado, no solo al entrar a esta pantalla. El cálculo de Nu que usa (`calcC`, `calcCDT`, `nuTotal`) está en `js/core/nu-calc.js`. `renderHealthScore()`/`renderProyeccion()` viven en `js/modules/inicio.js`.
+**Ubicación:** el módulo de esta pantalla es [`js/modules/analisis.js`](../js/modules/analisis.js) (`renderAnalisis()`, ingresos fijos, presupuestos). `calcPatrimonioTotal()` y `snapshotPatrimonio()` viven en `js/core/patrimonio.js`, no en este módulo: `save()` las llama en cada guardado, no solo al entrar a esta pantalla. El cálculo de Nu que usa (`calcC`, `calcCDT`, `nuTotal`) está en `js/core/nu-calc.js`. `renderHealthScore()`/`renderProyeccion()` viven en `js/modules/inicio.js`.
 
 
 Es la base de todo lo anterior (historial, tendencia, proyección, salud financiera, hero de Inicio) y **la única definición de patrimonio de la app**. El cálculo vive en `calcPatrimonioDesglose()` (mismo archivo), que devuelve cada componente (`cajitas`, `cdts`, `nequi`, `efectivo`, `custom`, `meDeben`, `alcancia`, `deudaTC`, `yoDebo`, `ajeno`) más `activos`, `pasivos`, `total` y `visible` (sin Alcancía). Las demás funciones son envoltorios:
@@ -156,12 +167,12 @@ Es la base de todo lo anterior (historial, tendencia, proyección, salud financi
 | Función | Qué devuelve | Quién la usa |
 |---|---|---|
 | `calcPatrimonioDesglose()` | todos los componentes y los totales | quien necesite el detalle |
-| `calcPatrimonioTotal()` | `total` (con Alcancía) | solo `core-state.js` |
+| `calcPatrimonioTotal()` | `total` (con Alcancía) | solo `js/core/patrimonio.js` |
 | `calcPatrimonioVisible()` | `visible` (sin Alcancía) | hero (vía el desglose), Proyección, Salud |
 | `medirPatrimonioParaHistorial()` / `snapshotPatrimonio()` | `{val, vis}` y el punto `valor`/`valorVisible` del historial | historial y gráfica |
 | `calcLiquidez()` | liquidez neta (ver Salud financiera) | Salud financiera |
 
-**Regla:** ningún otro archivo suma cuentas ni resta deudas a mano, ni resta la alcancía por su cuenta. Una prueba (`tests/nucleo.test.js` → «patrimonio — fuente única») recorre `js/` y falla si alguien llama `calcPatrimonioTotal()` fuera de `core-state.js` o si el hero, el snapshot o Inicio vuelven a tener su propia fórmula. Si cambia una regla (una deuda nueva, otra cuenta), se cambia en ese bloque y todo queda igual.
+**Regla:** ningún otro archivo suma cuentas ni resta deudas a mano, ni resta la alcancía por su cuenta. Una prueba (`tests/nucleo.test.js` → «patrimonio — fuente única») recorre `js/` y falla si alguien llama `calcPatrimonioTotal()` fuera de `js/core/patrimonio.js` o si el hero, el snapshot o Inicio vuelven a tener su propia fórmula. Si cambia una regla (una deuda nueva, otra cuenta), se cambia en ese bloque y todo queda igual.
 
 **Deudas sin fecha.** Entre amigos casi nunca hay fecha de pago, y eso no cambia el patrimonio: «Me deben» es un activo y «Yo debo» es un pasivo, ambos completos, aunque no se sepa cuándo se cobran o se pagan. La fecha incierta solo afecta la **liquidez** (Salud financiera): lo que te deben no cuenta hasta que llega; lo que debes sí se descuenta completo.
 
@@ -175,3 +186,8 @@ nu (cajitas Nu) + CDTs + Nequi + Efectivo + prestado (Me deben) + cuentas person
 Un saldo (Efectivo, Nequi, cuenta personalizada) puede quedar temporalmente negativo tras borrar un movimiento cuyo dinero ya se gastó (reversión sin piso en 0, 2026-09-30): el patrimonio lo suma tal cual, sin recortarlo, y vuelve al valor correcto al rehacer el movimiento.
 
 Todo lo que es plata **ajena** que solo estás cuidando (encargos, plata comprometida de otra persona, lo que le debés a alguien) se resta para que el patrimonio refleje solo lo que es realmente tuyo. Ver [`CHANGELOG.md`](./CHANGELOG.md#patrimonio-y-cálculos-globales) para el detalle de qué faltaba restar acá y ya se corrigió.
+
+## Historial de patrimonio: saldo inicial y selector (2026-11-06)
+
+- La serie se dibuja «como si el saldo inicial siempre hubiera estado»: a cada punto se le suman los `montoBase` registrados después. El último punto es el patrimonio real de hoy, la línea nunca queda bajo cero por registrar un saldo inicial y el cambio de la ventana (último − primero) no varía.
+- El selector 30 días / 90 días / 1 año solo aparece si cambia lo que se ve: 30 días con más de 30 días de historia total, 90 días igual, 1 año con más de 90. Con 30 o menos no hay selector (las tres ventanas serían iguales).

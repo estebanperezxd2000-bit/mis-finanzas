@@ -1,15 +1,8 @@
-# Documentos locales que no quiero subir
-/libro-de-movimientos.md
-/Mejoras_pendientes.md
-/CONTINUAR.md
-/plan-clasificacion-movimientos.md
-/plan-reestructuracion.md
-/laboratorio-cajitas-nu.html
-/subir.sh
-/scripts/paso5/
-/mejoras.md
-/antes/
+# Dependencias
 /node_modules/
 
-# Credencial privada de Firebase
-/mis-finanzas-z-firebase-adminsdk-fbsvc-d1e82930fc.json
+# Documentos y archivos locales que no quiero subir
+*.zip
+/*.md
+/subir.sh
+/laboratorio-cajitas-nu.htmlbash subir.sh

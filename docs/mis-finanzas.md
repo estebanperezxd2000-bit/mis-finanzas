@@ -26,8 +26,9 @@ Todos viven en `js/core/` salvo que se indique lo contrario. "Clásico" = `<scri
 | Archivo | Tipo | Qué hace |
 |---|---|---|
 | `firebase-init.js` | módulo | Inicializa Firebase (config, Auth, Firestore con caché offline multi-pestaña) y escucha `onAuthStateChanged` para arrancar la app o mostrar el login. Expone en `window._fb` lo que usa el resto (incluido `runTransaction`, para leer el documento directo del servidor — ver `firebase-sync.js` — y `popupResolver`, que los popups de login/reautenticación reciben como tercer argumento). Auth usa `initializeAuth()`: con sesión previa (marca `mf_auth_hint` en `localStorage`, que mantiene `_onAuthState`) arranca SIN el iframe/gapi de Firebase Auth; sin marca, con el resolver precargado. |
-| `firebase-sync.js` | módulo | Guardado en Firestore con debounce y detección de "sin cambios" (`_fbSaveToCloud`), carga inicial de datos, `onSnapshot` para sync entre dispositivos, indicador de estado de sync. **Regla que no se debe romper:** `_dataLoaded` (que habilita todo guardado) solo pasa a `true` con un payload leído bien (`_cargaConfiable`) o tras verificar contra el servidor que el documento no existe (`_verificarSinDocumento`); "sin documento" del listener nunca se cree tal cual, ni siquiera con `fromCache=false`. Mientras no haya confianza la app queda en modo lectura (ver `CHANGELOG.md`, sección "Arranque"). Al pasar a segundo plano (`visibilitychange`/`pagehide`) fuerza el guardado pendiente en vez de esperar el debounce (`_fbFlushSave`). |
-| `pin-bio.js` | módulo | Bloqueo con PIN de 4 dígitos (también con el teclado del PC) + biometría opcional local, sin passkey (WebAuthn/Face ID/huella) entre el login y la carga real de datos; además confirma con el PIN las acciones destructivas (`window._pinVerificar`, vía `pedirPinAntesDe()` de `core-state.js`). |
+| `firebase-sync.js` | módulo | Guardado en Firestore con debounce, detección de "sin cambios" (`_fbSaveToCloud`) y control de revisión: el documento lleva `rev` y el guardado es una transacción que solo se acepta si la nube sigue en la revisión que este dispositivo vio (si no, se carga la versión de la nube y lo local queda en `localStorage.mf_conflicto`; ver CHANGELOG 2026-11-06), carga inicial de datos, `onSnapshot` para sync entre dispositivos, indicador de estado de sync. **Regla que no se debe romper:** `_dataLoaded` (que habilita todo guardado) solo pasa a `true` con un payload leído bien (`_cargaConfiable`) o tras verificar contra el servidor que el documento no existe (`_verificarSinDocumento`); "sin documento" del listener nunca se cree tal cual, ni siquiera con `fromCache=false`. Mientras no haya confianza la app queda en modo lectura (ver `CHANGELOG.md`, sección "Arranque"). Al pasar a segundo plano (`visibilitychange`/`pagehide`) fuerza el guardado pendiente en vez de esperar el debounce (`_fbFlushSave`). |
+| `respaldos.js` | módulo | Respaldos automáticos (sin `<script>` propio: lo importa `firebase-sync.js`). Ids, poda, copia del documento a la nube antes de pisarlo, almacén IndexedDB, fusión nube+dispositivo y lectura; todo lo externo entra por parámetros. Ver `respaldos-automaticos.md`. |
+| `pin-bio.js` | módulo | Bloqueo con PIN de 4 dígitos (también con el teclado del PC) + biometría opcional local, sin passkey (WebAuthn/Face ID/huella) entre el login y la carga real de datos; además confirma con el PIN las acciones destructivas (`window._pinVerificar`, vía `pedirPinAntesDe()` de `js/core/utilidades-ui.js`). |
 | `bootstrap.js` | clásico | Arranque mínimo: `iniciales()`, fecha del header, autosave silencioso cada 60s. |
 | `async-css.js` | clásico | Activa el CSS de Font Awesome/Google Fonts (cargado con `media="print"` para no bloquear el render) una vez que termina de descargar. |
 
@@ -35,7 +36,7 @@ Todos viven en `js/core/` salvo que se indique lo contrario. "Clásico" = `<scri
 
 | Archivo | Tipo | Qué hace |
 |---|---|---|
-| `core-state.js` | clásico | El corazón de la app: objeto de estado global `S`, `save()`, `refresh()` base, `escHtml()`, formateo de dinero (`fmtInput`, `parseMoney`), **el libro de movimientos** (`Libro`, la puerta única de saldos `sumarFuente`/`descontarFuente`/`ajustarSaldoCuenta`; ver `libro-de-movimientos.md`), la versión del esquema (`aplicarMigraciones`) y el resto de helpers puros que usa toda la app. |
+| `el núcleo` | clásico | El corazón de la app: objeto de estado global `S`, `save()`, `refresh()` base, `escHtml()`, formateo de dinero (`fmtInput`, `parseMoney`), **el libro de movimientos** (`Libro`, la puerta única de saldos `sumarFuente`/`descontarFuente`/`ajustarSaldoCuenta`; ver `libro-de-movimientos.md`), la versión del esquema (`aplicarMigraciones`) y el resto de helpers puros que usa toda la app. |
 | `events.js` | clásico | Despachador centralizado de clicks (`Events.on`/`attr`/`registerAll`) — reemplaza los `onclick` inline bloqueados por la CSP; un solo listener delegado en `document` para toda la app. |
 | `html-tag.js` | clásico | Primitivo `` html`` `` que escapa por defecto cualquier valor interpolado — migración gradual, módulo por módulo, para cerrar de raíz el bug recurrente de `.innerHTML` sin escapar. |
 | `calc-helpers.js` | clásico | Funciones de cálculo puras de Mesada, Tarjetas de Crédito, Préstamos (`getDeudorSaldo`) y Spotify (`spNombreDe`, `spPersonaPagadaVigente`) que Inicio necesita (para "Necesita atención"/salud financiera) en el primer render, sin tener que cargar esos módulos lazy completos. Los módulos de origen ya no las definen y las usan como globales: **todo test que cargue uno de ellos y las use tiene que cargar también `calc-helpers.js`** (ver `tests/README.md`). |
@@ -44,7 +45,7 @@ Todos viven en `js/core/` salvo que se indique lo contrario. "Clásico" = `<scri
 | `split.js` | clásico | Motor genérico de "split de fuentes": Mesada, MovEnc y Usar Parte comparten la misma lógica para dividir un monto entre varias cuentas. En todos los sheets que lo usan, ÷ solo se activa si el sheet ofrece al menos dos cuentas y no admite más filas que cuentas ofrecidas (`splitCuentasValidas`); la misma cuenta no se repite entre filas. |
 | `diferencial.js` | clásico | Motor genérico de "margen dijo vs. real" (diferencia entre lo que correspondía y lo que realmente costó/se recibió), usado por 5 sheets distintos de varios módulos. |
 | `wait-for.js` / `wait-for-module.js` | clásico / módulo | `waitFor(checkFn, callback, opts)`: reintenta hasta que una condición se cumpla, en vez de que cada consumidor reimplemente su propio `setInterval` + contador. Duplicado a propósito en dos archivos (uno por tipo de script) — un intento de unificarlos rompió en producción. |
-| `hook-global.js` / `hook-global-module.js` | clásico / módulo | `hookGlobal(name, fn, opts)`: envuelve una función global existente (`refresh`, `openSheet`, `applyModulos`) sin pisar lo que ya hacía, esperando con `waitFor()` si todavía no existe. Mismo split clásico/módulo que `wait-for.js` y por el mismo motivo. |
+| `ui.js` | clásico | `Ui`: registro único de ganchos del ciclo de vida de la interfaz. `Ui.hoja(id, fn, {fase})` (al abrir una hoja; `antes` puede devolver `false` para cancelarla), `Ui.pantalla(nombre, fn)`, `Ui.en(evento, fn)` / `Ui.emitir(evento)` para eventos libres (`modulos`, `atencion`, `persona-editada`, `fuente-alerta`). Misma key = reemplaza; cada gancho en su try/catch. Reemplaza a `hookGlobal()` y a los `openSheet = function(){…}`. Ver «Ganchos de hojas y pantallas» en arquitectura-archivos.md. |
 | `cuenta-efectos.js` | clásico | `registrarMovEspejo()`/`borrarMovEspejo()`: el movimiento espejo en el historial de una cuenta (siempre en `S.movimientos`, con `fuente`). No toca saldos. |
 | `periodo.js` | clásico | Definición única de "cuánto entró y salió en un mes" (`Periodo`): ingresos, gastos, rendimientos y balance, para Inicio, Análisis, Wrapped y el cierre de mes. |
 | `nu-calc.js` | clásico | Cálculo puro de Nu: intereses de cajitas por tramos de tasa EA y CDTs (`calcC`, `calcCDT`, `nuTotal`). Sin DOM. |
@@ -56,12 +57,17 @@ Todos viven en `js/core/` salvo que se indique lo contrario. "Clásico" = `<scri
 
 | Archivo | Tipo | Qué hace |
 |---|---|---|
-| `sheet-stack.js` | clásico | Sistema de apertura/cierre de sheets (`openSheet`/`closeSheet`), `showScreen()`, `applyModulos()` y el wiring legacy de `_initEventListeners()` — un solo sistema lógico, con restricciones de orden de carga documentadas. |
+| `navegacion.js` | clásico | Pila de hojas (`openSheet`/`closeSheet`) y `showScreen()` con carga lazy; lo que cada hoja/pantalla hace al abrirse lo registran los módulos con `Ui.hoja`/`Ui.pantalla`. |
+| `modulos-activos.js` | clásico | `applyModulos()`: refleja `S.modulos` (Spotify, Mesada, saldo inicial) en la UI y emite `Ui 'modulos'`. |
+| `eventos-base.js` | clásico | Eventos del esqueleto (nav inferior, botón +, diálogos) y enlace `data-s-bind` → `S`. |
 | `sheet-behavior.js` | clásico | Comportamiento de un sheet ya abierto: swipe-to-close, reposicionamiento con el teclado en Android (Visual Viewport) y mantener visible el campo enfocado. Los ajustes automáticos esperan a que no haya toques en curso, para no mover botones bajo el dedo. |
 | `wrapped-gate.js` | clásico | Decide si Wrapped está disponible en este momento (solo durante la ventana de enero, ver `wrapped.md`): muestra/oculta la tarjeta `#wrapped-promo` y le avisa a `Loader.ensureAll()` que no precargue el grupo lazy `wrapped` fuera de esa ventana, sin descargar el módulo real solo para saber si mostrarlo. |
 | `mas-menu.js` | clásico | Abrir/cerrar el menú "Más", navegación desde sus ítems, y mostrar/ocultar Spotify/Mesada en ese menú según los módulos activos. |
 | `gastos-fijos-progress.js` | clásico | Barra de progreso de "gastos fijos pagados este mes" en el panel de Gastos. |
-| `mejoras-adicionales.js` | clásico | Ocultar/mostrar saldos (blur), render de salud financiera/proyección/presupuestos tras cada `refresh()`, validación de montos grandes, animación de carga inicial, registro del Service Worker (PWA offline), autofocus del primer campo al abrir un sheet, aria-labels de las pantallas. |
+| `sw-registro.js` | clásico | Registra `sw.js` (scope `./`), muestra el aviso «Actualizar» cuando hay una versión esperando y recarga una sola vez tras `SKIP_WAITING`. |
+| `saldos-ocultos.js` | clásico | Ocultar/mostrar saldos (blur) con el botón del ojo; recuerda la elección en localStorage. |
+| `arranque-ui.js` | clásico | Render de salud financiera/proyección/presupuestos tras cada `refresh()`, fade-in de la app, role/aria-label de las pantallas. |
+| `formularios-ui.js` | clásico | Validación de montos grandes/negativos y foco automático del primer campo al abrir una hoja. |
 | `personas-init.js` | clásico | Inicializa `_inyectarPersonaSheets()` una vez que los datos cargan. |
 
 **Inputs y validación**
@@ -83,17 +89,17 @@ A diferencia de `js/core/`, acá **"clásico"** siempre significa `<script defer
 | `gastos.js` | eager | Gastos variables, con o sin tarjeta de crédito, con split de fuentes. |
 | `personas.js` | eager | Sistema unificado de identidad (`S.personas`): colores, avatares, edición global compartida por Spotify/Encargos/Deudores/"Me deben". |
 | `cuentas.js` | lazy (`cuentas`) | Nequi, efectivo, cajitas, cuentas personalizadas; también Nu (tasa/interés) y CDT. |
-| `tarjetas_credito.js` | lazy (`tarjetas`) | Deuda de TC, pagos, fechas de corte, detalle de cada movimiento cargado. |
+| `tarjetas-credito.js` | lazy (`tarjetas`) | Deuda de TC, pagos, fechas de corte, detalle de cada movimiento cargado. |
 | `prestado.js` | lazy (`prestamos`) | Préstamos "Me deben"/"Yo debo", incluida su integración con Personas. |
 | `encargos.js` | lazy (`encargos`) | Dinero que un tercero encarga guardar, separado de cualquier interés propio que genere. |
 | `mesada.js` | lazy (`mesada`) | Mensualidad de papá y mamá, pagos parciales y deuda pendiente. |
 | `spotify.js` | lazy (`spotify`) | Suscripción compartida: cobro a integrantes, pago al servicio, ganancia/pérdida del administrador. |
 | `alcancia.js` | lazy (`alcancia`) | Ahorro tipo piggy-bank con desglose por origen del depósito. |
-| `plata_comprometida.js` | lazy (`comprometida`) | Dinero ya destinado a un gasto futuro, para no contarlo como libre en el patrimonio. |
+| `plata-comprometida.js` | lazy (`comprometida`) | Dinero ya destinado a un gasto futuro, para no contarlo como libre en el patrimonio. |
 | `analisis.js` | lazy (`analisis`) | Vista consolidada: balance del mes, patrimonio, proyección, categorías, presupuestos. |
 | `wrapped.js` | lazy (`wrapped`) | Resumen narrativo de mes/año. |
 | `configuracion.js` | lazy (`config`) | Ajustes, exportar CSV, import/export de backup JSON (incluye la validación de estructura del backup, `_validarEstructuraJSON`). |
-| `actividad_reciente.js` | lazy (`historial`) | Feed "Actividad reciente" — de solo lectura, como Inicio. |
+| `actividad-reciente.js` | lazy (`historial`) | Feed "Actividad reciente" — de solo lectura, como Inicio. |
 
 
 ## Otros archivos (raíz del proyecto)
@@ -104,7 +110,7 @@ A diferencia de `js/core/`, acá **"clásico"** siempre significa `<script defer
 | `css/fa-subset.css` | Subconjunto de Font Awesome autoalojado (solo los íconos usados). |
 | `sw.js` | Service Worker (PWA offline): `cacheFirst` para fuentes, `networkFirst` para el HTML y el SDK de Firebase (`gstatic.com/firebasejs`), `staleWhileRevalidate` para el resto. **Firestore, Identity Toolkit y SecureToken no pasan por el SW** (el canal de escucha es un stream largo: cachearlo fallaba con `Cache.put() ... network error`, y el fallback respondía HTML con status 200 a requests de Firestore). Toda escritura en caché va por `guardarEnCache()`, con `.catch`. Versión de caché en `VERSION` (bump manual al desplegar). |
 | `scripts/` | Herramientas de desarrollo (no se despliegan): `generar-mapa.js` (genera `mapa-codigo.md`), `smoke-browser.js` (prueba de humo con jsdom), `equivalencia.js` (compara ingresos, gastos y patrimonio por mes sobre un backup real), `conciliacion.js` y `notificaciones/`. (Los verificadores de la conversión de estilos, `paso5/`, se retiraron el 2026-10-24; están en el tag `paso5-cerrado`.) |
-| `tests/` | Pruebas con el test runner nativo de Node (`npm test`, ver `tests/README.md`). `estilos.test.js` vigila que los archivos ya convertidos no vuelvan a tener `style=""`. |
+| `tests/` | Pruebas con el test runner nativo de Node (`npm test`, ver `tests/README.md`). `interfaz.test.js` vigila que los archivos ya convertidos no vuelvan a tener `style=""`. |
 
 ---
 
@@ -160,4 +166,4 @@ Cada módulo se documenta en su propio `.md`, siguiendo la estructura definida e
 | `auditoria-tecnica.md` | Hallazgos técnicos **pendientes** de seguridad, arquitectura o rendimiento — lo ya resuelto vive en `CHANGELOG.md#infraestructura--seguridad`. |
 | `CHANGELOG.md` | Historial de bugs corregidos y limpieza de código de todos los módulos, en un solo archivo compartido. |
 
-`configuracion.js` y `actividad_reciente.js` (pantallas de utilidad/infraestructura, no un dominio financiero propio) tienen su propio documento: [`configuracion.md`](./configuracion.md) y [`actividad-reciente.md`](./actividad-reciente.md).
+`configuracion.js` y `actividad-reciente.js` (pantallas de utilidad/infraestructura, no un dominio financiero propio) tienen su propio documento: [`configuracion.md`](./configuracion.md) y [`actividad-reciente.md`](./actividad-reciente.md).

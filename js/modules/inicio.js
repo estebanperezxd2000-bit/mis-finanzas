@@ -21,7 +21,7 @@
      tocar Análisis, que está fuera del alcance de esta sesión.
 
    Requiere estar cargado DESPUÉS de: mesada.js, spotify.js,
-   prestado.js, tarjetas_credito.js, cuentas.js (usa spNombreDe,
+   prestado.js, tarjetas-credito.js, cuentas.js (usa spNombreDe,
    getMesadaData, tcCupoUsadoPct, etc. definidos ahí) y después de
    js/core/events.js.
 
@@ -31,7 +31,7 @@
    calcPatrimonioTotal/totalPrestadoPendiente/calcC/calcCDT en este
    mismo archivo. No cambia el comportamiento actual (todo sigue
    cargando de entrada); habilita que mesada/spotify/prestado/
-   tarjetas_credito puedan volverse lazy sin romper el dashboard.
+   tarjetas-credito puedan volverse lazy sin romper el dashboard.
    Ver auditoria-tecnica.md #4.
    ================================================================ */
 
@@ -50,74 +50,138 @@
 // calculadas, sin riesgo, pero quedan igual bajo el escapado por defecto de
 // html`` sin que eso cambie cómo se ven (dígitos y texto fijo no tienen
 // caracteres especiales de HTML).
-function renderAttencion(){
-  const items=[];
-  const hoyStr=hoy();
-  // Deudores con saldo pendiente
-  if(typeof getDeudorSaldo==='function'){
-    Deudas.lista('favor').forEach(d=>{
-      const s=getDeudorSaldo(d);
-      if(s>0) items.push({tipo:'amber',texto:html`${d.nombre} te debe ${fmt(s)}`});
-    });
+// Las REGLAS de «Necesita atención» (qué avisar y con qué texto) viven en js/core/reglas.js y las comparte el push (scripts/notificaciones).
+// Aquí solo se arman los HECHOS que las reglas necesitan (`_ctxReglas`) y se pinta el resultado.
+// Situación: las métricas que leen Salud (pilares, estado) y las reglas de situación — una sola vez por render, con las definiciones
+// únicas de la app (calcLiquidez, Periodo, calcPatrimonioVisible).
+// Días desde el primer punto del historial de patrimonio (la primera vez que se guardó algo); null si aún no hay. Sirve para saber si un
+// «mes completo» de referencia fue en realidad tres días de uso (ver Salud.tieneBase).
+function _diasDeUso(){
+  const t=(S.patrimonioHistorial||[]).map(p=>p&&p.fecha?_fechaSafe(p.fecha).getTime():NaN).filter(isFinite);
+  if(!t.length) return null;
+  const d=Fecha.diasEntre(Fecha.iso(new Date(Math.min(...t))),hoy());
+  return isFinite(d)?Math.max(0,d):null;
+}
+function _situacion(){
+  const mes=mesActual();
+  const U=UMBRALES.salud;
+  const liq=calcLiquidez();
+  const gP=Periodo.gastoPromedioPrevio(mes,U.mesesReferencia), iP=Periodo.ingresoPromedioPrevio(mes,U.mesesReferencia);
+  const gastoTipico=gP.promedio;
+  const ingresoTipico=iP.promedio;
+  const ingresosMes=Periodo.ingresosDelMes(mes).total;
+  const ingresoRef=Math.max(ingresosMes,ingresoTipico);
+  const racha=Periodo.rachaDeficit(mes,6);
+  const balances=[];
+  for(let i=1;i<=UMBRALES.salud.pilares.flujo.meses;i++){
+    const b=Periodo.balanceDelMes(Periodo.mesDesplazado(mes,-i));
+    if(Periodo.balanceEvaluable(b)) balances.push(b.balanceRecurrente); // un mes sin movimiento, o con gastos y sin ingresos anotados, no es superávit ni déficit
   }
-  // Mesadas con pago parcial que quedó pendiente
-  if(S.modulos&&S.modulos.mesada&&typeof getMesadaData==='function'){
-    ['papa','mama'].forEach(parent=>{
-      const data=getMesadaData(parent);
-      const pNombre=parent==='papa'?'Papá':'Mamá';
-      Object.keys(data).forEach(k=>{
-        const info=data[k];
-        if(info&&info.pendiente>0){
-          items.push({tipo:'amber',texto:html`${pNombre} te debe ${fmt(info.pendiente)} de la mesada de ${_mesNombreDeKey(k)}`});
-        }
+  const patrimonio=calcPatrimonioVisible();
+  const m={
+    patrimonio, liquidezNeta:liq.neta, activosLiquidos:liq.libre+liq.cdtsVencidos,
+    tcPropia:liq.tcPropia, deudaPropia:liq.tcPropia+liq.yoDebo, meDeben:liq.meDeben,
+    ingresoTipico, ingresoRef, gastoTipico, mesesCubiertos:_mesesCubiertos(liq.neta,gastoTipico),
+    racha, balances, deficitMesActual:ingresoRef>0&&Periodo.gastosDelMes(mes).total>ingresoRef,
+    tendencia:Salud.tendenciaPatrimonio(S.patrimonioHistorial,hoy()),
+    patrimonioCayendo:Salud.mesesCayendo(S.patrimonioCierres,mes,{gastoTipico}),
+    mesesReferencia:Math.max(gP.meses,iP.meses), diasDeUso:_diasDeUso(),
+    sinDatos:patrimonio===0&&liq.libre===0&&liq.cdts===0&&liq.tcPropia===0&&liq.yoDebo===0&&liq.meDeben===0&&liq.ajeno===0&&Periodo.gastosDelMes(mes).total===0,
+  };
+  // Sin base (usuario nuevo): no hay con qué evaluar ahorro, flujo ni tendencia. La falta de registros no es una situación negativa.
+  m.sinBase=!Salud.tieneBase(m);
+  return m;
+}
+// ¿Estamos sin base para evaluar? Lo leen Análisis y el aviso del hero para no dar por «déficit» lo que es solo falta de historial.
+function calcSinBase(){ return _situacion().sinBase; }
+
+// El contexto de las reglas del canal 'atencion'. `api`: lo que solo la app sabe calcular. Cada función se omite si su módulo (lazy) aún no
+// cargó, y la regla correspondiente simplemente no dice nada (mismo criterio de antes con los `typeof … === 'function'`).
+function _ctxReglas(){
+  const hoyStr=hoy(), mes=mesActual();
+  const api={
+    gastosFijosProgramados:()=>[...Periodo.gastosFijosProgramados(mes,hoyStr),...Periodo.gastosFijosProgramados(Periodo.mesDesplazado(mes,1),hoyStr)],
+    gastosFijosSinDia:()=>Periodo.gastosFijosSinDia(mes),
+    calendarioCaja:calcCalendarioCaja,
+  };
+  if(typeof ingresoFijoEstadoMes==='function'){
+    api.ingresosFijosAtrasados=()=>{
+      const out=[];
+      (S.ingresosFijos||[]).forEach(ing=>{
+        const f=Periodo.diaDelMes(ing.dia,mes,hoyStr);
+        if(!f||f.dias>=0)return;
+        const est=ingresoFijoEstadoMes(ing,mes);
+        if(!est.esperado||est.cobrado>0)return;
+        out.push({nombre:ing.nombre||'Un ingreso fijo',dia:f.dia,monto:ing.monto||0});
       });
-    });
+      return out;
+    };
   }
-  // Tarjetas de crédito con el cupo casi agotado (sin fechas — este modelo no
-  // simula ciclos de facturación, solo avisa cuando el cupo disponible es bajo)
-  (S.tarjetasCredito||[]).forEach(tc=>{
-    if((tc.estado||'activa')!=='activa')return;
-    const cupo=tc.cupo||0;
-    if(!cupo)return;
-    if(typeof tcCupoUsadoPct!=='function')return;
-    const pct=tcCupoUsadoPct(tc);
-    if(pct>=100){
-      items.push({tipo:'red',texto:html`${tc.nombre}: cupo agotado — deuda ${fmt(tc.deuda||0)}`,_tcId:tc.id});
-    } else if(pct>=85){
-      items.push({tipo:'amber',texto:html`${tc.nombre}: cupo casi agotado (${pct.toFixed(0)}% usado)`,_tcId:tc.id});
-    }
-  });
-  // Spotify personas vencidas (solo si el módulo está activo)
-  if(S.modulos&&S.modulos.spotify&&typeof spPersonaPagadaVigente==='function'&&typeof spNombreDe==='function'){
-    (S.spotify.personas||[]).forEach(p=>{
-      if(p.proximoPago&&p.proximoPago<hoyStr&&!spPersonaPagadaVigente(p)){
-        // spNombreDe() devuelve texto libre (nombre de persona) — html`` lo
-        // escapa por defecto. Mismo hallazgo que motivó el fix original con
-        // escHtml() a mano (2026-07-22), ahora bajo la protección automática.
-        items.push({tipo:'red',texto:html`Cobro Spotify de ${spNombreDe(p)} vencido`});
-      }
-    });
+  if(typeof getDeudorSaldo==='function'){
+    api.deudas=tipo=>Deudas.lista(tipo).map(d=>({nombre:d.nombre,saldo:getDeudorSaldo(d)}));
   }
-  // Cajitas con CDT próximas a vencer (7 días)
-  (S.cajitas||[]).forEach(c=>{(c.cdts||[]).filter(cdt=>cdt.vence).forEach(cdt=>{
-    const diasRestantes=Math.ceil((_fechaSafe(cdt.vence)-new Date())/86400000);
-    if(diasRestantes>=0&&diasRestantes<=7) items.push({tipo:'amber',texto:html`CDT "${c.nombre}" vence en ${diasRestantes}d`});
-    if(diasRestantes<0) items.push({tipo:'red',texto:html`CDT "${c.nombre}" venció — ¡libera tu plata!`});
-  });});
-  // Partes comprometidas de un encargo (§ "¿Para qué es esta plata?") cuya
-  // fecha de uso ya está cerca. Desde 1 día antes avisa en ámbar; si ya
-  // pasó la fecha y sigue sin marcarse "ya la usé", avisa en rojo — esa
-  // plata sigue comprometida y sin usar.
-  (S.encargos||[]).forEach(enc=>{
-    (enc.partes||[]).filter(p=>!p.usada&&p.fecha).forEach(p=>{
-      const dias=Math.round((_fechaSafe(p.fecha)-_fechaSafe(hoyStr))/86400000);
-      if(dias<0){
-        items.push({tipo:'red',texto:html`${enc.nombre}: "${p.desc}" (${fmt(p.monto)}) venció hace ${Math.abs(dias)}d sin usarse — sigue comprometida`});
-      } else if(dias<=1){
-        items.push({tipo:'amber',texto:html`${enc.nombre}: "${p.desc}" (${fmt(p.monto)}) es ${dias===0?'hoy':'mañana'} — esa plata ya está comprometida`});
-      }
+  if(S.modulos&&S.modulos.mesada&&typeof getMesadaData==='function'){
+    api.mesadaPendientes=()=>{
+      const out=[];
+      ['papa','mama'].forEach(parent=>{
+        const data=getMesadaData(parent);
+        Object.keys(data).forEach(k=>{ const info=data[k]; if(info&&info.pendiente>0) out.push({quien:parent==='papa'?'Papá':'Mamá',mes:_mesNombreDeKey(k),pendiente:info.pendiente}); });
+      });
+      return out;
+    };
+  }
+  if(typeof tcCupoUsadoPct==='function') api.tcCupoUsadoPct=tcCupoUsadoPct;
+  return { hoy:hoyStr, mes, S, fmt, umbrales:UMBRALES, situacion:_situacion(), api };
+}
+
+// «5 de nov» para un 'YYYY-MM-DD' (una sola definición: Reglas.fechaCorta).
+function _fechaCorta(f){ return Reglas.fechaCorta(f); }
+
+// Eventos de caja CONOCIDOS de antemano, para Periodo.saldoProyectado (el calendario de caja):
+//   · sale: cada gasto fijo con día que aún no se paga (el vencido sin pagar se cuenta hoy: es lo primero que saldrá);
+//   · entra: cada ingreso fijo con día esperado que aún no llegó y cuyo día NO ha pasado (uno atrasado no se da por hecho: igual que
+//     «lo que te deben» no cuenta hasta que llega) y cada CDT que vence dentro del horizonte (desde el día siguiente al vencimiento ya
+//     es plata libre, ver cdtVencido).
+// Mira el mes actual y el siguiente (el día 30, el arriendo del día 1 ya está a un paso). No hay evento de tarjeta ni de deudas: la
+// liquidez neta (calcLiquidez) ya viene descontando lo que debes, pagarlo no la cambia.
+function _eventosCaja(hoyStr, dias){
+  const ev=[];
+  const mes=mesActual();
+  [mes,Periodo.mesDesplazado(mes,1)].forEach(m=>{
+    Periodo.gastosFijosProgramados(m,hoyStr).forEach(g=>ev.push({fecha:g.dias<0?hoyStr:g.fecha,monto:-g.monto,tipo:'gasto',texto:g.nombre}));
+    (S.ingresosFijos||[]).forEach(ing=>{
+      const f=Periodo.diaDelMes(ing.dia,m,hoyStr);
+      if(!f||f.dias<0||typeof ingresoFijoEstadoMes!=='function')return;
+      const est=ingresoFijoEstadoMes(ing,m);
+      if(!est.esperado||est.cobrado>0)return;
+      ev.push({fecha:f.fecha,monto:ing.monto||0,tipo:'ingreso',texto:ing.nombre||'Ingreso fijo'});
     });
   });
+  (S.cajitas||[]).forEach(c=>(c.cdts||[]).forEach(cdt=>{
+    const v=cdt&&cdt.vence?_fechaSafe(cdt.vence):null;
+    if(!v||isNaN(v))return;
+    const fecha=Fecha.sumarDias(cdt.vence,1);
+    if(fecha>hoyStr)ev.push({fecha,monto:calcCDT(cdt).val,tipo:'cdt',texto:'CDT de '+(c.nombre||'una cajita')});
+  }));
+  return ev;
+}
+
+// Calendario de caja desde hoy: { saldoProyectado… } con lo ya programado en el horizonte (UMBRALES.caja.horizonteDias).
+function calcCalendarioCaja(){
+  const H=UMBRALES.caja.horizonteDias;
+  const hoyStr=hoy();
+  return Periodo.saldoProyectado(calcLiquidez().neta,_eventosCaja(hoyStr,H),hoyStr,H);
+}
+
+/* «Necesita atención»: la pinta _pintarAtencion() y luego avisa con el evento 'atencion' (js/core/ui.js) para que otros módulos
+   (Plata comprometida) agreguen sus propias alertas sin envolver esta función. Un fallo en la base no corta a los ganchos. */
+function renderAttencion(){
+  try { _pintarAtencion(); } catch (e) { console.error('[renderAttencion]', e); }
+  Ui.emitir('atencion');
+}
+function _pintarAtencion(){
+  // Las reglas devuelven TEXTO PLANO; html`` lo escapa (nombres de personas, tarjetas, encargos… son texto libre del usuario).
+  const items=Reglas.evaluar('atencion',_ctxReglas()).map(it=>({tipo:it.tipo,texto:html`${it.texto}`}));
   const sec=document.getElementById('s-attn-section');
   const list=document.getElementById('s-attn-list');
   if(!items.length){sec.style.display='none';return;}
@@ -174,7 +238,7 @@ function renderAttencion(){
     // para sacarlo: se iban acumulando uno por cada refresh(), y con un
     // número par acumulado, un click disparaba todos y se cancelaban entre
     // sí (abre-cierra-abre-cierra), sin efecto visible — bug real, detectado
-    // en producción, no relacionado con la extracción de sheet-stack.js.
+    // en producción, no relacionado con la extracción de navegacion.js.
     // No alcanza con guardar el handler una sola vez (ej. patrón
     // sheet._personaHook de otros módulos): `items` es una variable local
     // de este renderAttencion(), y el handler la usa en el badge al hacer
@@ -213,199 +277,148 @@ function renderAttencion(){
 /* ====================================================
    INDICADOR DE SALUD FINANCIERA
 ==================================================== */
-function calcHealthScore(){
+/* ----------------------------------------------------------------
+   Reglas compartidas por Salud y «Necesita atención» (una sola definición: antes cada una habría tenido su copia y habrían derivado)
+   ---------------------------------------------------------------- */
+// «Runway»: cuántos meses de gasto típico cubre tu liquidez, sin contar ingresos. null si aún no hay gasto típico; 0 si la liquidez no
+// es positiva.
+// (la definición vive en js/core/reglas.js: la comparten Salud, Atención y el push; aquí quedan los nombres que ya usaba el resto del módulo)
+function _mesesCubiertos(liquidoReal, gastoRef){ return Reglas.mesesCubiertos(liquidoReal, gastoRef); }
+// Nivel del runway según UMBRALES.runway: 'critico' | 'atencion' | 'ok'.
+function _nivelRunway(meses){ return Reglas.nivelRunway(meses, UMBRALES); }
+// «3,4 meses» / «1 mes» / «menos de 1 mes» / «más de 24 meses».
+function _fmtMeses(meses){ return Reglas.fmtMeses(meses); }
+// Texto del runway («Cubres 3,4 meses de gastos»).
+function _textoRunway(meses){ return Reglas.textoRunway(meses); }
+
+// Impacto de un gasto grande ANTES de hacerlo: qué parte de tu plata disponible es y cuántos meses de gastos cubrirías después.
+// `grande` = sugerencia de marcarlo como compra grande (UMBRALES.compraGrande). Pagar con tarjeta pesa igual: la deuda propia resta de
+// la liquidez neta (calcLiquidez) lo mismo que si saliera de una cuenta. → { monto, grande, pctLiquidez, pctPatrimonio, antes, despues,
+// netaDespues, nivel ('red'|'amber'|'gris'), texto } — null si el monto es menor al mínimo (no hay nada que advertir).
+function calcImpactoCompra(monto){
+  const C = UMBRALES.compraGrande;
+  if(!(monto >= C.minimo)) return null;
+  const liq = calcLiquidez();
+  const gastoRef = Periodo.gastoPromedioPrevio(mesActual(), UMBRALES.salud.mesesReferencia).promedio;
+  const netaDespues = liq.neta - monto;
+  const antes = _mesesCubiertos(liq.neta, gastoRef);
+  const despues = _mesesCubiertos(netaDespues, gastoRef);
+  const pctLiquidez = liq.neta > 0 ? monto / liq.neta : null;
+  const patrimonio = calcPatrimonioVisible();
+  const pctPatrimonio = patrimonio > 0 ? monto / patrimonio : null;
+  const grande = (pctLiquidez !== null && pctLiquidez >= C.fraccionLiquidez) || (gastoRef > 0 && monto >= C.mesesDeGasto * gastoRef) || netaDespues < 0;
+  const pct = x => Math.round(x * 100) + ' %';
+  let texto, nivel;
+  if(netaDespues < 0){
+    nivel = 'red';
+    texto = 'Con esto tus deudas superarían tu plata disponible en ' + fmtNoCents(-netaDespues) + '.';
+  } else {
+    const partes = [];
+    if(pctLiquidez !== null) partes.push('Es el ' + pct(pctLiquidez) + ' de tu plata disponible' + (pctPatrimonio !== null ? ' y el ' + pct(pctPatrimonio) + ' de tu patrimonio' : '') + '.');
+    if(despues !== null){
+      partes.push('Después cubrirías ' + _fmtMeses(despues) + ' de gastos' + (antes !== null ? ' (hoy: ' + _fmtMeses(antes) + ')' : '') + '.');
+      nivel = _nivelRunway(despues) === 'critico' ? 'red' : _nivelRunway(despues) === 'atencion' ? 'amber' : 'gris';
+    } else nivel = 'gris';
+    texto = partes.join(' ');
+  }
+  return { monto, grande, pctLiquidez, pctPatrimonio, antes, despues, netaDespues, nivel, texto };
+}
+// Meses seguidos de déficit que merecen aviso (0 si no merecen): solo con ingreso reciente registrado (sin él, «déficit» sería solo
+// no haber anotado ingresos) y sin un fondo sólido (≥ 6 meses de gasto) que la absorba.
+function _rachaDeficitRelevante(racha, ingresoTipico, mesesCubiertos){ return Reglas.rachaDeficitRelevante(racha, ingresoTipico, mesesCubiertos, UMBRALES); }
+
+function calcHealthScore(sit){
   const S = window.S || {};
   if(!S.cajitas) return null;
-  let score = 50;
-  // Cada consejo lleva su TIPO explícito (no se deduce del texto):
-  //   ok         → algo ya cumplido o bien hecho (check verde)
-  //   alerta     → importante, hay que atenderlo (rojo, advertencia)
-  //   aviso      → conviene mirarlo (ámbar, advertencia)
-  //   sugerencia → oportunidad o tarea pendiente, no un logro (neutro, ícono de información); `ir` = pantalla donde se resuelve
-  const consejos = [];
-  const add = (texto, tipo, ir) => { consejos.push({ texto, tipo, ir: ir || '' }); };
-
-  // ── Cálculos base ────────────────────────────────────────────────────
-  // Patrimonio VISIBLE (sin alcancía) — mismo criterio que renderProyeccion().
-  // El riesgo real acá es bajo: `patrimonio` solo se usa como gate booleano
-  // (tieneAlgo) y en el ratio deudaTC/patrimonio cuando no hay ingresos del
-  // mes registrados (líneas más abajo) — nunca se muestra el monto en pesos,
-  // a diferencia de la Proyección financiera. Aun así, restarla acá evita
-  // cualquier filtración indirecta (ej. un depósito grande a la alcancía
-  // haciendo que "tieneAlgo" pase de false a true, o cambiando qué tip
-  // aparece) y mantiene el mismo principio en toda la app: mientras esté
-  // tapada, es como si esa plata no existiera para nada visible al usuario.
-  // Patrimonio VISIBLE (sin alcancía): una sola definición en core-state.js (calcPatrimonioVisible), la misma del hero, el historial
-  // y la Proyección. Resta TODAS las deudas (tarjetas, «Yo debo», plata ajena), así que ya no hay que corregirlo aquí.
-  const patrimonio = calcPatrimonioVisible();
+  sit = sit || _situacion(); // renderHealthScore pasa la suya: una sola lectura de la situación por render
   const mes = window.mesActual ? window.mesActual() : '';
-
-  // Gastos e ingresos del mes: definición única en periodo.js (la misma de Análisis, cierre de mes y Wrapped).
+  const U = UMBRALES.salud;
   const _gMes = Periodo.gastosDelMes(mes);
-  const gvMes = _gMes.gvTotal;
-  const gastosMes = _gMes.total;
-
-  // Deuda TC que realmente es mía (excluye encargos, plata comprometida, préstamos TC)
-  const deudaTC = typeof calcDeudaTcPropia==='function' ? calcDeudaTcPropia() : 0;
-
-  // Ingresos del mes: mesada + ingresos fijos + entradas reales (periodo.js).
   const ingresosMes = Periodo.ingresosDelMes(mes).total;
-  // Ingreso de REFERENCIA para los ratios (b, d y «sin ingresos»): el mayor entre lo ingresado este mes y el ingreso típico de los
-  // últimos 3 meses con ingreso. Con la regla de caja el ingreso llega en pocos días (la mesada, el sueldo, las cuotas de Spotify): a
-  // principio de mes aún no ha llegado y comparar contra $0 haría ver una deuda enorme o «gastas más de lo que ingresas» cada mes
-  // antes de cobrar. Si este mes ya entró más que lo típico, manda lo de este mes; sin meses anteriores con ingreso, todo sigue igual.
-  const ingresoRef = Math.max(ingresosMes, Periodo.ingresoPromedioPrevio(mes, 3).promedio);
-
-  // ── Rendimiento de CDTs generado este mes (Opción 2: patrimonio real) ──
-  // Es plata que el patrimonio total ya ganó este mes, pero sigue bloqueada
-  // dentro del CDT — NO es efectivo disponible, así que NO se suma a ingresosMes
-  // (que mide flujo de caja real para los ratios de deuda/gasto).
-  // Se expone aparte para que la app "sepa" que ese rendimiento existe.
-  const rendimientoCDTMes = Periodo.rendimientosDelMes(mes).total; // cajitas + CDTs (ver periodo.js)
-
-  // ── Liquidez real: una sola definición en core-state.js (calcLiquidez) ─────
-  // Suma lo que se puede usar ya (cajitas, Nequi, Efectivo, cuentas propias) y resta lo que no es tuyo o ya debes: la tarjeta
-  // propia, lo que debes a personas (aunque no haya fecha de pago: entre amigos casi nunca la hay, y es plata que te pueden
-  // pedir en cualquier momento) y la plata ajena que guardas. NO suma los CDTs (bloqueados) ni lo que te deben (sin fecha
-  // cierta no es plata disponible). Ver el bloque «PATRIMONIO Y LIQUIDEZ» de core-state.js.
-  const liq = calcLiquidez();
-  const liquidoReal = liq.neta;
-  const cdtVal = liq.cdts;
-  // patrimonio total sí incluye CDTs para otros cálculos
-  const liquidoConCDTs = liq.conCDTs;
-
-  // ── Plata prestada a otros ────────────────────────────────────────────
-  const prest = liq.meDeben;
-
-  // ── Hay datos suficientes para evaluar? ───────────────────────────────
-  const tieneAlgo = patrimonio > 0 || prest > 0 || deudaTC > 0 || gastosMes > 0;
-
-  // a) Fondo de emergencia: liquidez real vs gasto mensual TÍPICO
-  // CORRECCIÓN: usamos liquidoReal (sin CDTs) — un CDT bloqueado no cubre una emergencia.
-  // El gasto de referencia es el promedio de los últimos 3 meses COMPLETOS con datos (Periodo.gastoPromedioPrevio),
-  // no el gasto del mes en curso: a los 2 días de empezar el mes apenas hay gastos, y «reservas / gastos del mes»
-  // salía en decenas de meses y regalaba +20 puntos que se iban cayendo a medida que pasaba el mes.
-  // Sin ningún mes anterior con gastos todavía no hay con qué medir: este criterio no puntúa ni aconseja.
-  const gastoRef = Periodo.gastoPromedioPrevio(mes, 3).promedio;
-  if(gastoRef > 0 && liquidoReal > 0){
-    const mesesCubiertos = liquidoReal / gastoRef;
-    if(mesesCubiertos >= 6) score += 20;
-    else if(mesesCubiertos >= 3) score += 10;
-    else { score -= 5; add('Tus reservas cubren menos de 3 meses de gastos.','aviso'); }
-  } else if((gastosMes > 0 || gastoRef > 0) && liquidoReal <= 0 && liquidoConCDTs > 0){
-    // Tiene gastos pero su liquidez inmediata es cero — salvado solo por CDTs
-    score -= 8; add('Tu liquidez disponible es muy baja — tus ahorros están en CDTs, no en cuentas libres.','aviso');
-  } else if(liquidoReal < 0){
-    // Qué dejó la liquidez en negativo: si solo es la tarjeta se dice como siempre; si hay deudas con personas o plata ajena, se nombran.
-    score -= 15;
-    if(liq.yoDebo <= 0 && liq.ajeno <= 0) add('Tu deuda en tarjetas supera tu patrimonio líquido.','alerta');
-    else if(liq.tcPropia <= 0 && liq.ajeno <= 0) add('Lo que debes a personas supera tu patrimonio líquido.','alerta');
-    else add('Tus deudas y la plata ajena que guardas superan tu patrimonio líquido.','alerta');
-  }
-
-  // b) Deuda de tarjetas de crédito vs ingresos (ratio de endeudamiento TC)
-  if(deudaTC > 0 && ingresoRef > 0){
-    const ratioTC = deudaTC / ingresoRef;
-    if(ratioTC > 3){ score -= 15; add('Tu deuda en TC supera 3 meses de ingresos — prioriza pagarla.','alerta'); }
-    else if(ratioTC > 1.5){ score -= 8; add('Tu deuda en tarjetas es alta respecto a tus ingresos.','aviso'); }
-    else score += 5;
-  } else if(deudaTC > 0 && ingresoRef === 0){
-    // Tiene deuda TC pero no registra ingresos — verificar vs patrimonio
-    // CORRECCIÓN: cubrir el caso patrimonio <= 0 que antes se ignoraba
-    if(patrimonio > 0 && deudaTC / patrimonio > 0.4){
-      score -= 10; add('Tu deuda en tarjetas es alta — considera pagarla con tus ahorros.','aviso');
-    } else if(patrimonio <= 0 && deudaTC > 0){
-      score -= 15; add('Tienes deuda en tarjetas y tu patrimonio no la cubre — prioriza pagarla.','alerta');
-    }
-  }
-
-  // c) Plata prestada a otros (riesgo de incobrabilidad / inmovilización)
-  // Penalización escalonada por ratio — independiente del bonus de CDTs
-  let ratioPrest = 0;
-  if(prest > 0){
-    if(liquidoReal <= 0){
-      // Sin liquidez libre y con plata prestada sin cobrar — caso crítico (la liquidez puede estar en cero por lo prestado o por lo que debes)
-      score -= 15; add('No te queda liquidez libre y tienes plata prestada sin cobrar — no tienes nada disponible para emergencias.','alerta');
-      ratioPrest = Infinity;
-    } else {
-      ratioPrest = prest / liquidoReal;
-      if(ratioPrest > 2){
-        // Más del doble de la liquidez prestada — muy comprometido
-        score -= 18; add('Tienes más del doble de tu liquidez prestada — tu situación financiera es muy vulnerable.','alerta');
-      } else if(ratioPrest > 1){
-        // Prestó más de lo que tiene líquido
-        score -= 13; add('Tienes más plata prestada que tu liquidez disponible — queda poco para emergencias.','alerta');
-      } else if(ratioPrest > 0.4){
-        score -= 8; add('Tienes mucho dinero prestado sin cobrar (>40% de tu liquidez).','aviso');
-      }
-      // ratioPrest <= 0.4: situación sana, no penalizar
-    }
-  }
-
-  // d) Ratio gastos/ingresos (disciplina de gasto)
-  if(ingresoRef > 0 && gastosMes > 0){
-    const ratioGasto = gastosMes / ingresoRef;
-    if(ratioGasto <= 0.7) score += 10;
-    else if(ratioGasto <= 0.9) score += 5;
-    else if(ratioGasto > 1){ score -= 10; add('Por ahora estás gastando más de lo que ingresas.','aviso'); }
-  }
-
-  // e) CDTs activos (ahorro estructurado)
-  // Si el riesgo de prestado es alto (ratio > 1), el CDT no compensa — bonus reducido a +3
-  // Solo cuando la situación de liquidez es sana merece el bonus completo
-  const cdts = (S.cajitas||[]).reduce((a,c)=>a+(c.cdts||[]).length,0);
-  if(cdts >= 1){
-    // El bono es proporcional al peso del CDT en tu plata (cuentas libres + CDTs): llega completo cuando el CDT es
-    // el 10 % o más; un CDT de $1.000 dentro de $80.000 ya no regala los 10 puntos.
-    const CDT_PESO_COMPLETO = 0.10;
-    const cdtBonusMax = ratioPrest > 1 ? 3 : 10;
-    const pesoCDT = liquidoConCDTs > 0 ? cdtVal / liquidoConCDTs : 0;
-    score += Math.round(cdtBonusMax * Math.min(1, pesoCDT / CDT_PESO_COMPLETO));
-  } else if(tieneAlgo && liquidoReal > 0 && deudaTC <= 0 && (gastoRef <= 0 || liquidoReal >= gastoRef * 3)){
-    // Solo se sugiere con ahorros que sobran: fondo de emergencia cubierto (≥ 3 meses de gasto típico) y sin deuda de tarjeta propia.
-    add('Considera poner algo en un CDT para hacer crecer tus ahorros.','sugerencia','cuentas');
-  }
-
-  // f) Gastos fijos configurados (disciplina de presupuesto)
-  if((S.gastosFijos||[]).length >= 2) score += 5;
-
-  // g) Categorías diversificadas en gastos variables (registro completo)
-  // CORRECCIÓN: solo penalizar si hay gastos variables — no castigar por tener solo gastos fijos
-  const cats = new Set((S.gastosVar||[]).slice(-20).map(g=>g.cat));
-  if(gvMes > 0 && cats.size <= 1){ score -= 5; add('Registra las categorías de tus gastos para mejor control.','sugerencia','gastos'); }
-
-  // Sin ingresos registrados no se puede evaluar la disciplina de gasto ni el endeudamiento (los ratios b y d se saltan):
-  // no puede salir «Excelente», y se avisa igual que el balance de Análisis.
-  const sinIngresos = ingresoRef <= 0 && gastosMes > 0;
-  if(sinIngresos){
-    score = Math.min(score, 74);
-    add('Registra tus ingresos para que la calificación pueda evaluar tus gastos y deudas.','sugerencia');
-  }
-  score = Math.max(0, Math.min(100, score));
-  if(!consejos.length){
-    if(score >= 80) add('¡Excelente! Tus finanzas están muy bien.','ok');
-    else if(score >= 60) add('Vas bien — diversifica tus ahorros o reduce gastos variables para subir tu puntaje.','sugerencia');
-    else if(tieneAlgo) add('Hay espacio para mejorar: revisa tus gastos y ahorros para subir tu puntaje.','sugerencia');
-    else add('Registra más movimientos para un análisis más preciso.','sugerencia');
-  }
-  // Lo urgente primero y las sugerencias suaves después (el orden es estable dentro de cada tipo).
-  const ORDEN = { alerta: 0, aviso: 1, sugerencia: 2, ok: 3 };
-  consejos.sort((a, b) => ORDEN[a.tipo] - ORDEN[b.tipo]);
-  const tips = consejos.map(c => c.texto); // los textos, para quien solo necesita la lista
-  return { score, tips, consejos, sinDatos: !tieneAlgo, ingresosMes, rendimientoCDTMes };
+  const _desde90 = Fecha.sumarDias(hoy(), -90);
+  const gastoRef = Periodo.gastoPromedioPrevio(mes, U.mesesReferencia).promedio;
+  const e = {
+    patrimonio: calcPatrimonioVisible(), gastoVariableMes: _gMes.gastoVariableTotal, gastosMes: _gMes.total,
+    deudaTC: typeof calcDeudaTcPropia==='function' ? calcDeudaTcPropia() : 0,
+    // Ingreso de REFERENCIA: el mayor entre lo de este mes y el típico de los últimos 3 meses con ingreso (ver Salud.puntaje).
+    ingresoRef: Math.max(ingresosMes, Periodo.ingresoPromedioPrevio(mes, 3).promedio),
+    liq: calcLiquidez(), gastoRef,
+    ingresoTipico: Periodo.ingresoPromedioPrevio(mes, U.mesesReferencia).promedio,
+    racha: Periodo.rachaDeficit(mes, 6),
+    cdtsActivos: (S.cajitas||[]).reduce((a,c)=>a+(c.cdts||[]).length,0),
+    comprasGrandes: Periodo.comprasGrandesEntre(_desde90, hoy()),
+    sinBase: sit.sinBase,
+    fmt
+  };
+  const r = Salud.puntaje(e);
+  return Object.assign(r, { ingresosMes, rendimientoCDTMes: Periodo.rendimientosDelMes(mes).total }); // los CDT rinden pero siguen bloqueados: no son flujo de caja
 }
 
+// Tarjeta de Salud financiera. De arriba abajo: el estado (una sola vez; en presión y crisis, con sus acciones), el puntaje con lo que
+// conviene hacer (máx. 3, lo urgente primero, cada uno lleva a donde se resuelve) y los cuatro pilares con semáforo. Sin base (usuario nuevo)
+// no hay puntaje —un número inventado— ni pilares sin datos: solo el estado neutro, lo que sí se sabe y qué registrar.
+// No se repite la misma cifra en tres sitios: el runway («Cubres X meses») vive solo en el pilar Liquidez.
+const SALUD_MAX_CONSEJOS = 3;
 function renderHealthScore(){
   const el = document.getElementById('health-score-card');
   if(!el) return;
-  const res = calcHealthScore();
+  const sit = _situacion();
+  const res = calcHealthScore(sit);
   // El min-height:148px inline (ver comentario en index.html) solo existe para
   // que el skeleton no cause CLS mientras carga. Una vez que hay contenido real
   // (con o sin datos) el alto lo debe definir el contenido, no el skeleton —
   // si no, queda espacio vacío de sobra cuando el contenido es corto.
   el.style.minHeight = '';
-  if(!res || res.sinDatos){ el.innerHTML = '<div class="inicio-salud-vacio">Registra más datos para calcular tu salud financiera.</div>'; return; }
+  if(!res || res.sinDatos){ el.innerHTML = emptyInline('Registra más datos para calcular tu salud financiera.'); return; }
   const { score, consejos } = res;
+  const sinBase = sit.sinBase;
+  // Un solo punto asigna color e ícono según el TIPO del consejo (no según su texto). Íconos de Font Awesome de la app.
+  const ESTILO = {
+    ok:         { clase: 'inicio-tip-ok',   ico: 'fa-circle-check' },
+    alerta:     { clase: 'inicio-tip-mal',  ico: 'fa-triangle-exclamation' },
+    aviso:      { clase: 'inicio-tip-warn', ico: 'fa-triangle-exclamation' },
+    sugerencia: { clase: 'inicio-tip-info', ico: 'fa-circle-info' }
+  };
+  const est = Salud.estado(sit);
+  // Sin base, el bloque «Todavía no hay datos suficientes» ya pide registrar: ese consejo no se repite.
+  const inicial = sinBase && !!est && est.id === 'inicial';
+  const tipsHtml = consejos.filter(c => !(inicial && c.id === 'registro')).slice(0, SALUD_MAX_CONSEJOS).map(c => {
+    const e = ESTILO[c.tipo] || ESTILO.sugerencia;
+    const cuerpo = `<i class="fa-solid ${e.ico} inicio-tip-ico"></i><span>${escHtml(c.texto)}</span>`;
+    // Un consejo accionable lleva a donde se resuelve.
+    return c.ir
+      ? `<button type="button" class="inicio-tip ${e.clase} inicio-tip-accion" ${Events.attr('inicio:irConsejo', c.ir)}>${cuerpo}<i class="fa-solid fa-arrow-right inicio-tip-ir"></i></button>`
+      : `<div class="inicio-tip ${e.clase}">${cuerpo}</div>`;
+  }).join('');
+  // Estado global (6 niveles) y pilares con semáforo: el número solo no dice CUÁL de las cosas va mal. Ver js/core/salud.js.
+  const irBtn = (ir, cuerpo, clase) => ir
+    ? `<button type="button" class="${clase} inicio-pilar-accion" ${Events.attr('inicio:irConsejo', ir)}>${cuerpo}</button>`
+    : `<div class="${clase}">${cuerpo}</div>`;
+  const estadoHtml = !est ? '' : `<div class="inicio-estado inicio-estado-${est.tono}">
+      <div class="inicio-estado-cab"><span class="inicio-estado-etq">${escHtml(est.etiqueta)}</span><span class="inicio-estado-frase">${escHtml(est.frase)}</span></div>
+      ${est.acciones.map(a => irBtn(a.ir, `<i class="fa-solid fa-arrow-right inicio-estado-ico"></i><span>${escHtml(a.texto)}</span>`, 'inicio-estado-accion')).join('')}
+    </div>`;
+  // Pilares: sin deudas propias no se muestra el de Deuda (un «sin deudas» como tarjeta suelta suena a que algo falta, y nunca es una tarea).
+  // Sin base solo se muestran los que ya señalan algo (ámbar o rojo): un pilar sin datos o en verde no dice nada de quien apenas empieza.
+  const pilares = Salud.pilares(sit).filter(p => !(p.id === 'deuda' && !(sit.deudaPropia > 0)) && (!sinBase || p.nivel === 'ambar' || p.nivel === 'rojo'));
+  const pilaresHtml = !pilares.length ? '' : `<div class="inicio-pilares">${pilares.map(p =>
+    irBtn(p.ir, `<span class="inicio-pilar-punto inicio-pilar-${p.nivel}" aria-hidden="true"></span><span class="inicio-pilar-tit">${escHtml(p.titulo)}</span><span class="inicio-pilar-txt">${escHtml(p.texto)}</span>`, 'inicio-pilar')
+  ).join('')}</div>`;
+  if(inicial){
+    // Usuario nuevo: un solo bloque tranquilo (sin puntaje, sin «estado», sin pilares vacíos) que dice qué falta y lleva a registrarlo.
+    const irA = sit.ingresoRef > 0 ? 'gastos' : 'analisis/ingresos';
+    const btn = sit.ingresoRef > 0 ? 'Registrar gastos' : 'Registrar ingresos';
+    el.innerHTML = `<div class="inicio-inicial">
+      <div class="inicio-inicial-tit">Todavía no hay datos suficientes</div>
+      <div class="inicio-inicial-txt">Registra tus ingresos y gastos durante un mes y aquí verás la evaluación de tus finanzas.</div>
+      <button type="button" class="inicio-inicial-btn" ${Events.attr('inicio:irConsejo', irA)}>${btn} <i class="fa-solid fa-arrow-right"></i></button>
+    </div>${tipsHtml ? `<div class="inicio-salud-tips">${tipsHtml}</div>` : ''}${pilaresHtml}`;
+    return;
+  }
+  if(sinBase){
+    el.innerHTML = `${estadoHtml}<div class="inicio-salud-tips">${tipsHtml}</div>${pilaresHtml}`;
+    return;
+  }
   const col = score >= 75 ? 'var(--accent)' : score >= 50 ? 'var(--amber)' : 'var(--red)';
   const claseSalud = score >= 75 ? 'inicio-salud-ok' : score >= 50 ? 'inicio-salud-warn' : 'inicio-salud-mal';
   const label = score >= 75 ? 'Excelente' : score >= 50 ? 'Regular' : 'Necesita atención';
@@ -419,22 +432,7 @@ function renderHealthScore(){
   const dash = (score / 100) * circ;
   const dasharrayAttr = lleno ? '' : `stroke-dasharray="${dash.toFixed(1)} ${circ.toFixed(1)}"`;
   const linecap = lleno ? 'butt' : 'round';
-  // Un solo punto asigna color e ícono según el TIPO del consejo (no según su texto). Íconos de Font Awesome de la app.
-  const ESTILO = {
-    ok:         { clase: 'inicio-tip-ok',   ico: 'fa-circle-check' },
-    alerta:     { clase: 'inicio-tip-mal',  ico: 'fa-triangle-exclamation' },
-    aviso:      { clase: 'inicio-tip-warn', ico: 'fa-triangle-exclamation' },
-    sugerencia: { clase: 'inicio-tip-info', ico: 'fa-circle-info' }
-  };
-  const tipsHtml = consejos.map(c => {
-    const e = ESTILO[c.tipo] || ESTILO.sugerencia;
-    const cuerpo = `<i class="fa-solid ${e.ico} inicio-tip-ico"></i><span>${escHtml(c.texto)}</span>`;
-    // Un consejo accionable lleva a donde se resuelve.
-    return c.ir
-      ? `<button type="button" class="inicio-tip ${e.clase} inicio-tip-accion" ${Events.attr('inicio:irConsejo', c.ir)}>${cuerpo}<i class="fa-solid fa-arrow-right inicio-tip-ir"></i></button>`
-      : `<div class="inicio-tip ${e.clase}">${cuerpo}</div>`;
-  }).join('');
-  el.innerHTML = `<div class="health-ring-wrap inicio-salud-wrap">
+  el.innerHTML = `${estadoHtml}<div class="health-ring-wrap inicio-salud-wrap">
     <svg aria-hidden="true" width="76" height="76" viewBox="0 0 76 76" class="health-ring inicio-salud-anillo">
       <circle cx="38" cy="38" r="${r}" fill="none" stroke="var(--bg3)" stroke-width="7"/>
       <circle cx="38" cy="38" r="${r}" fill="none" stroke="${col}" stroke-width="7"
@@ -447,12 +445,138 @@ function renderHealthScore(){
       <div class="health-score-num ${claseSalud}">${label}</div>
       ${tipsHtml}
     </div>
+  </div>${pilaresHtml}`;
+}
+
+/* ====================================================
+   PLAN DE DEUDAS (P2 + P3) — cálculo en js/core/plan-deudas.js
+==================================================== */
+// Deudas PROPIAS: la parte de cada tarjeta que es tuya (no encargos ni plata de otros) y lo que debes a personas. La tasa E.A. es opcional (tarjeta).
+function _deudasPropias(){
+  const out = [];
+  (S.tarjetasCredito || []).forEach(tc => {
+    const saldo = typeof calcDeudaTcPropiaDeTarjeta === 'function' ? calcDeudaTcPropiaDeTarjeta(tc) : 0;
+    if(saldo > 0) out.push({ id: tc.id, nombre: tc.nombre, tipo: 'tarjeta', saldo, tasaEA: tc.tasaEA > 0 ? tc.tasaEA : null });
+  });
+  if(typeof Deudas !== 'undefined' && typeof getDeudorSaldo === 'function'){
+    Deudas.lista('contra').forEach(d => { const saldo = getDeudorSaldo(d); if(saldo > 0) out.push({ id: d.id, nombre: d.nombre, tipo: 'persona', saldo, tasaEA: d.tasaEA > 0 ? d.tasaEA : null }); });
+  }
+  return out;
+}
+// Lo que sobra al mes, en promedio, de los últimos meses completos con ingresos registrados (balance recurrente: sin compras grandes aisladas).
+function _balancePromedioReciente(){
+  const mes = mesActual(), v = [];
+  for(let i = 1; i <= UMBRALES.salud.pilares.flujo.meses; i++){
+    const b = Periodo.balanceDelMes(Periodo.mesDesplazado(mes, -i));
+    if(Periodo.balanceEvaluable(b)) v.push(b.balanceRecurrente); // sin ingresos anotados el mes no se puede juzgar
+  }
+  return v.length ? v.reduce((a, x) => a + x, 0) / v.length : null;
+}
+function planDeudasDatos(){
+  const deudas = _deudasPropias();
+  if(!deudas.length) return null;
+  const conTasa = deudas.some(d => d.tasaEA);
+  const est = S.planDeudasEstrategia === 'bola' || S.planDeudasEstrategia === 'avalancha' ? S.planDeudasEstrategia : (conTasa ? 'avalancha' : 'bola');
+  const balance = _balancePromedioReciente();
+  return { plan: PlanDeudas.construir({ deudas, balancePromedio: balance, estrategia: est, metaMeses: UMBRALES.deudas.metaMeses }), balance, conTasa };
+}
+function renderPlanDeudas(){
+  const el = document.getElementById('plan-deudas-card');
+  if(!el) return;
+  const d = planDeudasDatos();
+  if(!d){ el.innerHTML = ''; return; }
+  const { plan, balance, conTasa } = d;
+  let resumen;
+  if(balance === null) resumen = 'Aún no hay meses completos para calcular cuánto te sobra al mes.';
+  else if(plan.baja) resumen = `A tu ritmo (te sobran ${fmt(balance)} al mes), quedarías libre de deuda en ~${plan.mesesLibre} ${plan.mesesLibre === 1 ? 'mes' : 'meses'}.`;
+  else resumen = `Con tu ritmo actual la deuda no baja. Necesitarías liberar ~${fmt(plan.necesitasLiberar)} al mes para quedar libre en ${plan.meta} meses.`;
+  const costo = plan.costoMensualTotal > 0 ? `<div class="inicio-plan-costo">Tu deuda con tasa te cuesta ≈ ${fmt(plan.costoMensualTotal)} al mes en intereses.</div>` : '';
+  // ¿Conviene pagar con lo ahorrado? Se compara la deuda más cara con lo que rinde tu cuenta de ahorro (si ambas tasas existen).
+  let conviene = '';
+  const masCara = plan.orden.filter(x => x.tasaEA > 0).sort((a, b) => b.tasaEA - a.tasaEA)[0];
+  const rendNu = typeof mejorTasaAhorro === 'function' ? mejorTasaAhorro() : null; // la mejor tasa EA entre tus cuentas de ahorro
+  const pc = masCara && rendNu != null ? PlanDeudas.pagarConviene(masCara.tasaEA, rendNu) : null;
+  if(pc) conviene = `<div class="inicio-plan-costo">${pc.conviene
+    ? `Tu cajita rinde ${escHtml(String(rendNu).replace('.', ','))} % y «${escHtml(masCara.nombre)}» cuesta ${escHtml(String(masCara.tasaEA).replace('.', ','))} %: pagarla con lo ahorrado te sale a favor.`
+    : `Tu cajita rinde ${escHtml(String(rendNu).replace('.', ','))} %, más de lo que cuesta «${escHtml(masCara.nombre)}» (${escHtml(String(masCara.tasaEA).replace('.', ','))} %): no tiene afán de pagarla con lo ahorrado.`}</div>`;
+  // «Apartar $X»: pagar YA una parte de la deuda más cara con plata que tienes, respetando el fondo de emergencia. Usa lo que la app
+  // conoce (cuentas, cajitas y CDT vencidos; la Alcancía nunca cuenta: está oculta). Si el ahorro está en otro lado que la app no ve,
+  // la línea no lo sabe: por eso habla de «con lo que tienes en tus cuentas y cajitas».
+  let apartar = '';
+  if(masCara){
+    const liq = calcLiquidez(), gt = Periodo.gastoPromedioPrevio(mesActual(), UMBRALES.salud.mesesReferencia).promedio;
+    const pp = PlanDeudas.pagoPosible({ deuda: masCara, disponible: liq.libre + liq.cdtsVencidos - liq.ajeno, gastoTipico: gt, mesesReserva: UMBRALES.salud.fondoMeses.minimo, rendimientoEA: rendNu });
+    if(pp){
+      const ir = masCara.tipo === 'tarjeta' ? 'tarjetas' : 'prestamos';
+      apartar = `<div class="inicio-plan-apartar"><span>${pp.total ? 'Con lo que tienes en tus cuentas y cajitas podrías saldar' : 'Con lo que tienes en tus cuentas y cajitas podrías pagar ya'} ${fmt(pp.monto)} de «${escHtml(masCara.nombre)}» y seguir con ${UMBRALES.salud.fondoMeses.minimo} meses de gastos de reserva${pp.ahorroMensual > 0 ? ` (ahorrarías ≈ ${fmt(pp.ahorroMensual)} al mes en intereses)` : ''}.</span><button type="button" class="inicio-plan-est" ${Events.attr('inicio:irConsejo', ir)}>Ir a pagar</button></div>`;
+    }
+  }
+  const sinTasa = !conTasa && (S.tarjetasCredito || []).some(t => calcDeudaTcPropiaDeTarjeta(t) > 0) ? '<div class="inicio-plan-nota">Agrega la tasa E.A. en cada tarjeta para ver cuánto te cuesta.</div>' : '';
+  const filas = plan.orden.map((x, i) => `<div class="inicio-plan-fila"><span class="inicio-plan-n">${i + 1}</span><span class="inicio-plan-nom">${escHtml(x.nombre)}</span><span class="inicio-plan-tasa">${x.tasaEA ? escHtml(String(x.tasaEA).replace('.', ',')) + ' % E.A.' : 'sin tasa'}</span><span class="inicio-plan-monto">${fmt(x.saldo)}</span></div>`).join('');
+  const btn = (id, txt) => `<button type="button" class="inicio-plan-est ${plan.estrategia === id ? 'inicio-plan-est-on' : ''}" ${Events.attr('inicio:planEstrategia', id)}>${txt}</button>`;
+  el.innerHTML = `<div class="card inicio-plan">
+    <div class="inicio-plan-tit">Plan de salida de deudas</div>
+    <div class="inicio-plan-resumen">${resumen}</div>${costo}${conviene}${apartar}
+    <div class="inicio-plan-ests">${btn('avalancha', 'Más cara primero')}${btn('bola', 'Más pequeña primero')}</div>
+    ${filas}${sinTasa}
   </div>`;
+}
+Refresh.registrar('inicio-plan-deudas', renderPlanDeudas, { pantalla: 'inicio' });
+
+/* ====================================================
+   HERO: estado del patrimonio (color y una línea de contexto)
+==================================================== */
+// El hero era verde fijo: un patrimonio de −$800.000 se veía igual que uno de +$8.000.000 (solo el signo «−» lo delataba), y quien
+// tenía valor pero liquidez negativa (un CDT y una tarjeta alta) veía «todo bien» mientras Salud gritaba alerta.
+// → { estado, clase (color del monto), tono ('red'|'amber'|'gris'|''), mensaje }. Prioridad: negativo > cero > liquidez negativa > prestado.
+function calcEstadoHero(d, liq){
+  d = d || calcPatrimonioDesglose();
+  liq = liq || calcLiquidez();
+  const p = d.visible;
+  if(!isFinite(p)) return { estado:'desconocido', clase:'c-green', tono:'', mensaje:'' };
+  if(p < 0) return { estado:'negativo', clase:'c-red', tono:'red', mensaje:'Debes más de lo que tienes: ' + fmtNoCents(-p) };
+  const hayDatos = (d.activos - d.alcancia) > 0 || d.pasivos > 0; // la alcancía no cuenta: está oculta a propósito
+  if(p === 0 && hayDatos) return { estado:'cero', clase:'c-text2', tono:'gris', mensaje:'Lo que tienes y lo que debes se compensan' };
+  if(liq.neta < 0) return { estado:'liquidez-negativa', clase:'c-amber', tono:'amber', mensaje:'Tienes valor, pero tus deudas superan tu plata disponible en ' + fmtNoCents(-liq.neta) };
+  // «Me deben» cuenta al 100 % en el patrimonio sin provisión de incobrabilidad: si pesa mucho, se muestra también sin eso.
+  if(liq.meDeben > 0 && liq.meDeben >= p * UMBRALES.hero.meDebenFraccion) return { estado:'prestado', clase:'c-green', tono:'gris', mensaje:'Sin contar lo que te deben: ' + fmtNoCents(p - liq.meDeben) };
+  return { estado:'sano', clase:'c-green', tono:'', mensaje:'' };
+}
+function renderHeroEstado(d){
+  const hero = document.getElementById('heroTotal');
+  if(!hero) return;
+  const e = calcEstadoHero(d);
+  ['c-green','c-red','c-amber','c-text2'].forEach(c => hero.classList.remove(c));
+  hero.classList.add(e.clase);
+  const el = document.getElementById('hero-estado');
+  if(!el) return;
+  el.textContent = e.mensaje;
+  ['red','amber','gris'].forEach(t => el.classList.remove('ix-hero-estado-' + t));
+  if(e.tono) el.classList.add('ix-hero-estado-' + e.tono);
+}
+
+// Estado de situación (Empezando, Creciendo … Crisis) o null sin datos. Lo leen la tarjeta de Salud y cualquier pantalla que deba ajustar el tono
+// (Análisis, Wrapped): con `serio` (presión o crisis) no se celebra, se habla claro y se señala la acción.
+function calcEstadoSituacion(){
+  const est = Salud.estado(_situacion());
+  return est ? Object.assign({ serio: est.id === 'presion' || est.id === 'crisis' }, est) : null;
 }
 
 /* ====================================================
    PROYECCIÓN FINANCIERA
 ==================================================== */
+// Ritmo mensual (cambio neto ÷ días × 30) de cada tercio del historial, en orden. `intervalos`: [{dias, cambio}] entre puntos
+// consecutivos. Un intervalo cae en el tercio donde está su punto medio.
+function _ritmosPorTercio(intervalos, diasTotal){
+  const t = [{d:0,c:0},{d:0,c:0},{d:0,c:0}];
+  let acum = 0;
+  intervalos.forEach(it => {
+    const i = Math.min(2, Math.floor(((acum + it.dias/2) / diasTotal) * 3));
+    t[i].d += it.dias; t[i].c += it.cambio; acum += it.dias;
+  });
+  return t.filter(x => x.d > 0).map(x => x.c / x.d * 30);
+}
+
 function renderProyeccion(){
   const el = document.getElementById('proyeccion-card');
   if(!el) return;
@@ -461,21 +585,23 @@ function renderProyeccion(){
   // a 3/6/12 meses no aportan nada (es una estimación, no un saldo exacto) y solo
   // generan ruido visual. No se usa window.fmt aquí para no depender de si ese
   // formateador global decide mostrar decimales.
-  const fmt = x=>Math.round(x).toLocaleString('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).replace(/\u00a0/g,'');
+  const fmt = x=>Dinero.fmt(x,{decimales:0});
   // ── Patrimonio VISIBLE (sin alcancía) ─────────────────────────────────
-  // Una sola definición en core-state.js (calcPatrimonioVisible): la misma del hero y de `valorVisible` en el historial, que es
+  // Una sola definición en js/core/patrimonio.js (calcPatrimonioVisible): la misma del hero y de `valorVisible` en el historial, que es
   // de donde sale la tendencia. Esta card muestra un número puntual en cada render; con el total crudo, depositar en la alcancía
   // haría saltar 3m/6m/12m por el monto exacto del depósito y delataría la sorpresa. Cuando se destape, esa plata entra a una
   // cuenta real y el patrimonio visible sube solo.
   const patrimonio = (typeof calcPatrimonioVisible==='function') ? calcPatrimonioVisible() : 0;
-  if(!patrimonio){
-    el.innerHTML = `<div class="inicio-proy-vacio">
-      <div class="inicio-proy-vacio-ico">
-        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
-      </div>
-      <div class="inicio-proy-vacio-titulo">Sin datos suficientes</div>
-      <div class="inicio-proy-vacio-texto">Registra movimientos para ver tu proyección a 3, 6 y 12 meses.</div>
-    </div>`;
+  // «Sin datos» = no hay ningún activo visible ni deuda (la alcancía no cuenta: está oculta a propósito y no debe delatarse). Un patrimonio
+  // EXACTAMENTE cero con cuentas y deudas es un caso real (todo gastado, o cuentas compensadas con deuda), no «sin datos».
+  const _dp = (typeof calcPatrimonioDesglose==='function') ? calcPatrimonioDesglose() : null;
+  const sinNada = _dp ? ((_dp.activos - _dp.alcancia) === 0 && _dp.pasivos === 0) : !patrimonio;
+  if(sinNada){
+    el.innerHTML = emptyState(
+      '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>',
+      'Sin datos suficientes',
+      'Registra movimientos para ver tu proyección a 3, 6 y 12 meses.',
+      null, null, { compacto: true });
     return;
   }
 
@@ -487,7 +613,8 @@ function renderProyeccion(){
   // ya queda reflejado aquí, sin depender de si el usuario registró un movimiento formal.
   // Transferencias entre cuentas propias y préstamos a terceros no afectan el patrimonio
   // total, así que tampoco distorsionan este cálculo.
-  const hist = (S.patrimonioHistorial||[]).slice(-90);
+  // Últimos 120 puntos (≈ 4 meses): con 90 la ventana nunca llegaba a los 90 días que exige «estable» (89 días con un punto diario).
+  const hist = (S.patrimonioHistorial||[]).slice(-UMBRALES.proyeccion.puntosHistorial);
   let tendenciaMensual = 0;
   let historialInsuficiente = false;
   // Niveles: 'insuficiente' | 'normal' | 'estable'
@@ -496,24 +623,34 @@ function renderProyeccion(){
   // Mínimo de separación temporal real para mostrar una proyección: un mes. Con menos días, un solo movimiento
   // grande (una mesada, un pago) domina el promedio y se extrapola a 3/6/12 meses como si se repitiera cada
   // semana (una mesada de $80.000 en una ventana de 9 días daba +$267.000 al mes, unos 3 millones al año).
-  const MIN_DIAS_PARA_TENDENCIA = 30;
+  const MIN_DIAS_PARA_TENDENCIA = UMBRALES.proyeccion.diasMinimos;
 
   let diasReales = 0; // declarado en scope externo para usarlo en el template del footer
+  let ritmos = [];    // ritmo mensual de cada tercio del historial (para saber si la tendencia fue consistente)
+  const intervalos = [];
+  const comprasGrandes = []; // compras grandes dentro de la ventana: son un golpe real (ya está en el patrimonio de hoy), no un ritmo
   if(hist.length >= 2){
     // Cambio neto total (sin aperturas/ajustes) y días totales transcurridos —
     // ver más abajo por qué se promedia así en vez de por-intervalo.
     let cambioNetoTotal = 0;
     for(let i=1;i<hist.length;i++){
-      const diasEntre = Math.max(1, Math.round((new Date(hist[i].fecha) - new Date(hist[i-1].fecha))/86400000));
+      // _fechaSafe: una fecha mal formada («2026-9-26») haría NaN en toda la tendencia; si aun así no se puede leer, el intervalo cuenta 1 día.
+      const _dd = Fecha.diasEntre(hist[i-1].fecha, hist[i].fecha);
+      const diasEntre = isFinite(_dd) ? Math.max(1, _dd) : 1;
       // valorVisible (sin alcancía) en vez de valor crudo — mismo motivo que
       // el patrimonio de arriba: un depósito/destape de alcancía no debe
       // aparecer como un salto de tendencia. Fallback a .valor para puntos
       // del historial guardados antes de que existiera valorVisible.
       const vHoy  = (hist[i].valorVisible!=null)   ? hist[i].valorVisible   : hist[i].valor;
       const vAyer = (hist[i-1].valorVisible!=null) ? hist[i-1].valorVisible : hist[i-1].valor;
-      const cambioDelDia = (vHoy - vAyer) - (hist[i].montoBase||0);
+      // Una compra grande de ese intervalo (marcada por el usuario) bajó el patrimonio, pero no es su RITMO: se suma de vuelta para la
+      // pendiente. Sin esto, una moto de 15 M se extrapolaba como −15 M cada mes (o dejaba la tendencia en «estimación» para siempre).
+      const _cg = Periodo.comprasGrandesEntre(hist[i-1].fecha, hist[i].fecha);
+      _cg.forEach(g => comprasGrandes.push(g));
+      const cambioDelDia = (vHoy - vAyer) - (hist[i].montoBase||0) + _cg.reduce((a, g) => a + (g.monto||0), 0);
       cambioNetoTotal += cambioDelDia;
       diasReales += diasEntre;
+      intervalos.push({ dias: diasEntre, cambio: cambioDelDia });
     }
 
     if(diasReales < MIN_DIAS_PARA_TENDENCIA){
@@ -531,8 +668,13 @@ function renderProyeccion(){
       // se cancela casi solo en la suma), sin necesitar filtrar outliers a mano.
       tendenciaMensual = (cambioNetoTotal / diasReales) * 30;
 
-      // Nivel de confianza escalonado según días de historial disponible
-      nivelConfianza = diasReales >= 60 ? 'estable' : 'normal';
+      // «Estable» exige 90 días (antes 60: dos meses de datos no son estables y la etiqueta da confianza) Y que el ritmo haya ido en la
+      // misma dirección en los tres tercios del historial. Si una compra grande cayó en un solo tercio, el ritmo no fue consistente y la
+      // proyección dice «estimación» y muestra el rango, en vez de extrapolar esa compra como si fuera un ritmo mensual.
+      ritmos = _ritmosPorTercio(intervalos, diasReales);
+      const _tol = Math.abs(tendenciaMensual) * 0.1;
+      const consistente = ritmos.length >= 3 && ritmos.every(r => r * Math.sign(tendenciaMensual) >= -_tol);
+      nivelConfianza = (diasReales >= UMBRALES.proyeccion.diasEstable && consistente) ? 'estable' : 'normal';
     }
   } else {
     historialInsuficiente = true;
@@ -543,9 +685,44 @@ function renderProyeccion(){
   const p6 = patrimonio + tendenciaMensual * 6;
   const p12 = patrimonio + tendenciaMensual * 12;
 
-  // Deuda TC propia para mostrar impacto (excluye encargos y PC)
-  const deudaTC = typeof calcDeudaTcPropia==='function' ? calcDeudaTcPropia() : 0;
-  const deudaInfo = deudaTC > 0 ? `<div class="inicio-proy-deuda">Deuda TC propia: ${fmt(deudaTC)} ya descontada del patrimonio</div>` : '';
+  // Deuda de tarjeta descontada del patrimonio: el patrimonio resta la deuda TOTAL (incluida la parte de encargos y préstamos), así que el
+  // texto muestra el total y, si difiere, cuánto de eso es propio. Antes decía «Deuda TC propia: $400.000 ya descontada» cuando se
+  // descontaban $1.000.000.
+  const deudaTCPropia = typeof calcDeudaTcPropia==='function' ? calcDeudaTcPropia() : 0;
+  const deudaTCTotal = _dp ? _dp.deudaTC : deudaTCPropia;
+  const deudaInfo = deudaTCTotal > 0
+    ? `<div class="inicio-proy-deuda">Deuda TC: ${fmt(deudaTCTotal)}${Math.abs(deudaTCTotal - deudaTCPropia) > 0.5 ? ' (propia ' + fmt(deudaTCPropia) + ')' : ''} ya descontada del patrimonio</div>` : '';
+  // Compras grandes dentro de la ventana: se dice en claro que bajaron el patrimonio (ya está descontado del punto de partida) y que la
+  // proyección usa el ritmo SIN ellas. No se esconde el golpe: solo se separa de lo que se repite.
+  const _cgTotal = comprasGrandes.reduce((a, g) => a + (g.monto||0), 0);
+  const extraInfo = (!historialInsuficiente && comprasGrandes.length)
+    ? `<div class="inicio-proy-extra">Sin contar ${comprasGrandes.length === 1 ? 'tu compra grande' : 'tus compras grandes'} (${comprasGrandes.slice(0, 2).map(g => escHtml(String(g.desc || 'una compra'))).join(', ')}: ${fmt(_cgTotal)}), tu ritmo es ${tendenciaMensual >= 0 ? '+' : ''}${fmt(tendenciaMensual)} al mes. Ya está descontada de tu patrimonio de hoy; la proyección no la repite.</div>` : '';
+  // Calendario de caja a 30 días con lo ya programado (sin necesidad de historial: no depende de la tendencia).
+  const cal = calcCalendarioCaja();
+  let cajaInfo = '';
+  if(cal.puntos.length){
+    const bajo = (cal.minimo.fecha !== hoy() && cal.minimo.saldo < cal.saldoInicial) ? ` Lo más bajo: ${fmt(cal.minimo.saldo)} el ${_fechaCorta(cal.minimo.fecha)}.` : '';
+    const aviso = cal.primerDeficit
+      ? ` <span class="inicio-proy-caja-red">El ${_fechaCorta(cal.primerDeficit.fecha)} quedaría en ${fmt(cal.primerDeficit.saldo)}${cal.primerDeficit.evento ? ' (vence ' + escHtml(String(cal.primerDeficit.evento.texto)) + ')' : ''}.</span>` : '';
+    cajaInfo = `<div class="inicio-proy-caja">Próximos ${UMBRALES.caja.horizonteDias} días, con lo ya programado (gastos e ingresos fijos, CDT que vencen): tu plata disponible pasaría de ${fmt(cal.saldoInicial)} a ${fmt(cal.final)}.${bajo}${aviso}</div>`;
+  }
+  // Cuánto aguanta tu plata disponible si el patrimonio sigue bajando a este ritmo (solo con tendencia negativa y liquidez positiva).
+  let runwayInfo = '';
+  if(!historialInsuficiente && tendenciaMensual < 0 && typeof calcLiquidez==='function'){
+    const ln = calcLiquidez().neta;
+    if(ln > 0){
+      const ag = Salud.fechaAgotamiento(ln, tendenciaMensual, hoy());
+      const m = ag.meses;
+      if(m <= UMBRALES.proyeccion.maxMesesRunway){
+        const NM = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+        const hasta = NM[Number(ag.mes.slice(5,7)) - 1] + ' de ' + ag.mes.slice(0,4); // P4: «hasta {mes}», no solo «unos N meses»
+        runwayInfo = `<div class="inicio-proy-runway">A este ritmo, tu plata disponible duraría unos ${m} ${m === 1 ? 'mes' : 'meses'}, hasta ${hasta}</div>`;
+      }
+    }
+  }
+  // Ritmo irregular: se muestra el rango en vez de una cifra que no representa ningún período.
+  const irregularInfo = (!historialInsuficiente && nivelConfianza !== 'estable' && ritmos.length >= 3 && (Math.max(...ritmos) - Math.min(...ritmos)) > Math.abs(tendenciaMensual))
+    ? `<div class="inicio-proy-irregular">Tu ritmo cambió mucho entre períodos (de ${fmt(Math.min(...ritmos))} a ${fmt(Math.max(...ritmos))} al mes): toma la proyección con cautela</div>` : '';
 
   // Calcular diferencias absolutas para el tooltip de cada card
   const proyCards = [
@@ -557,12 +734,13 @@ function renderProyeccion(){
   el.innerHTML = historialInsuficiente ? `
     <div class="inicio-proy-fila">
       <span class="inicio-proy-etiqueta">Tendencia mensual<span class="inicio-proy-info"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="8"/><line x1="12" y1="12" x2="12" y2="16"/></svg></span></span>
-      <span class="inicio-proy-valor inicio-proy-valor-nulo">—</span>
+      <span class="inicio-proy-valor inicio-proy-valor-nulo">${SIN_DATO}</span>
     </div>
     <div class="inicio-proy-aviso">
       <div class="inicio-proy-aviso-txt">Tendencia en construcción: llevas ${Math.min(diasReales, MIN_DIAS_PARA_TENDENCIA)} de ${MIN_DIAS_PARA_TENDENCIA} días de historial.<br>Vuelve en unos días para ver tendencias y proyecciones.</div>
     </div>
     ${deudaInfo}
+    ${cajaInfo}
   ` : `
     <div id="_proy-header" class="inicio-proy-fila inicio-proy-fila-click" data-tendencia="${tendenciaMensual}">
       <span class="inicio-proy-etiqueta">Tendencia mensual<span class="inicio-proy-info"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="8"/><line x1="12" y1="12" x2="12" y2="16"/></svg></span></span>
@@ -571,22 +749,28 @@ function renderProyeccion(){
     <div id="_proy-cards-wrap" class="inicio-proy-grid">
       ${proyCards.map(({lbl,key,val,meses})=>{
         const diff = val - patrimonio;
-        const pct = patrimonio > 0 ? ((diff/patrimonio)*100).toFixed(1) : '0.0';
+        // Porcentaje solo sobre una base positiva: sobre cero o negativa no significa nada (antes salía «0.0 %» fijo).
+        const pct = patrimonio > 0 ? ((diff/patrimonio)*100).toFixed(1) : '';
         return`<div
           data-proy-key="${key}"
           data-proy-lbl="${lbl}"
           data-proy-val="${val}"
           data-proy-diff="${diff}"
           data-proy-pct="${pct}"
+          data-proy-hoy="${patrimonio}"
           data-proy-meses="${meses}"
           class="inicio-proy-card">
           <div class="inicio-proy-card-k">${key}</div>
-          <div class="inicio-proy-card-v ${val>=patrimonio?'inicio-proy-pos':'inicio-proy-neg'}">${fmt(Math.max(0,val))}</div>
+          <div class="inicio-proy-card-v ${val>=patrimonio?'inicio-proy-pos':'inicio-proy-neg'}">${fmt(val)}</div>
         </div>`;
       }).join('')}
       <div id="_proy-tt" class="inicio-proy-tt" style="display:none;"></div>
     </div>
     ${deudaInfo}
+    ${cajaInfo}
+    ${extraInfo}
+    ${runwayInfo}
+    ${irregularInfo}
     <div class="inicio-proy-pie">
       <span class="inicio-proy-base">Basado en ${diasReales} días de historial</span>
       ${nivelConfianza==='estable'
@@ -597,7 +781,7 @@ function renderProyeccion(){
 
   // Bind listeners DESPUÉS de setear innerHTML
   (function(){
-    const fmt2 = x=>Math.round(x).toLocaleString('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).replace(/\u00a0/g,'');
+    const fmt2 = x=>Dinero.fmt(x,{decimales:0});
     const tt = el.querySelector('#_proy-tt');
     if(!tt) return;
     function showTT(html){ tt.innerHTML=html; tt.style.display='block'; clearTimeout(window._proyTT_t); window._proyTT_t=setTimeout(()=>{ tt.style.display='none'; },3000); }
@@ -611,7 +795,9 @@ function renderProyeccion(){
     // Cards 3m/6m/12m
     const wrap = el.querySelector('#_proy-cards-wrap');
     if(wrap){
-      function bindCard(card, e){ e.stopPropagation(); const lbl=card.dataset.proyLbl; const val=parseFloat(card.dataset.proyVal)||0; const diff=parseFloat(card.dataset.proyDiff)||0; const pct=card.dataset.proyPct; const meses=card.dataset.proyMeses; const claseDelta=diff>=0?'inicio-tt-pos':'inicio-tt-neg'; const ico=diff>=0?'<i class="fa-solid fa-arrow-up"></i>':'<i class="fa-solid fa-arrow-down"></i>'; showTT(`<div class="inicio-tt-titulo">Proyección a ${lbl}</div><div class="inicio-tt-fila"><span class="inicio-tt-monto">${fmt2(Math.max(0,val))}</span><span class="inicio-tt-delta ${claseDelta}">${ico} ${diff>=0?'+':''}${fmt2(diff)}</span></div><div class="inicio-tt-nota">${diff>=0?'+':''}${pct}% vs hoy · acumulado ${meses} meses</div>`); card.style.background='var(--bg4)'; setTimeout(()=>{ card.style.background='var(--bg3)'; },200); }
+      function bindCard(card, e){ e.stopPropagation(); const lbl=card.dataset.proyLbl; const val=parseFloat(card.dataset.proyVal)||0; const diff=parseFloat(card.dataset.proyDiff)||0; const pct=card.dataset.proyPct; const meses=card.dataset.proyMeses; const hoyV=parseFloat(card.dataset.proyHoy)||0;
+        // Con base ≤ 0 no hay porcentaje: se dice qué pasa con el signo (números rojos) y se muestra el cambio absoluto.
+        const nota = (val<0 && hoyV>=0) ? 'Pasarías a números rojos' : (val>=0 && hoyV<0) ? 'Saldrías de números rojos' : pct ? `${diff>=0?'+':''}${pct}% vs hoy` : (val<0 ? 'Seguirías en números rojos' : 'vs hoy'); const claseDelta=diff>=0?'inicio-tt-pos':'inicio-tt-neg'; const ico=diff>=0?'<i class="fa-solid fa-arrow-up"></i>':'<i class="fa-solid fa-arrow-down"></i>'; showTT(`<div class="inicio-tt-titulo">Proyección a ${lbl}</div><div class="inicio-tt-fila"><span class="inicio-tt-monto">${fmt2(val)}</span><span class="inicio-tt-delta ${claseDelta}">${ico} ${diff>=0?'+':''}${fmt2(diff)}</span></div><div class="inicio-tt-nota">${nota} · acumulado ${meses} meses</div>`); card.style.background='var(--bg4)'; setTimeout(()=>{ card.style.background='var(--bg3)'; },200); }
       wrap.addEventListener('click', function(e){ const card=e.target.closest('[data-proy-key]'); if(card) bindCard(card,e); });
       wrap.addEventListener('touchend', function(e){ const card=e.target.closest('[data-proy-key]'); if(card){ e.preventDefault(); bindCard(card,e); } });
     }
@@ -634,32 +820,37 @@ function renderProyeccion(){
    ALERTA DE GASTO ALTO EN EL HERO
    ================================================================ */
 function _checkGastoAlto() {
-  // Gasto real del mes: definición única (periodo.js). Antes sumaba TODOS los gastos variables
-  // (incluidos pagos de gasto fijo y de TC, que ya estaban en el total) más TODOS los gastos
-  // fijos configurados, estuvieran pagados o no.
-  const gastoMes = Periodo.gastosDelMes(mesActual()).total;
-  const nu = nuTotal();
-  const nequi = getSaldoFuente('nequi');
-  const ef = getSaldoFuente('efectivo');
-  // Las cuentas personalizadas también son plata disponible: el "Disponible" del hero
-  // (refresh() en core-state.js) y liquidoReal (más arriba en este archivo) ya las suman.
-  const custom = cuentasCustom().reduce((a, c) => a + (c.saldo || 0), 0);
-  const disp = nu + nequi + ef + custom;
   const indicator = document.getElementById('hero-change-indicator');
   if (!indicator) return;
-  if (disp > 0 && gastoMes > disp * 0.8) {
-    indicator.textContent = 'Gastos altos';
-    indicator.style.color = 'var(--amber)';
-  } else {
-    indicator.textContent = '';
+  // Gasto real del mes: definición única (periodo.js).
+  const mes = mesActual();
+  const gastoMes = Periodo.gastosDelMes(mes).total;
+  // Contra el INGRESO (el mismo de referencia de Salud: el mayor entre lo de este mes y lo típico), no contra el disponible de ahora.
+  // Antes se comparaba con el disponible, que ya descuenta ese gasto: no medía si gastas más de lo que ingresas, y con disponible ≤ 0
+  // (justo el caso peor) no avisaba nada. Gastar «hasta hoy» más que el ingreso de referencia es déficit seguro (el mes solo puede crecer).
+  const ingresoRef = Math.max(Periodo.ingresosDelMes(mes).total, Periodo.ingresoPromedioPrevio(mes, UMBRALES.salud.mesesReferencia).promedio);
+  let nivel = '', texto = '';
+  if (ingresoRef > 0) {
+    // Sin base (usuario nuevo) no se concluye «gastas más de lo que ingresas»: en el primer mes los ingresos pueden estar a medio anotar
+    // (o gastarse de un saldo inicial, que no es ingreso). Mismo criterio que la tarjeta de Salud y Análisis.
+    if (calcSinBase()) { /* sin aviso: aún no hay con qué comparar */ }
+    else if (gastoMes > ingresoRef) { nivel = 'red'; texto = 'Gastas más de lo que ingresas'; }
+    else if (gastoMes >= ingresoRef * UMBRALES.gastoAlto.fraccionDelIngreso) { nivel = 'amber'; texto = 'Gastos altos'; }
+  } else if (gastoMes > 0) {
+    // Sin ingresos registrados no hay contra qué comparar: solo se avisa si ya no queda plata disponible.
+    const disp = ahorroTotalGeneral() + saldoCuentas();
+    if (disp <= 0) { nivel = 'red'; texto = 'Sin plata disponible'; }
   }
+  indicator.textContent = texto;
+  indicator.classList.remove('ix-hero-alerta-red', 'ix-hero-alerta-amber');
+  if (nivel) indicator.classList.add('ix-hero-alerta-' + nivel);
 }
 
 /* ================================================================
    DISPONIBLE NETO DE DEUDA DE TC (2026-09-20: rehecho — ver
    CHANGELOG.md#inicio)
    ================================================================
-   No toca tarjetas_credito.js ni le agrega fechas de corte/pago —
+   No toca tarjetas-credito.js ni le agrega fechas de corte/pago —
    esa es una decisión de diseño explícita de ese módulo (ver
    tarjetas-credito.md §7: "no simula un banco real"). Este bloque
    solo AGREGA una segunda lectura junto a "Disponible". Se resta la
@@ -696,30 +887,33 @@ function _renderDispNetoTC() {
   // esperar a que se aplique a compras futuras), así que tampoco debe
   // inflar el "peor caso" de Neto por encima de Disponible.
   const deudaTCTotal = (S.tarjetasCredito||[]).reduce((a,tc)=>a+Math.max(0,tc.deuda||0), 0);
-  if (!deudaTCTotal || deudaTCTotal <= 0) { el.textContent = ''; return; }
+  const aFavor = (S.tarjetasCredito||[]).reduce((a,tc)=>a+Math.max(0,-(tc.deuda||0)), 0);
+  if (!deudaTCTotal || deudaTCTotal <= 0) {
+    // Solo saldo a favor: no resta nada, pero se muestra aparte (no es plata disponible hasta que te la devuelvan).
+    el.textContent = aFavor > 0 ? `Saldo a favor en tarjeta: ${fmt(aFavor)} (no cuenta como disponible)` : '';
+    el.style.color = 'var(--text3)';
+    return;
+  }
   // Ya NO se recalcula "disponible" acá (nu+nequi+ef+customTotal por
   // separado) — eso ya causó dos veces que Neto quedara desalineado de
   // Disponible por pequeñas diferencias entre este cálculo y el real. Se
   // usa directamente window._dispActualHoy, el MISMO número que refresh()
-  // (core-state.js) acaba de usar para pintar #s-disp — por definición no
-  // se pueden desalinear. refresh() llama a _origRefreshInicio() (que
+  // (el núcleo) acaba de usar para pintar #s-disp — por definición no
+  // se pueden desalinear. refresh() corre _refreshNucleo() (que
   // setea window._dispActualHoy) ANTES de llamar a esta función, así que
   // siempre llega actualizado.
   const disp = window._dispActualHoy || 0;
   const neto = disp - deudaTCTotal;
-  el.textContent = `Neto de TC: ${fmt(neto)}`;
+  el.textContent = `Neto de tarjetas: ${fmt(neto)}` + (aFavor > 0 ? ` · Saldo a favor en tarjeta: ${fmt(aFavor)}` : '');
   el.style.color = neto < 0 ? 'var(--red)' : 'var(--text3)';
 }
 
-// Hook _checkGastoAlto/_renderDispNetoTC en refresh. refresh() se define en core-state.js, que
-// carga antes que este módulo; calcC/nuTotal (nu-calc.js) también son núcleo de entrada, así que
+// Hook _checkGastoAlto/_renderDispNetoTC en refresh. refresh() se define en js/core/refresh.js, que
+// carga antes que este módulo; calcC/ahorroTotal (nu-calc.js) también son núcleo de entrada, así que
 // no hace falta ningún reintento ni guard por carga lazy.
-const _origRefreshInicio = window.refresh;
-window.refresh = function() {
-  if (_origRefreshInicio) _origRefreshInicio.apply(this, arguments);
-  _checkGastoAlto();
-  _renderDispNetoTC();
-};
+// Se registran con Refresh (js/core/refresh.js) y corren después de _refreshNucleo(), que es quien deja listo window._dispActualHoy.
+Refresh.registrar('inicio-gasto-alto', _checkGastoAlto);
+Refresh.registrar('inicio-neto-tc', _renderDispNetoTC);
 
 // Primer intento inmediato al cargar el módulo, sin esperar al próximo
 // refresh() real.
@@ -727,7 +921,7 @@ _renderDispNetoTC();
 
 // Nota (2026-08-04): "Necesita atención" depende de getMesadaData/
 // _getCuotaAnio (mesada) y tcCupoUsadoPct (tarjetas de crédito), que
-// hasta acá vivían en mesada.js/tarjetas_credito.js — módulos lazy que
+// hasta acá vivían en mesada.js/tarjetas-credito.js — módulos lazy que
 // solo cargan cuando el usuario visita esas pantallas (ver
 // js/core/lazy-loader.js). Como Inicio es la pantalla de entrada,
 // esas funciones podían no existir todavía en el primer render y sus
@@ -736,7 +930,7 @@ _renderDispNetoTC();
 // Se resolvió de raíz: esas 3 funciones puras (solo dependen de `S`,
 // sin DOM/UI) se movieron a js/core/calc-helpers.js, que carga de
 // entrada — así están disponibles desde el arranque sin tener que
-// forzar la descarga de mesada.js/tarjetas_credito.js completos (44KB
+// forzar la descarga de mesada.js/tarjetas-credito.js completos (44KB
 // + 60KB) solo para leer un par de números. El guard typeof de abajo
 // se deja igual, como red de seguridad, pero en la práctica ya
 // debería cumplirse siempre.
@@ -750,7 +944,29 @@ _renderDispNetoTC();
   }
 })();
 
-// Consejo de «Salud financiera» accionable: abre la pantalla donde se resuelve.
+// Destino de un consejo o pilar: «pantalla» o «pantalla/detalle». El detalle lleva al sitio exacto donde se hace lo recomendado:
+//   cuentas/<fuente>        abre esa cuenta ('cuentas/cuenta:ID': si es de ahorro, ahí se crea un CDT)
+//   prestamos/me-deben|yo-debo   abre esa pestaña de Préstamos
+//   analisis/ingresos       deja a la vista los ingresos fijos (donde se registra un cobro)
+// Una pantalla lazy puede no haber cargado: se espera a que cargue antes de abrir el detalle. Sin detalle (o sin su función) queda en la pantalla.
+function _irADestino(destino){
+  const i = String(destino || '').indexOf('/'); // el detalle puede traer ':' pero no '/'
+  const [pantalla, detalle] = i < 0 ? [String(destino || ''), ''] : [String(destino).slice(0, i), String(destino).slice(i + 1)];
+  if (typeof showScreen !== 'function' || !document.getElementById('screen-' + pantalla)) return;
+  const abrirDetalle = () => {
+    if (!detalle) return;
+    if (pantalla === 'cuentas' && typeof abrirCuenta === 'function') abrirCuenta(detalle);
+    else if (pantalla === 'prestamos' && typeof cambiarTabPrestamos === 'function' && (detalle === 'me-deben' || detalle === 'yo-debo')) cambiarTabPrestamos(detalle);
+    else if (pantalla === 'analisis' && detalle === 'ingresos') { const e = document.getElementById('an-ingresos-fijos-list'); if (e && e.scrollIntoView) e.scrollIntoView({ block: 'center' }); }
+  };
+  showScreen(pantalla);
+  if (!detalle) return;
+  if (typeof Loader !== 'undefined' && Loader.GROUPS[pantalla] && !Loader.isLoaded(pantalla)) Loader.ensure(pantalla).then(() => setTimeout(abrirDetalle, 0)).catch(() => {});
+  else abrirDetalle();
+}
+
+// Consejo de «Salud financiera» accionable: abre la pantalla donde se resuelve (y, si el destino lo pide, el lugar exacto).
 Events.registerAll('inicio', {
-  irConsejo: (destino) => { if (typeof showScreen === 'function' && document.getElementById('screen-' + destino)) showScreen(destino); }
+  planEstrategia: (id) => { if(id !== 'avalancha' && id !== 'bola') return; S.planDeudasEstrategia = id; save(); renderPlanDeudas(); },
+  irConsejo: (destino) => _irADestino(destino)
 });

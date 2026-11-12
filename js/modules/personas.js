@@ -326,7 +326,7 @@ function abrirSelPersona(callback, titulo, opts) {
   if (buscarEl) buscarEl.value = '';
   _selPersonaFiltrar();
   document.getElementById('sheet-sel-persona').classList.add('open');
-  setTimeout(() => { if (buscarEl) buscarEl.focus(); }, 200);
+  focusSheetField(buscarEl);
 }
 
 function _selPersonaFiltrar() {
@@ -340,12 +340,12 @@ function _selPersonaFiltrar() {
     // Lo que escribió coincide exacto con alguien que ya está en esa lista: no tiene sentido ofrecer crearla de nuevo.
     const yaEsta = q && excluidas.find(p => p.nombre.trim().toLowerCase() === q);
     if (yaEsta) {
-      lista.innerHTML = html`<div class="pe-vacio-12">${yaEsta.nombre} ya está en esta lista.</div>`;
+      lista.innerHTML = emptyInline(yaEsta.nombre+' ya está en esta lista.');
       return;
     }
     // Todas las personas que existen ya están en la lista: solo queda crear una nueva.
     if (!q && excluidas.length) {
-      lista.innerHTML = html`<div class="pe-vacio-12">Todas tus personas ya están en esta lista. Crea una nueva.</div>`;
+      lista.innerHTML = emptyInline('Todas tus personas ya están en esta lista. Crea una nueva.');
       return;
     }
     lista.innerHTML = html`${q
@@ -356,7 +356,7 @@ function _selPersonaFiltrar() {
             Crear a "${q}"
           </button>
         </div>`
-      : html`<div class="pe-vacio-12">No hay personas todavía. Crea una nueva.</div>`}`;
+      : raw(emptyInline('No hay personas todavía. Crea una nueva.'))}`;
     return;
   }
   // items: array de fragmentos html`` por persona — se interpolan directo
@@ -428,7 +428,7 @@ function _abrirCrearPersonaGlobal(desdeListaPersonas) {
   if (!desdeListaPersonas) {
     document.getElementById('sheet-sel-persona').classList.remove('open');
   }
-  setTimeout(() => document.getElementById('cpg_nombre').focus(), 200);
+  focusSheetField('cpg_nombre');
 }
 
 function _volverASelPersona() {
@@ -447,7 +447,7 @@ function _crearPersonaGlobal() {
   const p = { id: uid(), nombre, color: _cpgColorSel, creadoEn: hoy() };
   S.personas.push(p);
   save();
-  toast(escHtml(nombre) + ' creado/a', 'ok');
+  toast(nombre + ' creado/a', 'ok');
   if (_cpgDesdeListaPersonas) {
     _renderListaPersonas();
     document.getElementById('sheet-crear-persona-global').classList.remove('open');
@@ -473,7 +473,7 @@ function abrirEditarPersonaGlobal(personaId) {
   document.getElementById('epg_nombre').value = p.nombre;
   _renderColorPicker('epg_colores', '_epgColorSel');
   document.getElementById('sheet-editar-persona-global').classList.add('open');
-  setTimeout(() => document.getElementById('epg_nombre').focus(), 200);
+  focusSheetField('epg_nombre');
 }
 
 function _guardarEditarPersonaGlobal() {
@@ -498,11 +498,13 @@ function _guardarEditarPersonaGlobal() {
   if (typeof renderEncargosList === 'function') renderEncargosList();
   if (typeof renderMisDeudasList === 'function') renderMisDeudasList();
   document.getElementById('sheet-editar-persona-global').classList.remove('open');
-  toast(escHtml(nombre) + ' actualizado', 'ok');
+  toast(nombre + ' actualizado', 'ok');
   // Si había perfil abierto, refrescar
   if (document.getElementById('sheet-perfil-persona')?.classList.contains('open')) {
     setTimeout(() => abrirPerfilPersona(p.id), 200);
   }
+  // Avisar a los módulos que muestran a esta persona (Préstamos refresca el detalle abierto) — js/core/ui.js
+  Ui.emitir('persona-editada', p.id);
 }
 
 /* ── PERFIL DE PERSONA ─────────────────────────────────────────── */
@@ -568,7 +570,7 @@ function abrirPerfilPersona(personaId) {
     const mayorPrestamo = prestamos.length ? prestamos.reduce((mx, m) => m.monto > mx.monto ? m : mx, prestamos[0]) : null;
     const mayorAbono    = abonos.length    ? abonos.reduce((mx, m) => m.monto > mx.monto ? m : mx, abonos[0])       : null;
     const cuantasveces  = prestamos.length;
-    const diasDesde     = movs.length ? Math.floor((new Date() - new Date(movs[0].fecha + 'T00:00:00')) / 86400000) : null;
+    const diasDesde     = movs.length ? Fecha.diasEntre(movs[0].fecha, hoy()) : null;
     const ultimoMov     = movs.length ? movs[movs.length - 1] : null;
 
     contenido.push(html`<div class="pe-card-amber">
@@ -674,7 +676,7 @@ function abrirPerfilPersona(personaId) {
   // ── Sección Spotify ──
   if (spEntry) {
     const diasRestantes = spEntry.proximoPago
-      ? Math.ceil((new Date(spEntry.proximoPago + 'T00:00:00') - new Date()) / 86400000)
+      ? Fecha.diasEntre(hoy(), spEntry.proximoPago)
       : null;
     const vencido = diasRestantes !== null && diasRestantes < 0;
     const hoy0    = diasRestantes === 0;
@@ -692,7 +694,7 @@ function abrirPerfilPersona(personaId) {
     const totalCobradoSp = histSp.reduce((a, h) => a + (h.monto || 0), 0);
     const mayorCobroSp   = histSp.length ? histSp.reduce((mx, h) => h.monto > mx.monto ? h : mx, histSp[0]) : null;
     const diasEnPlan     = spEntry.fechaIngreso
-      ? Math.floor((new Date() - new Date(spEntry.fechaIngreso + 'T00:00:00')) / 86400000)
+      ? Fecha.diasEntre(spEntry.fechaIngreso, hoy())
       : null;
     const mesesEstimados = diasEnPlan !== null ? Math.floor(diasEnPlan / 30) : null;
 
@@ -797,7 +799,7 @@ function abrirPerfilPersona(personaId) {
   }
 
   if (!datos.deudor && !datos.encargos.length && !spEntry && !(datos.misDeudas && datos.misDeudas.length)) {
-    contenido.push(html`<div class="pe-vacio-sin-prestamo">Esta persona no tiene préstamos, encargos ni está en Spotify todavía.</div>`);
+    contenido.push(raw(emptyInline('Esta persona no tiene préstamos, encargos ni está en Spotify todavía.')));
   }
 
   body.innerHTML = html`${contenido}`;
@@ -840,6 +842,87 @@ function _seleccionarColorPersona(containerId, varName, color) {
 // refresco al editar desde el sheet global viven en encargos.js y prestado.js. Ver docs/encargos.md
 // y docs/prestado.md.
 
+
+/* ── CAMPO «¿QUIÉN ES?» (PersonaPicker) ──────────────────────────────────────
+   Un solo componente para todo campo que elige una persona de S.personas (Spotify agregar/editar, Nuevo encargo). El HTML es
+   ESTÁTICO en index.html (no se reescribe en runtime): un <div class="persona-btn" id="PREFIJO-btn" data-action="personas:pickerAbrir"
+   data-picker="PREFIJO"> con hijos PREFIJO-avatar, PREFIJO-label, PREFIJO-chevron y, opcional, PREFIJO-hint; más un <input type="hidden">
+   con el id `inputId` que guarda el nombre (los formularios y validaciones existentes lo siguen leyendo).
+   PersonaPicker.crear({ prefijo, inputId, titulo, alCambiar }) es idempotente por prefijo y devuelve:
+     .valor                 personaId elegido (o null)
+     .abrir()               abre el selector de personas (no hace nada si está bloqueado)
+     .elegir(id)            lo que ocurre al elegir: guarda, pinta y llama alCambiar(id)
+     .precargar({personaId, nombre})  muestra un estado existente (editar). Con personaId queda BLOQUEADO (no se puede cambiar de persona)
+     .abiertoSinConfirmar   true si se abrió el buscador y se cerró sin elegir a nadie
+     .limpiar()             vuelve a «Seleccionar persona…» y quita el bloqueo
+     .marcarError()         borde rojo 2 s (para «Selecciona una persona»)  */
+const PersonaPicker = (() => {
+  const registro = new Map();
+  function crear(cfg) {
+    const prev = registro.get(cfg.prefijo);
+    if (prev) { prev._cfg = cfg; return prev; }
+    let valor = null, bloqueado = false, abierto = false, confirmado = false;
+    const el = s => document.getElementById(cfg.prefijo + '-' + s);
+    const input = () => document.getElementById(cfg.inputId);
+    function pintar(persona, nombreLibre) {
+      const btn = el('btn'), lbl = el('label'), av = el('avatar');
+      const hay = !!(persona || nombreLibre);
+      if (btn) { btn.classList.toggle('is-set', hay); btn.classList.remove('is-error'); }
+      if (lbl) { lbl.textContent = persona ? persona.nombre : (nombreLibre || 'Seleccionar persona...'); lbl.classList.toggle('is-set', hay); }
+      if (av) { if (persona) pintarAvatarPersona(av, persona, { mostrar: true }); else av.style.display = 'none'; }
+    }
+    function fijarBloqueo(b) {
+      bloqueado = !!b;
+      const btn = el('btn'), hint = el('hint');
+      if (btn) btn.classList.toggle('is-locked', bloqueado); // CSS oculta el chevron
+      if (hint) hint.hidden = !bloqueado;
+    }
+    const api = {
+      _cfg: cfg,
+      get valor() { return valor; },
+      get bloqueado() { return bloqueado; },
+      get abiertoSinConfirmar() { return abierto && !confirmado; },
+      abrir() {
+        if (bloqueado) return;
+        abierto = true;
+        abrirSelPersona(id => api.elegir(id), api._cfg.titulo || '¿Quién es?');
+      },
+      elegir(id) {
+        const p = getPersona(id);
+        if (!p) return;
+        valor = id; confirmado = true;
+        const i = input(); if (i) i.value = p.nombre;
+        pintar(p);
+        if (api._cfg.alCambiar) api._cfg.alCambiar(id);
+      },
+      precargar({ personaId, nombre } = {}) {
+        abierto = false; confirmado = false;
+        const p = personaId ? getPersona(personaId) : null;
+        valor = p ? p.id : null;
+        const i = input(); if (i) i.value = p ? p.nombre : (nombre || '');
+        pintar(p, p ? '' : nombre);
+        fijarBloqueo(!!p);
+      },
+      limpiar() {
+        valor = null; abierto = false; confirmado = false;
+        const i = input(); if (i) i.value = '';
+        pintar(null);
+        fijarBloqueo(false);
+      },
+      marcarError() {
+        const btn = el('btn');
+        if (!btn) return;
+        btn.classList.add('is-error');
+        setTimeout(() => btn.classList.remove('is-error'), 2000);
+      },
+    };
+    registro.set(cfg.prefijo, api);
+    return api;
+  }
+  return { crear, de: prefijo => registro.get(prefijo) || null };
+})();
+if (typeof window !== 'undefined') window.PersonaPicker = PersonaPicker;
+
 /* ── REGISTRO DE EVENTOS (data-action → handler) ───────────────── */
 // Reemplaza los onclick inline propios de este módulo. Los botones "Ver →" del perfil
 // (encargos, deudores, mis deudas) usan data-action con el prefijo de su módulo
@@ -856,4 +939,11 @@ Events.registerAll('personas', {
   selCrearDirecto: _selPersonaCrearDirecto,
   irASpotify: _irASpotify,
   seleccionarColor: _seleccionarColorPersona,
+  pickerAbrir: (el) => { const p = PersonaPicker.de(el && el.dataset && el.dataset.picker); if (p) p.abrir(); },
 });
+
+Ui.pantalla('personas', () => {
+  _inyectarPersonaSheets();
+  if (typeof _renderListaPersonas === 'function') _renderListaPersonas();
+  if (typeof _actualizarMasPersonasSub === 'function') _actualizarMasPersonasSub();
+}, { key: 'personas-render' });

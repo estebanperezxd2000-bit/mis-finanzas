@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport"
-      content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+      content="width=device-width, initial-scale=1.0, maximum-scale=5.0, interactive-widget=resizes-content">
     <meta name="description" content="Mis Finanzas — control personal de cuentas, gastos, tarjetas de crédito, préstamos, encargos, mesada, Spotify compartido, alcancía y análisis financiero.">
     <!--
       Content-Security-Policy vía meta tag (GitHub Pages no permite configurar
@@ -15,7 +15,7 @@
       1) Los ~247 atributos onclick="..." inline en el HTML estático se
          migraron a data-action/Events hasta llegar a 0.
       2) Los 3 bloques núcleo <script> inline que quedaban (S/save(),
-         sheet-stack/nav, refresh()+menú Más) se externalizaron a
+         navegación, refresh()+menú Más) se externalizaron a
          js/core/*.js hasta llegar a 0 bloques inline en todo el archivo.
       3) Sacar 'unsafe-inline' de script-src en ese momento resultó
          PREMATURO — probado recién en navegador real (jsdom/node no
@@ -35,8 +35,8 @@
          patrón que cuentas.js/prestado.js). Se revisaron los 29 archivos
          que conforman la app (todos los módulos de pantalla + los 5 de
          infraestructura: events.js, diferencial.js, split.js,
-         core-state.js, money-input.js) — el único hallazgo en el núcleo
-         fue una rama muerta en emptyState() (core-state.js) que aceptaba
+         el núcleo, money-input.js) — el único hallazgo en el núcleo
+         fue una rama muerta en emptyState() (js/core/utilidades-ui.js) que aceptaba
          un onclick como string por compatibilidad hacia atrás; ningún
          caller real la usaba ya, se sacó la rama entera para que ningún
          módulo futuro pueda reintroducirla sin querer.
@@ -177,7 +177,7 @@
       /* ===== TOAST (global, puede dispararse durante el gate de auth) ===== */
       #toast-container{position:fixed;top:calc(env(safe-area-inset-top,0px) + 14px);left:50%;transform:translateX(-50%);z-index:2147483647;display:flex;flex-direction:column;align-items:center;gap:7px;pointer-events:none;width:calc(100% - 32px);max-width:400px;}
       /* Toast: ícono en un círculo del color del tipo + mensaje. Tipos: ok (verde, éxito o plata que entra), salida (rojo, plata que
-         sale: flecha), err (rojo, algo salió mal: X), info (azul, neutro). Ver toast() en core-state.js. */
+         sale: flecha), err (rojo, algo salió mal: X), info (azul, neutro). Ver toast() en js/core/dialogos.js. */
       .toast{background:#1e1e1e;border:1px solid var(--border2);border-radius:14px;padding:11px 16px 11px 12px;font-size:13.5px;line-height:1.4;color:var(--text);box-shadow:0 12px 40px rgba(0,0,0,.85),0 3px 10px rgba(0,0,0,.6);animation:toastIn .28s cubic-bezier(.34,1.56,.64,1);display:flex;align-items:center;gap:11px;width:100%;pointer-events:all;}
       .toast-ico{flex-shrink:0;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.07);color:var(--text2);}
       .toast-msg{flex:1;min-width:0;overflow-wrap:anywhere;}
@@ -364,6 +364,8 @@
          detalle completo de qué quedó ahí y por qué. -->
     <link rel="stylesheet" media="print" data-async-css href="css/styles.css">
     <noscript><link rel="stylesheet" href="css/styles.css"></noscript>
+    <!-- Diseño adaptable para tabletas y PC; la app móvil conserva su apariencia. -->
+    <link rel="stylesheet" href="css/desktop.css" media="(min-width: 700px)">
     <!-- Reemplaza el onload="this.media='all'" inline que tenían estos 3 <link>
          (Font Awesome, Google Fonts, y ahora css/styles.css) — la CSP bloquea
          atributos de evento inline en script-src igual que <script> inline, y
@@ -424,7 +426,7 @@
     <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js">
     <!-- Firebase SDK. `async`: sin esto, al ser type="module" el navegador lo
          trata como defer y NO lo ejecuta hasta terminar de parsear TODO el
-         <body> — incluyendo los ~30 <script> clásicos de core-state.js/
+         <body> — incluyendo los ~30 <script> clásicos del núcleo/
          módulos, que sí bloquean el parser en su posición. Eso serializaba
          algo que puede correr en paralelo: la resolución de auth de Firebase
          (I/O de red/IndexedDB) esperaba a que terminara todo el JS de la app
@@ -443,10 +445,10 @@
       <div class="fb-loading-content">
         <div class="fb-loading-logo-wrap">
           <div class="fb-loading-ring"></div>
-          <svg aria-hidden="true" width="30" height="30" viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="9" stroke="#c8f060" stroke-width="1.8" />
-            <text x="12" y="17" font-family="sans-serif" font-size="13"
-              font-weight="700" fill="#c8f060" text-anchor="middle">$</text>
+          <svg aria-hidden="true" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#c8f060" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M12 6v12" />
+          <path d="M15.5 9.2C15.2 8 13.8 7.4 12 7.4 10 7.4 8.6 8.4 8.6 9.9 8.6 11.4 9.8 11.9 12 12.4 14.2 12.9 15.4 13.4 15.4 15 15.4 16.5 14 17.5 12 17.5 10.2 17.5 8.8 16.8 8.5 15.6" />
           </svg>
         </div>
         <div class="fb-loading-text">Cargando Mis Finanzas</div>
@@ -459,10 +461,11 @@
     <div id="pin-screen">
       <div class="pin-anim" style="display:contents;">
         <div class="pin-logo">
-          <svg aria-hidden="true" width="28" height="28" viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="9" stroke="#c8f060" stroke-width="1.8" />
-            <text x="12" y="17" font-family="sans-serif" font-size="13"
-              font-weight="700" fill="#c8f060" text-anchor="middle">$</text>
+          <svg aria-hidden="true" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#c8f060"
+            stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="4" y="11" width="16" height="10" rx="2.5" />
+            <path d="M8 11V7.5a4 4 0 0 1 8 0V11" />
+            <circle cx="12" cy="16" r="1.2" fill="#c8f060" stroke="none" />
           </svg>
         </div>
         <div class="pin-title" id="pin-title">Ingresa tu PIN</div>
@@ -541,12 +544,11 @@
     <!-- FIREBASE: Pantalla de login -->
     <div id="fb-login-screen">
       <div class="fb-logo">
-        <svg aria-hidden="true" width="34" height="34" viewBox="0 0 24 24" fill="none">
-          <circle cx="12" cy="12" r="9" stroke="#c8f060" stroke-width="1.8" />
-          <text x="12" y="17" font-family="sans-serif" font-size="13"
-            font-weight="700"
-            fill="#c8f060" text-anchor="middle">$</text>
-        </svg>
+        <svg aria-hidden="true" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#c8f060" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M12 6v12" />
+          <path d="M15.5 9.2C15.2 8 13.8 7.4 12 7.4 10 7.4 8.6 8.4 8.6 9.9 8.6 11.4 9.8 11.9 12 12.4 14.2 12.9 15.4 13.4 15.4 15 15.4 16.5 14 17.5 12 17.5 10.2 17.5 8.8 16.8 8.5 15.6" />
+          </svg>
       </div>
       <div class="fb-title">Mis Finanzas</div>
       <div class="fb-sub">Tus finanzas personales, siempre sincronizadas entre
@@ -655,7 +657,7 @@
                  Alcancía — visualmente era un hueco vacío molesto. Se
                  reemplazó por un ícono chico (14px) inline junto al label
                  "Patrimonio total"/"Patrimonio visible", que YA existe y ya
-                 cambia de texto según este mismo estado (ver core-state.js).
+                 cambia de texto según este mismo estado (ver el núcleo).
                  Al no agregar una fila nueva ni cambiar el alto de esta fila
                  (el ícono entra en la misma línea, mismo alto que el texto),
                  alternar su visibility no mueve nada de lo que hay debajo —
@@ -676,29 +678,23 @@
               </span>
             </div>
             <div class="hero-amount c-green" id="heroTotal">$0</div>
+            <div class="ix-hero-estado" id="hero-estado"></div>
             <div class="row ix-mt8">
-              <div class="ix-fs11-ctext3" id="hero-formula">Cuentas + CDTs + Prestado</div>
+              <div class="ix-fs11-ctext3" id="hero-formula">Cuentas</div>
               <div class="ix-hero-change-indicator" id="hero-change-indicator"></div>
             </div>
           </div>
-          <div class="grid3">
+          <!-- Una sola cuadrícula: Disponible / Prestado / CDTs son fijos y renderCuentasInicio() (js/core/refresh.js) agrega después un
+               recuadro por cada cuenta activa desde S.cuentas, así todos se reparten en filas sin huecos. -->
+          <div class="grid3" id="inicio-cuentas">
             <div class="stat"><div class="stat-label">Disponible</div><div
                 class="stat-value c-green" id="s-disp">$0</div></div>
-            <div class="stat"><div class="stat-label">Nu libre</div><div
-                class="stat-value c-nu" id="s-nu">$0</div></div>
-            <div class="stat"><div class="stat-label">Efectivo</div><div
-                class="stat-value c-amber" id="s-ef">$0</div></div>
-          </div>
-          <div class="ix-s-disp-neto-tc" id="s-disp-neto-tc">
-          </div>
-          <div class="grid3">
-            <div class="stat"><div class="stat-label">Nequi</div><div
-                class="stat-value ix-cff4da6"
-                id="s-nequi">$0</div></div>
             <div class="stat"><div class="stat-label">Prestado</div><div
                 class="stat-value c-amber" id="s-prest">$0</div></div>
-            <div class="stat"><div class="stat-label">CDTs Nu</div><div
+            <div class="stat" id="s-cdt-tile"><div class="stat-label">CDTs</div><div
                 class="stat-value c-purple" id="s-cdt">$0</div></div>
+          </div>
+          <div class="ix-s-disp-neto-tc" id="s-disp-neto-tc">
           </div>
           <div id="tc-deuda-card" style="display:none;"></div>
           <div class="sec-title">Gastos del mes</div>
@@ -747,6 +743,9 @@
               </div>
             </div>
           </div>
+
+          <!-- PLAN DE DEUDAS (renderPlanDeudas, inicio.js): vacío si no hay deudas propias -->
+          <div id="plan-deudas-card"></div>
 
           <!-- PROYECCIÓN -->
           <div class="sec-title">Proyección financiera</div>
@@ -806,7 +805,7 @@
             <div class="ix-feed-historial-count" id="feed-historial-count"></div>
           </div>
           <div class="card ix-p4-15-8">
-            <div id="feed-historial"><div class="feed-empty">Cargando
+            <div id="feed-historial"><div class="empty-inline empty-inline-grande">Cargando
                 actividad…</div></div>
           </div>
         </div>
@@ -837,7 +836,7 @@
                   id="alcancia-stat-depositos">0</div></div>
               <div class="stat"><div class="stat-label">Tiempo activa</div><div
                   class="stat-value ix-ctext2-fs13"
-                  id="alcancia-stat-tiempo">—</div></div>
+                  id="alcancia-stat-tiempo"><svg class="sin-dato" role="img" aria-label="Sin datos" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="7" y1="12" x2="17" y2="12"/></svg></div></div>
             </div>
             <button type="button" class="btn btn-primary ix-button-048"
               data-action="alcancia:abrirDepositar" data-args="[]">
@@ -856,7 +855,7 @@
             <div class="sec-title" id="alcancia-movs-titulo">Movimientos
               actuales</div>
             <div class="ix-mb18" id="alcancia-movimientos-lista">
-              <div class="feed-empty">Aún no hay movimientos en esta
+              <div class="empty-inline empty-inline-grande">Aún no hay movimientos en esta
                 alcancía.</div>
             </div>
           </div>
@@ -870,9 +869,9 @@
         </div>
 
         <!-- PLATA COMPROMETIDA (docs/auditoria-tecnica.md #4 — estaticada para
-             poder cargar js/modules/plata_comprometida.js de forma lazy, mismo
+             poder cargar js/modules/plata-comprometida.js de forma lazy, mismo
              patrón que Alcancía. El HTML de acá es una copia exacta del
-             template que _injectScreen() en plata_comprometida.js generaba en
+             template que _injectScreen() en plata-comprometida.js generaba en
              tiempo de ejecución — su propio guard (`document.getElementById
              ('screen-comprometida')`) ahora hace que esa función sea un no-op,
              igual que ya pasa con Alcancía. Ver CHANGELOG.md#arranque. ) -->
@@ -905,8 +904,14 @@
         <div class="screen" id="screen-cuentas">
           <!-- Selector de cuenta -->
           <div id="cuentas-selector">
-            <div class="sec-title ix-mt4">Selecciona una
-              cuenta</div>
+            <div class="sec-fila">
+              <div class="sec-title">Selecciona una
+                cuenta</div>
+              <button type="button" class="btn-ordenar-cuentas" id="btn-ordenar-cuentas" hidden aria-pressed="false" data-action="cuentas:alternarOrdenCuentas" data-args="[]">
+                <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 4 3 8 7 12"/><line x1="3" y1="8" x2="21" y2="8"/><polyline points="17 12 21 16 17 20"/><line x1="21" y1="16" x2="3" y2="16"/></svg>
+                <span class="btn-ordenar-txt">Ordenar</span>
+              </button>
+            </div>
             <!-- Cuentas fijas y personalizadas: las pinta renderSelectorCuentas() (cuentas.js) -->
             <div id="selector-cuentas-lista"></div>
             <!-- Botón agregar cuenta -->
@@ -919,7 +924,19 @@
             </button>
           </div>
 
-          <!-- Detalle de cuenta simple (Nequi, Efectivo y personalizadas): una sola pantalla.
+          <!-- Cuentas archivadas: pantalla aparte (el selector solo trae un botón con la cantidad) -->
+          <div id="cuentas-archivadas" style="display:none;">
+            <div class="detail-header">
+              <button type="button" class="detail-header-back" id="btn-volver-archivadas" aria-label="Volver">
+                <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6" /></svg>
+              </button>
+              <div class="detail-header-title">Cuentas archivadas</div>
+            </div>
+            <div class="ix-fs11-ctext3 ix-mb14">No aparecen al elegir cuentas ni en Inicio, pero su historial se conserva. Ábrelas para consultarlas o reactivarlas.</div>
+            <div id="archivadas-lista"></div>
+          </div>
+
+          <!-- Detalle de cuenta simple (banco, billetera, efectivo): una sola pantalla.
                La pinta renderDetalleCuenta() (cuentas.js); el color de la cuenta llega por las
                variables --cuenta / --cuenta-rgb puestas sobre este contenedor. -->
           <div id="cuentas-detalle-simple" style="display:none;">
@@ -934,6 +951,11 @@
               <div class="detail-header-title ix-det-cuenta-nombre" id="det-cuenta-nombre">Cuenta</div>
               <!-- Editar / eliminar: solo cuentas personalizadas -->
               <div class="ix-det-cuenta-acciones-custom" id="det-cuenta-acciones-custom" style="display:none;">
+                <button type="button" class="detail-header-action btn-icon ix-btn-archivar-cuenta" id="btn-archivar-cuenta"
+                  title="Archivar cuenta" aria-label="Archivar cuenta">
+                  <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg>
+                </button>
                 <button type="button" class="detail-header-action btn-icon ix-btn-editar-cuenta-custom"
                   id="btn-editar-cuenta-custom"
                   title="Editar cuenta" aria-label="Editar cuenta">
@@ -988,6 +1010,7 @@
                 </button>
               </div>
             </div>
+            <div id="banner-archivada"></div>
             <div id="banner-apertura-cuenta"></div>
             <div id="det-cuenta-encargos"></div>
             <div class="cuenta-movs-bloque">
@@ -1008,7 +1031,9 @@
                     points="15 18 9 12 15 6" /></svg>
               </button>
               <div class="detail-header-title ix-det-cuenta-nombre" id="det-nu-nombre">Nu</div>
+              <div class="ix-det-cuenta-acciones-custom" id="det-ah-acciones" style="display:none;"><button type="button" class="detail-header-action btn-icon ix-btn-archivar-cuenta" id="btn-archivar-cuenta-ah" title="Archivar cuenta" aria-label="Archivar cuenta"><svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg></button><button type="button" class="detail-header-action btn-icon ix-btn-editar-cuenta-custom" id="btn-editar-cuenta-ah" title="Editar cuenta" aria-label="Editar cuenta"><svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button><button type="button" class="detail-header-action btn-icon ix-btn-eliminar-cuenta-custom" id="btn-eliminar-cuenta-ah" title="Eliminar cuenta" aria-label="Eliminar cuenta"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"></path><path d="M10 11v6M14 11v6"></path><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"></path></svg></button></div>
             </div>
+            <div id="banner-archivada-ah"></div>
             <!-- Saldo hero Nu -->
             <div class="cuenta-hero">
               <div class="cuenta-hero-label" id="det-nu-label">Total Nu</div>
@@ -1020,18 +1045,18 @@
               <div class="ix-div-070">
                 <div>
                   <div class="ix-div-071">Tasa
-                    EA % (aplica a todas las cajitas)</div>
+                    EA % (aplica a las cajitas de esta cuenta)</div>
                   <div class="ix-div-072">Crece
                     cada día a las 12:00 a.m.</div>
                 </div>
                 <div class="ix-div-073">
                   <input class="ix-nutasaglobal" type="text" inputmode="decimal" id="nuTasaGlobal"
-                    value placeholder="9,25" maxlength="8" autocomplete="off" aria-label="Tasa EA de las cajitas de Nu">
+                    value placeholder="9,25" maxlength="8" autocomplete="off" aria-label="Tasa EA de las cajitas de esta cuenta">
                   <span class="ix-span-075">%</span>
                 </div>
               </div>
               <div class="ix-nutasaaviso" id="nuTasaAviso" style="display:none;">Escribe la
-                tasa EA de Nu para poder crear cajitas. Todas las cajitas usan esta misma tasa.</div>
+                tasa EA de la cuenta para poder crear cajitas. Todas sus cajitas usan esta misma tasa.</div>
               <button class="ix-btn-nu-chequeo" type="button" id="btn-nu-chequeo" data-action="nu:abrirChequeoNu" data-args="[]">Chequeo
                 rápido de cajitas</button>
               <div class="ix-nuchequeoaviso" id="nuChequeoAviso" style="display:none;"></div>
@@ -1079,7 +1104,7 @@
             <!-- Mismo orden que Nequi y las demás cuentas: Encargos → Movimientos -->
             <div id="det-nu-encargos"></div>
             <div class="cuenta-movs-bloque">
-              <div class="sec-title">Movimientos registrados en Nu</div>
+              <div class="sec-title">Movimientos de la cuenta</div>
               <div id="movs-filtros-nu" class="movs-filtros-wrap"></div>
               <div id="det-nu-movs"></div>
             </div>
@@ -1283,7 +1308,7 @@
             </button>
           </div>
           <div id="deudoresView">
-            <div class="sec-title">Personas a quienes les presté dinero</div>
+            <div class="sec-title" id="titulo-deudores">Personas a quienes les presté dinero</div>
             <div id="deudoresList"></div>
             <button type="button" class="btn btn-ghost" id="btn-nueva-persona" data-action="prestado:abrirSheetNuevaPersona" data-args="[]">
               <span class="ix-span-080">
@@ -1395,7 +1420,7 @@
 
           <!-- YO DEBO -->
           <div id="misDeudasView" style="display:none;">
-            <div class="sec-title">Personas a quienes les debo dinero</div>
+            <div class="sec-title" id="titulo-mis-deudas">Personas a quienes les debo dinero</div>
             <div id="misDeudasList"></div>
             <button type="button" class="btn btn-ghost" id="btn-nueva-deuda" data-action="prestado:abrirSheetNuevaDeuda" data-args="[]">
               <span class="ix-span-080">
@@ -1572,8 +1597,7 @@
             <div class="divider ix-m8-0"></div>
             <div class="row">
               <div>
-                <div class="ix-fs11-ctext2">Cajita Spotify
-                  (Nu)</div>
+                <div class="ix-fs11-ctext2">Cuenta Spotify<button type="button" class="btn btn-ghost btn-sm sp-cajita-btn" id="btn-sp-elegir-cajita" data-action="spotify:abrirElegirFuente" data-args="[]">Elegir</button></div>
                 <div class="ix-div-122">Plata
                   guardada para pagar</div>
               </div>
@@ -1771,9 +1795,9 @@
           <!-- PORCENTAJE DE AHORRO -->
           <div class="grid2 ix-mb9">
             <div class="stat"><div class="stat-label">Tasa de ahorro</div><div
-                class="stat-value ix-caccent" id="an-tasa-ahorro">—</div></div>
+                class="stat-value ix-caccent" id="an-tasa-ahorro"><svg class="sin-dato" role="img" aria-label="Sin datos" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="7" y1="12" x2="17" y2="12"/></svg></div></div>
             <div class="stat"><div class="stat-label">Ahorrado este
-                mes</div><div class="stat-value ix-caccent" id="an-ahorrado">—</div></div>
+                mes</div><div class="stat-value ix-caccent" id="an-ahorrado"><svg class="sin-dato" role="img" aria-label="Sin datos" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="7" y1="12" x2="17" y2="12"/></svg></div></div>
           </div>
           <div class="card card-sm ix-mb9">
             <div class="row"><span class="ix-fs12-ctext2">Gastos fijos
@@ -1799,14 +1823,18 @@
           <div class="card ix-div-147">
             <div class="ix-minw100pct" id="an-patrimonio-chart"></div>
           </div>
+          <div id="an-bienes"></div>
+          <div id="an-conciliacion"></div>
+          <div id="an-simulador"></div>
           <div class="sec-title">Top categorías este mes</div>
           <div id="an-cats-mes" class="card ix-p12-15-mb9"></div>
-          <div class="sec-title">Gastos por mes (últimos 12)</div>
+          <div class="sec-title">Ingresos y gastos por mes (últimos 12)</div>
           <div class="card ix-div-147">
             <div class="ix-minw100pct">
               <div class="ix-an-grafico-barras" id="an-grafico-barras"></div>
               <div class="ix-an-grafico-labels" id="an-grafico-labels"></div>
             </div>
+            <div id="an-flujo-resumen"></div>
           </div>
           <div class="sec-title">Ranking: meses con más gastos</div>
           <div id="an-ranking-meses" class="card ix-p0-15-mb9"></div>
@@ -1907,6 +1935,8 @@
               <span id="wrapped-promo-dias"></span>
             </div>
           </div>
+          <!-- «Mis Wrapped»: lista de los años ya guardados (renderMisWrapped en configuracion.js; vacío si no hay ninguno) -->
+          <div id="cfg-mis-wrapped"></div>
 
           <!-- FIREBASE: Usuario conectado -->
           <div class="sec-title ix-mt4">Cuenta</div>
@@ -1988,7 +2018,7 @@
               <div class="cfg-toggle-info">
                 <div class="cfg-toggle-label">Saldo inicial</div>
                 <div class="cfg-toggle-sub">Muestra el banner de saldo inicial
-                  en Nequi y Efectivo</div>
+                  en tus cuentas</div>
               </div>
               <label class="toggle-sw">
                 <input type="checkbox" id="cfg-corregirSaldo"
@@ -2031,6 +2061,7 @@
             <div class="ix-div-176">Los
               datos de los módulos desactivados se conservan. Si vuelves a
               activarlos, todo estará igual.</div>
+            <div id="cfg-tamano" class="cfg-tamano"></div>
             <div class="ix-div-177">Copia
               de seguridad</div>
             <div class="ix-div-178">Exporta
@@ -2074,6 +2105,13 @@
                   Exportar CSV (gastos)
                 </span>
               </button>
+            </div>
+            <div class="ix-div-182">
+              <div class="ix-div-177">Respaldos automáticos</div>
+              <div class="ix-div-178">Cada día, la primera vez que se guarda algo, la app conserva sola una copia de cómo
+                estaban tus datos (30 días en la nube, 7 en este dispositivo). Sirven si pierdes datos o importas algo
+                por error; no necesitas hacer nada.</div>
+              <div id="cfg-respaldos" class="cfg-resp"></div>
             </div>
             <input type="file" id="importFileInput" accept=".json"
               style="display:none;">
@@ -2128,7 +2166,7 @@
               data-action="notificaciones:activar">
               <div class="cfg-toggle-info">
                 <div class="cfg-toggle-label">Notificaciones</div>
-                <div class="cfg-toggle-sub">Avisos de Spotify, CDT y encargos por vencer</div>
+                <div class="cfg-toggle-sub" id="cfg-notificaciones-sub">Avisos de Spotify, CDT y encargos por vencer</div>
               </div>
               <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none"
                 stroke="var(--text3)" stroke-width="2" stroke-linecap="round"
@@ -2367,7 +2405,7 @@
                 width="20" height="13" rx="2" /><path d="M2 10h20" /><circle
                 cx="12" cy="15" r="2" /><path d="M17 15h2M5 15h2" /></svg>
             <div><div class="action-card-label">Agregar dinero</div><div
-                class="action-card-sub">Agregar a Nequi, cajita...</div></div>
+                class="action-card-sub">Agregar a una cuenta, cajita...</div></div>
           </div>
 
         </div>
@@ -2379,9 +2417,14 @@
       <div class="sheet">
         <div class="sheet-handle"></div>
         <div class="sheet-title">Nueva cuenta</div>
+        <div class="ig">
+          <div class="il">Tipo</div>
+          <div class="cuenta-tipos" id="nc-tipos"></div>
+          <div class="ix-fs11-ctext2" id="nc_tipo_nota"></div>
+        </div>
         <div class="ig"><label class="il" for="nc_nombre">Nombre de la
             cuenta</label><input type="text" id="nc_nombre" maxlength="30"
-            placeholder="Ej: Nequi trabajo, Bancolombia..."></div>
+            placeholder="Ej: Mi banco, Nequi trabajo..."></div>
         <div class="ig"><label class="il" for="nc_saldo">Saldo
             inicial</label><input type="text" inputmode="decimal" id="nc_saldo"
             placeholder="0,00" class="money-input"></div>
@@ -2426,9 +2469,9 @@
     <div class="overlay" id="sheet-chequeo-nu" data-sheet-id="chequeo-nu">
       <div class="sheet">
         <div class="sheet-handle"></div>
-        <div class="sheet-title">Chequeo rápido — cajitas Nu</div>
+        <div class="sheet-title">Chequeo rápido — cajitas</div>
         <div class="ix-div-205">
-          Pon el saldo TOTAL que ves AHORA MISMO en cada cajita de Nu, tal cual lo muestra su
+          Pon el saldo TOTAL que ves AHORA MISMO en cada cajita, tal cual lo muestra su
                   app (si guardas dinero de encargos ahí, va incluido; al lado de cada cajita ves lo
                   que debería marcar). Si el crecimiento real ya no cuadra con la tasa que tienes
                   registrada, la app te va a avisar y te ofrece corregirla con un clic. Si algún saldo
@@ -2445,7 +2488,7 @@
     <div class="overlay" id="sheet-confirmar-tasa-nu" data-sheet-id="confirmar-tasa-nu">
       <div class="sheet">
         <div class="sheet-handle"></div>
-        <div class="sheet-title">Cambio de tasa Nu detectado</div>
+        <div class="sheet-title">Cambio de tasa detectado</div>
         <div class="ix-ctn-msg" id="ctn-msg"></div>
         <div class="ig"><label class="il" for="ctn-tasa">Nueva tasa EA %</label><input
             type="text" inputmode="decimal" id="ctn-tasa" placeholder="9,25" maxlength="8" autocomplete="off" data-tasa-ea></div>
@@ -2470,6 +2513,13 @@
         <div class="ig"><label class="il" for="gv_monto">Monto</label><input
             type="text" inputmode="decimal" id="gv_monto" placeholder="0,00"
             class="money-input"></div>
+        <div class="ix-gv-impacto" id="gv-impacto"></div>
+        <div class="ig" id="gv_grande_wrap">
+          <label class="ix-label-289">
+            <input type="checkbox" id="gv_grande">
+            <span class="ix-fs12-ctext2"><i class="fa-solid fa-circle-info ix-mr4"></i>Es una compra grande (no habitual): cuenta completa en tu patrimonio, pero no como un gasto que se repite cada mes</span>
+          </label>
+        </div>
         <div class="ig">
           <label class="il" for="gv_cat">Categoría</label>
           <div class="select-wrap"><select
@@ -2510,12 +2560,14 @@
     <div class="overlay" id="sheet-gasto-fijo" data-sheet-id="gasto-fijo">
       <div class="sheet">
         <div class="sheet-handle"></div>
-        <div class="sheet-title">Gasto fijo mensual</div>
+        <div class="sheet-title" id="gf-sheet-title">Gasto fijo mensual</div>
         <div class="ig"><label class="il" for="gf_n">Nombre</label><input
             type="text" id="gf_n" maxlength="30" placeholder="Ej: Arriendo"></div>
         <div class="ig"><label class="il" for="gf_m">Monto mensual</label><input
             type="text" inputmode="decimal" id="gf_m" placeholder="0,00"
             class="money-input"></div>
+        <div class="ig"><label class="il" for="gf_d">Día de vencimiento (opcional)</label><input
+            type="text" inputmode="numeric" id="gf_d" maxlength="2" placeholder="Ej: 5 — te avisamos antes de que venza"></div>
         <div class="ig"><label class="il" for="gf_c">Categoría</label>
           <div class="select-wrap"><select
               id="gf_c"><option>Vivienda</option><option>Transporte</option><option>Alimentación</option><option>Entretenimiento</option><option>Salud</option><option>Educación</option><option>Servicios</option><option>Suscripciones</option><option>Otro</option></select></div>
@@ -2524,6 +2576,28 @@
           id="btn-guardar-gasto-fijo">Guardar</button>
         <button type="button" class="btn btn-ghost"
           data-close-sheet="gasto-fijo">Cancelar</button>
+      </div>
+    </div>
+
+    <!-- BIEN (moto, computador…) -->
+    <div class="overlay" id="sheet-bien" data-sheet-id="bien">
+      <div class="sheet">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title" id="bien-sheet-title">Registrar bien</div>
+        <div class="ig"><label class="il" for="bien_n">Nombre</label><input
+            type="text" id="bien_n" maxlength="30" placeholder="Ej: Moto, Computador"></div>
+        <div class="ig"><label class="il" for="bien_v">Valor estimado hoy</label><input
+            type="text" inputmode="decimal" id="bien_v" placeholder="0,00"
+            class="money-input"></div>
+        <div class="ig"><label class="il" for="bien_f">Valor a la fecha</label><input
+            type="date" id="bien_f"></div>
+        <div class="ig"><label class="il" for="bien_d">Se deprecia al año, % (opcional)</label><input
+            type="text" inputmode="decimal" id="bien_d" maxlength="5" placeholder="Ej: 15 — con el tiempo vale menos"></div>
+        <div class="ix-gv-impacto">Es una estimación tuya y va aparte: no cuenta en tu plata disponible ni en tu patrimonio del inicio, porque no se puede gastar sin venderlo.</div>
+        <button type="button" class="btn btn-primary"
+          id="btn-guardar-bien">Guardar</button>
+        <button type="button" class="btn btn-ghost"
+          data-close-sheet="bien">Cancelar</button>
       </div>
     </div>
 
@@ -2540,6 +2614,8 @@
             class="money-input"></div>
         <div class="ig"><label class="il" for="if_d">Lo esperas desde</label><input
             type="month" id="if_d"></div>
+        <div class="ig"><label class="il" for="if_dia">Día en que te llega (opcional)</label><input
+            type="text" inputmode="numeric" id="if_dia" maxlength="2" placeholder="Ej: 30 — te avisamos si ese día pasa y no lo has registrado"></div>
         <button type="button" class="btn btn-primary"
           id="btn-guardar-ingreso-fijo">Guardar</button>
         <button type="button" class="btn btn-ghost"
@@ -2636,9 +2712,13 @@
         <div class="sheet-title">Nuevo encargo</div>
         <p class="ix-div-168">Plata
           de otra persona que vas a administrar. No afecta tu patrimonio.</p>
-        <div class="ig"><label class="il" for="enc_nombre">¿De quién es la
-            plata?</label><input type="text" id="enc_nombre" maxlength="30"
-            placeholder="Ej: Papá, Carlos, Mamá..."></div>
+        <div class="ig"><div class="il">¿De quién es la plata?</div>
+        <div class="persona-btn" id="enc-persona-btn" data-action="personas:pickerAbrir" data-picker="enc-persona" role="button" tabindex="0">
+          <div class="avatar persona-btn-av" id="enc-persona-avatar" style="display:none;"></div>
+          <span id="enc-persona-label">Seleccionar persona...</span>
+          <svg aria-hidden="true" class="persona-chevron" id="enc-persona-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <input type="hidden" id="enc_nombre" value=""></div>
         <div class="ig"><label class="il" for="enc_saldo">Saldo inicial
             (opcional)</label><input type="text" inputmode="decimal"
             id="enc_saldo" placeholder="0,00" class="money-input"></div>
@@ -3328,39 +3408,6 @@
       </div>
     </div>
 
-    <!-- NUEVA PERSONA -->
-    <div class="overlay" id="sheet-nueva-persona" data-sheet-id="nueva-persona">
-      <div class="sheet">
-        <div class="sheet-handle"></div>
-        <div class="sheet-title">Nueva persona</div>
-        <div class="ig"><label class="il" for="np_nombre">Nombre</label><input
-            type="text" id="np_nombre" maxlength="30"
-            placeholder="Ej: Papá, Carlos, Mamá..."></div>
-        <div class="ig">
-          <div class="il">Color del avatar</div>
-          <div class="ix-np-colores"
-            id="np_colores">
-            <div class="avatar-color-opt ix-div-283" data-color="#60b0f0"
-              data-pick-color="#60b0f0"></div>
-            <div class="avatar-color-opt ix-div-284" data-color="#c8f060"
-              data-pick-color="#c8f060"></div>
-            <div class="avatar-color-opt ix-div-285" data-color="#f0b840"
-              data-pick-color="#f0b840"></div>
-            <div class="avatar-color-opt ix-div-286" data-color="#b090f0"
-              data-pick-color="#b090f0"></div>
-            <div class="avatar-color-opt ix-div-287" data-color="#f06868"
-              data-pick-color="#f06868"></div>
-            <div class="avatar-color-opt ix-div-288" data-color="#c060f0"
-              data-pick-color="#c060f0"></div>
-          </div>
-        </div>
-        <button type="button" class="btn btn-primary"
-          id="btn-crear-deudor">Crear persona</button>
-        <button type="button" class="btn btn-ghost"
-          data-close-sheet="nueva-persona">Cancelar</button>
-      </div>
-    </div>
-
     <!-- NUEVA DEUDA (yo le debo a alguien) -->
     <!-- EDITAR MI DEUDA -->
     <div class="overlay" id="sheet-editar-mi-deuda"
@@ -3371,6 +3418,9 @@
         <div class="ig"><label class="il" for="md_edit_nombre">Nombre</label>
           <input type="text" id="md_edit_nombre" maxlength="30"
             placeholder="Ej: Papá, Carlos, Mamá...">
+        </div>
+        <div class="ig"><label class="il" for="md_edit_tasa">Tasa E.A. <span class="ix-span-262">(opcional, en %; solo si te cobra intereses)</span></label>
+          <input type="text" inputmode="decimal" id="md_edit_tasa" maxlength="6" placeholder="Ej: 12">
         </div>
         <div class="ig">
           <div class="il">Color del avatar</div>
@@ -3830,8 +3880,13 @@
       <div class="sheet">
         <div class="sheet-handle"></div>
         <div class="sheet-title">Agregar persona a Spotify</div>
-        <div class="ig"><label class="il" for="sp_n">Nombre</label><input
-            type="text" id="sp_n" maxlength="30" placeholder="Ej: Carlos"></div>
+        <div class="ig"><div class="il">¿Quién es?</div>
+        <div class="persona-btn" id="sp-persona-btn" data-action="personas:pickerAbrir" data-picker="sp-persona" role="button" tabindex="0">
+          <div class="avatar persona-btn-av" id="sp-persona-avatar" style="display:none;"></div>
+          <span id="sp-persona-label">Seleccionar persona...</span>
+          <svg aria-hidden="true" class="persona-chevron" id="sp-persona-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <input type="hidden" id="sp_n" value=""></div>
         <div class="ig"><label class="il" for="sp_m">Cuota mensual</label><input
             type="text" inputmode="decimal" id="sp_m" placeholder="0,00"
             class="money-input"></div>
@@ -3855,8 +3910,14 @@
       <div class="sheet">
         <div class="sheet-handle"></div>
         <div class="sheet-title">Editar persona en Spotify</div>
-        <div class="ig"><label class="il" for="sp_edit_n">Nombre</label><input
-            type="text" id="sp_edit_n" maxlength="30" placeholder="Ej: Carlos"></div>
+        <div class="ig"><div class="il">¿Quién es?</div>
+        <div class="persona-btn" id="sp-edit-persona-btn" data-action="personas:pickerAbrir" data-picker="sp-edit-persona" role="button" tabindex="0">
+          <div class="avatar persona-btn-av" id="sp-edit-persona-avatar" style="display:none;"></div>
+          <span id="sp-edit-persona-label">Seleccionar persona...</span>
+          <svg aria-hidden="true" class="persona-chevron" id="sp-edit-persona-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div class="persona-hint" id="sp-edit-persona-hint" hidden>Para asignarle este cobro a otra persona, elimina este integrante y agrega uno nuevo — así el historial no se mezcla entre los dos.</div>
+        <input type="hidden" id="sp_edit_n" value=""></div>
         <div class="ig"><label class="il" for="sp_edit_m">Cuota
             mensual</label><input
             type="text" inputmode="decimal" id="sp_edit_m" placeholder="0,00"
@@ -3953,6 +4014,22 @@
     </div>
 
     <!-- SPOTIFY - Registrar pago de lo pendiente de un cobro -->
+    <div class="overlay" id="sheet-sp-fuente" data-sheet-id="sp-fuente">
+      <div class="sheet">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title">Cuenta de Spotify</div>
+        <p class="ix-div-168" id="spFuenteSelNota"></p>
+        <div class="ig">
+          <label class="il" for="spFuenteSel">¿Cuál cuenta o cajita?</label>
+          <div class="select-wrap"><select id="spFuenteSel"></select></div>
+        </div>
+        <button type="button" class="btn btn-primary"
+          data-action="spotify:guardarFuente" data-args="[]">Guardar</button>
+        <button type="button" class="btn btn-ghost"
+          data-close-sheet="sp-fuente">Cancelar</button>
+      </div>
+    </div>
+
     <div class="overlay" id="sheet-sp-hist-pend" data-sheet-id="sp-hist-pend">
       <div class="sheet">
         <div class="sheet-handle"></div>
@@ -4206,6 +4283,13 @@
               contará como ingreso del mes ni aparecerá en estadísticas</div>
           </div>
         </div>
+        <label class="ix-adaperturawrap" id="adEsExtraWrap">
+          <input class="ix-adesapertura" type="checkbox" id="adEsExtra">
+          <div class="ix-fx1-minw0">
+            <div class="ix-spextralabel">Es extraordinario (no se repite)</div>
+            <div class="ix-div-310">Aguinaldo, venta, premio: cuenta como ingreso, pero no como tu ritmo normal del mes</div>
+          </div>
+        </label>
         <div class="ig"><label class="il" for="adDesc" id="adDescLabel">¿De
             dónde viene esta plata? <span class="ix-cred">*</span></label><input
             type="text" id="adDesc"
@@ -4252,6 +4336,13 @@
           <div class="select-wrap"><select id="adMenuDest"></select></div>
         </div>
         <div class="ix-admenusaldo" id="adMenuSaldo"></div>
+        <label class="ix-adaperturawrap" id="adMenuEsExtraWrap">
+          <input class="ix-adesapertura" type="checkbox" id="adMenuEsExtra">
+          <div class="ix-fx1-minw0">
+            <div class="ix-spextralabel">Es extraordinario (no se repite)</div>
+            <div class="ix-div-310">Aguinaldo, venta, premio: cuenta como ingreso, pero no como tu ritmo normal del mes</div>
+          </div>
+        </label>
         <div class="ig"><label class="il" for="adMenuDesc">¿De dónde viene esta
             plata? <span class="ix-cred">*</span></label><input
             type="text" id="adMenuDesc"
@@ -4278,7 +4369,7 @@
     <div class="overlay" id="sheet-nu-movimiento" data-sheet-id="nu-movimiento">
       <div class="sheet">
         <div class="sheet-handle"></div>
-        <div class="sheet-title" id="nuMovTitle">Agregar a Nu</div>
+        <div class="sheet-title" id="nuMovTitle">Agregar a la cuenta</div>
         <p class="ix-div-211" id="nuMovSubtitle">El valor
           se <b class="ix-cnu-light">sumará</b> a la cajita que
           elijas.</p>
@@ -4453,11 +4544,11 @@
             placeholder="9,25" maxlength="8" autocomplete="off" data-tasa-ea></div>
         <div class="ig"><label class="il" for="cdt_inicio">Fecha de apertura
             <span class="ix-span-262">(cuándo
-              abriste el CDT en Nu)</span></label><input type="date"
+              abriste el CDT)</span></label><input type="date"
             id="cdt_inicio"></div>
         <div class="ig"><label class="il" for="cdt_vence">Fecha de
             vencimiento</label><input type="date" id="cdt_vence"></div>
-        <div class="ig"><label class="il" for="cdt_rte">Retefuente % <span class="ix-span-262">(Nu
+        <div class="ig"><label class="il" for="cdt_rte">Retefuente % <span class="ix-span-262">(el banco
               retiene sobre intereses · por defecto 4%)</span></label><input
             type="text" inputmode="decimal" id="cdt_rte"
             placeholder="4,00"></div>
@@ -4486,7 +4577,7 @@
             id="cobrar_detalle_est"></div>
         </div>
         <div class="ig">
-          <label class="il" for="cobrar_valor">Valor real depositado por Nu
+          <label class="il" for="cobrar_valor">Valor real depositado por tu banco
             <span class="ix-span-262">(copia
               el "Total neto actual" de la app)</span></label>
           <input type="text" inputmode="decimal" id="cobrar_valor"
@@ -4564,7 +4655,7 @@
          porque físicamente están todos después de todo el markup real de
          la app; no hay ningún elemento del HTML que dependa de que uno de
          estos scripts corra a mitad de parseo). El orden entre ellos
-         importa (ver el comentario de sheet-stack.js sobre
+         importa (ver el comentario de navegacion.js sobre
          addGastoVar/addGastoFijo y el de prestado.js sobre
          openSheet) — `defer` preserva el orden del documento, así que no
          se tocó el orden de los <script>, solo se agregó el atributo.
@@ -4580,31 +4671,55 @@
     <script src="js/core/events.js" defer></script>
     <script src="js/core/diferencial.js" defer></script>
     <script src="js/core/split.js" defer></script>
-<script src="js/core/core-state.js" defer></script>
+<!--
+// js/core/ui.js — registro de ganchos de ciclo de vida (Ui.hoja / Ui.pantalla / Ui.en). Reemplaza a hookGlobal() y a los
+// `openSheet = function(){…}` de los módulos. No depende de nada: carga primero.
+-->
+<script src="js/core/ui.js" defer></script>
+<script src="js/core/formulario.js" defer></script>
+<script src="js/core/sw-registro.js" defer></script>
+<script src="js/core/fecha.js" defer></script>
+<script src="js/core/estado.js" defer></script>
+<script src="js/core/cuentas-fuentes.js" defer></script>
+<script src="js/core/persistencia.js" defer></script>
+<script src="js/core/patrimonio.js" defer></script>
+<script src="js/core/ingresos.js" defer></script>
+<script src="js/core/dialogos.js" defer></script>
+<script src="js/core/utilidades-ui.js" defer></script>
+<script src="js/core/refresh.js" defer></script>
 <script src="js/core/cuenta-efectos.js" defer></script>
 <script src="js/core/cobros.js" defer></script>
 <!--
 // js/core/html-tag.js — primitivo html`` que escapa por defecto (ver
 // auditoria-tecnica.md, "Auditoría exhaustiva de .innerHTML" — solución de
 // fondo dada esta sesión, tras 14 rondas de fixes manuales módulo por
-// módulo). Depende de escHtml(), definida en core-state.js — debe cargar
+// módulo). Depende de escHtml(), definida en js/core/estado.js — debe cargar
 // justo después. Núcleo, siempre eager: cualquier módulo lazy (incluido
 // analisis.js, primer piloto de migración) lo necesita ya disponible antes
 // de que el usuario dispare la primera llamada a html()/raw(), sin importar
 // cuándo termine de cargar ese módulo lazy en sí.
 -->
 <script src="js/core/html-tag.js" defer></script>
+<script src="js/core/umbrales.js" defer></script>
+<script src="js/core/reglas.js" defer></script>
+<script src="js/core/salud.js" defer></script>
+<script src="js/core/plan-deudas.js" defer></script>
 <script src="js/core/periodo.js" defer></script>
 <script src="js/core/nu-calc.js" defer></script>
 <script src="js/core/calc-helpers.js" defer></script>
 <!--
 // js/core/fuentes-filtro.js — filtros de "de dónde sale la plata" (saldo
 // mínimo por flujo, TC solo con cupo). Usa getSaldoFuente/buildFuentesOptsHtml
-// (core-state.js) y tcCupoDisponible/getTCById (calc-helpers.js) solo al ser
+// (el núcleo) y tcCupoDisponible/getTCById (calc-helpers.js) solo al ser
 // llamado, no al cargar. Debe cargar antes de gastos.js (eager) y de los
 // módulos lazy (cuentas, spotify, prestado, tarjetas). Ver CHANGELOG.md.
 -->
 <script src="js/core/fuentes-filtro.js" defer></script>
+<!--
+// js/core/reordenable.js — Reordenable.activar(): arrastrar y soltar para reordenar fichas/filas (hoy: cuentas). Núcleo eager y
+// genérico; no depende de nada de la app. Cuentas lo activa al cargar su módulo (lazy).
+-->
+<script src="js/core/reordenable.js" defer></script>
 <!--
 // js/core/color-picker.js — marcarColorSeleccionado(): marca el círculo de color elegido en los
 // selectores de color (Cuentas, Tarjetas de crédito, Prestado). Núcleo eager: lo usan tres módulos
@@ -4614,30 +4729,14 @@
 <script src="js/core/color-picker.js" defer></script>
 <!--
 // js/core/wait-for.js — helper waitFor() para los <script defer> clásicos.
-// Consumidores directos: personas-init.js y js/core/hook-global.js (que
-// mejoras-adicionales.js/gastos-fijos-progress.js/mas-menu.js usan por
-// debajo, vía hookGlobal() — ver ese archivo más abajo). Antes de existir
-// hookGlobal(), cada uno de esos reimplementaba a mano su propio
-// setInterval + contador de reintentos.
+// Consumidor directo: personas-init.js. (hook-global.js, que también lo usaba, se eliminó: los ganchos de hojas/pantallas
+// ahora pasan por js/core/ui.js, que no necesita esperar a nada.)
 // pin-bio.js/firebase-sync.js usan su propia copia vía `import` de
 // js/core/wait-for-module.js (no de este archivo) — ver el comentario en
 // ambos archivos y CHANGELOG.md#infraestructura--seguridad para el porqué
 // de la separación.
 -->
 <script src="js/core/wait-for.js" defer></script>
-<!--
-// js/core/hook-global.js — helper hookGlobal() para envolver una función
-// global existente (window.refresh, window.openSheet, window.applyModulos)
-// sin repetir a mano "capturar original + envolver + esperar con waitFor si
-// todavía no existe". Reemplaza esa misma receta que tenían por separado
-// gastos-fijos-progress.js (refresh), mejoras-adicionales.js (refresh y
-// openSheet — antes repartida entre ese archivo y mejoras.js, fusionados
-// el 2026-09-10) y mas-menu.js (applyModulos). Depende de waitFor(), carga
-// justo después. pin-bio.js usa su propia copia vía `import` de
-// js/core/hook-global-module.js (no de este archivo) — mismo motivo de
-// separación classic/module que ya explica wait-for.js arriba.
--->
-<script src="js/core/hook-global.js" defer></script>
 <!--
 // js/core/wrapped-gate.js — ventana de disponibilidad de Wrapped
 // (2026-09-15, resuelve wrapped.md §7decies). Núcleo eager, chico, a
@@ -4646,7 +4745,7 @@
 // en esta pantalla, y le avisa a Loader.ensureAll() en lazy-loader.js que
 // no lo precargue fuera de la ventana) sin tener que descargar las ~4000
 // líneas del módulo real solo para saber si mostrarlo. Depende de hoy()
-// (core-state.js, ya cargado arriba) y de showScreen/toast (núcleo,
+// (js/core/dialogos.js, ya cargado arriba) y de showScreen/toast (núcleo,
 // definidos más abajo pero solo se usan detrás de un click real, nunca al
 // cargar este archivo). Ver ese archivo para el detalle completo.
 -->
@@ -4687,13 +4786,12 @@
      tenían dependencia real — se fusionaron sin mover nada, ver
      CHANGELOG.md#encargos y #spotify). Se auditaron los 16 archivos
      (hoy 14, ver notas) que hoy cargan entre esta posición y la
-     posición vieja de personas.js (sheet-stack.js, lazy-loader.js,
+     posición vieja de personas.js (navegacion.js, lazy-loader.js,
      money-input.js, movimientos.js, cuentas.js, bootstrap.js,
      mas-menu.js, sheet-behavior.js [fusión 2026-09-08 de
      sheet-viewport.js + sheet-swipe.js — ver ese archivo],
      gastos-fijos-progress.js, firebase-sync.js,
-     mejoras-adicionales.js [fusión 2026-09-10 de mejoras.js +
-     mejoras-adicionales.js — ver CHANGELOG.md#infraestructura--seguridad],
+     saldos-ocultos.js, arranque-ui.js, formularios-ui.js,
      busqueda-global.js, pin-bio.js — nav.js retirado, 2026-09-10, ver
      nota más abajo) — ninguno tiene
      código de nivel superior que dependa de personas.js, ni
@@ -4702,22 +4800,24 @@
      ═══════════════════════════════════════════════════════════════ -->
 <script src="js/modules/personas.js" defer></script>
 <!--
-// js/core/sheet-stack.js — último bloque núcleo inline, extraído esta
+// js/core/navegacion.js — último bloque núcleo inline, extraído esta
 // sesión (ver auditoria-tecnica.md, punto 1 de "Críticos", y el header del
 // propio archivo para el detalle de la restricción de orden de carga).
 // Se carga acá, en la misma posición relativa que tenían los dos bloques
 // inline que reemplaza: después de gastos.js/spotify.js (los overrides de
 // addGastoVar/addGastoFijo necesitan esos globales ya definidos).
 -->
-<script src="js/core/sheet-stack.js" defer></script>
+<script src="js/core/navegacion.js" defer></script>
+<script src="js/core/modulos-activos.js" defer></script>
+<script src="js/core/eventos-base.js" defer></script>
 <!-- Módulo Préstamos — js/modules/prestado.js (lazy, grupo 'prestamos'; sin <script> propio).
-     Depende de personas.js y sheet-stack.js, ambos de entrada, así que ya están cargados cuando
+     Depende de personas.js y navegacion.js, ambos de entrada, así que ya están cargados cuando
      el usuario entra a Préstamos. #screen-prestamos y #nav-prestamos son HTML estático. -->
 <!-- prestado.js: ver js/core/lazy-loader.js (Loader.GROUPS.prestamos) -->
 <!--
 // js/core/lazy-loader.js — motor de carga bajo demanda (docs/auditoria-
 // tecnica.md #4, fase 1 de la modularización). Se carga acá, justo después
-// de sheet-stack.js, porque showScreen() lo referencia (con guard typeof,
+// de navegacion.js, porque showScreen() lo referencia (con guard typeof,
 // así que el orden exacto entre estos dos no es estrictamente obligatorio,
 // pero mantenerlos juntos documenta la relación). Ver CHANGELOG.md#modularización-por-pantalla.
 -->
@@ -4737,22 +4837,22 @@
 <!-- encargos.js: ver js/core/lazy-loader.js (Loader.GROUPS.encargos) -->
 <!--
 
-// Módulo Tarjetas de Crédito migrado a js/modules/tarjetas_credito.js —
-// ver docs/tarjetas_credito.md. Cuando se migró (antes de que
+// Módulo Tarjetas de Crédito migrado a js/modules/tarjetas-credito.js —
+// ver docs/tarjetas-credito.md. Cuando se migró (antes de que
 // abrirDetalleMov()/eliminarMovimiento() se extrajeran a
 // js/core/movimientos.js el 2026-07-26) no tenía dependencia real de
-// orden de carga. ESO YA NO ES CIERTO: tarjetas_credito.js referencia
+// orden de carga. ESO YA NO ES CIERTO: tarjetas-credito.js referencia
 // abrirDetalleMov directo en su Events.registerAll('tarjetas', {...}),
 // y ya no importa que cargue antes o después de js/core/movimientos.js
 // (línea de abajo) — el wrapper agregado el 2026-08-03 en
-// tarjetas_credito.js resuelve el nombre recién al hacer click, no al
+// tarjetas-credito.js resuelve el nombre recién al hacer click, no al
 // cargar (mismo tipo de wrapper que tuvo leerArchivoImport en
 // configuracion.js hasta 2026-08-30, cuando se sacó al fusionar
 // import-validado.js — ver CHANGELOG.md#configuración; ya no sirve como
 // ejemplo vigente de ese patrón, solo como precedente histórico).
 
 // (2026-08-02, ronda de resolver de raíz el acoplamiento spotify↔
-// tarjetas_credito) Sexto grupo lazy: ver js/core/lazy-loader.js
+// tarjetas-credito) Sexto grupo lazy: ver js/core/lazy-loader.js
 // (Loader.GROUPS.tarjetas). #screen-tarjetas y #mas-tarjetas ya eran
 // HTML estático, así que no hubo que copiar/inyectar nada. spotify.js
 // (_spEnsureTC) y js/core/movimientos.js ya esperan Loader.ensure(
@@ -4762,7 +4862,7 @@
 // js/core/lazy-loader.js la primera vez que alguien entra a Tarjetas
 // de Crédito.
 -->
-<!-- tarjetas_credito.js: ver js/core/lazy-loader.js (Loader.GROUPS.tarjetas) -->
+<!-- tarjetas-credito.js: ver js/core/lazy-loader.js (Loader.GROUPS.tarjetas) -->
 <script src="js/core/movimientos.js" defer></script>
 <!--
 // abrirDetalleMov()/eliminarMovimiento() y su registro Events.on('core:...')
@@ -4773,12 +4873,12 @@
 //
 // LAZY (2026-08-13, segundo intento — reactivado): el primer intento
 // (docs/auditoria-tecnica.md #4) se revirtió por 3 ReferenceError
-// encadenados en el arranque — core-state.js/firebase-sync.js llamaban al
+// encadenados en el arranque — el núcleo/firebase-sync.js llamaban al
 // subsistema de Nu (nuTotal/getNuTasaGlobal,
 // definidas acá) sin guard. Se auditaron y corrigieron los 5 archivos
-// núcleo involucrados (core-state.js, firebase-sync.js, pin-bio.js,
+// núcleo involucrados (el núcleo, firebase-sync.js, pin-bio.js,
 // gastos-fijos-progress.js, mejoras.js — este último fusionado con
-// mejoras-adicionales.js el 2026-09-10) — todo guardado con `typeof`
+// saldos-ocultos/arranque-ui/formularios-ui) — todo guardado con `typeof`
 // ahora, confirmado contra el código real. #screen-cuentas y #nav-cuentas
 // ya eran HTML estático.
 -->
@@ -4815,21 +4915,11 @@
          guard (overlay de eliminar cuenta, registro de Events('authgate'))
          ya se blindó — ver CHANGELOG.md#arranque. -->
     <script type="module" src="js/core/firebase-sync.js" async></script>
-    <!-- ===== MEJORAS ADICIONALES: ocultar saldos, hook de refresh
-         (salud financiera/proyección/presupuestos), validación de montos,
-         animación de carga inicial, Service Worker, autofocus de sheets,
-         aria-labels =====
-         Fusión (2026-09-10) de lo que antes eran dos archivos, mejoras.js
-         y mejoras-adicionales.js — literalmente la parte 1 y la parte 2 de
-         este mismo bloque "MEJORAS ADICIONALES", separadas solo por el
-         corte arbitrario de la sesión de extracción original (mismo caso
-         que sheet-behavior.js). Ver CHANGELOG.md#infraestructura--seguridad.
-         El <style> que vivía acá (fade-in del dashboard, health ring,
-         presupuestos, búsqueda) se movió a css/styles.css — ver
-         docs/auditoria-tecnica.md, ítem "CSS inline (44.7 KB)" y
-         CHANGELOG.md#infraestructura--seguridad. -->
-
-    <script src="js/core/mejoras-adicionales.js" defer></script>
+    <!-- Retoques de la interfaz (antes un solo archivo «mejoras-adicionales.js»): ocultar saldos, render tras refresh + fade-in + aria,
+         validación de montos + foco automático de las hojas. -->
+    <script src="js/core/saldos-ocultos.js" defer></script>
+    <script src="js/core/arranque-ui.js" defer></script>
+    <script src="js/core/formularios-ui.js" defer></script>
     <script src="js/core/busqueda-global.js" defer></script>
 
     <!-- `async` (docs/auditoria-tecnica.md #4, paso 2, mismo criterio que
@@ -4865,6 +4955,9 @@
         <div class="ig"><label class="il" for="tc_cupo">Cupo total <span class="ix-cred">*</span></label><input
             type="text" inputmode="decimal"
             id="tc_cupo" placeholder="0,00" class="money-input"></div>
+        <div class="ig"><label class="il" for="tc_tasa">Tasa E.A. <span class="ix-span-262">(opcional, en %)</span></label><input
+            type="text" inputmode="decimal"
+            id="tc_tasa" placeholder="Ej: 28" maxlength="6"></div>
         <div class="ig"><label class="il" for="tc_cajita_vinculada">Cajita para
             pagarla <span class="ix-span-262">(opcional)</span></label>
           <div class="select-wrap"><select id="tc_cajita_vinculada">
@@ -5049,15 +5142,15 @@
     </div>
 
 <!-- js/core/nav.js retirado (2026-09-10): su única función, navTo(),
-     tenía un solo caller real (tarjetas_credito.js, botón "Ver todo"),
+     tenía un solo caller real (tarjetas-credito.js, botón "Ver todo"),
      que además duplicaba a mano parte de la lógica de showScreen()
-     (sheet-stack.js) sin la integración con lazy-loader.js/préstamos que
+     (navegacion.js) sin la integración con lazy-loader.js/préstamos que
      showScreen() sí tiene. Se cambió ese caller a
      `closeMas(); showScreen('tarjetas');` — mismo patrón que ya usa
      mas-menu.js — y con eso navTo()/nav.js quedaron sin ningún caller
      conocido. Ver CHANGELOG.md#infraestructura--seguridad. -->
 <!-- ===== FEED "ACTIVIDAD RECIENTE" =====
-     Migrado a js/modules/actividad_reciente.js. Único acceso: el botón
+     Migrado a js/modules/actividad-reciente.js. Único acceso: el botón
      dentro de Configuración (#cfg-historial-row) — no hay entrada en el
      menú "Más" ni en el nav inferior.
 
@@ -5070,10 +5163,10 @@
      este archivo llega a cargar tarde — se agregó un cuarto trigger
      sin condición de evento al final del archivo. Ver
      CHANGELOG.md#arranque. ===== -->
-<!-- actividad_reciente.js: ver js/core/lazy-loader.js (Loader.GROUPS.historial) -->
+<!-- actividad-reciente.js: ver js/core/lazy-loader.js (Loader.GROUPS.historial) -->
 
     <!-- ══════════════════════════════════════════════════════════════════
-     MÓDULO: PLATA COMPROMETIDA — migrado a js/modules/plata_comprometida.js
+     MÓDULO: PLATA COMPROMETIDA — migrado a js/modules/plata-comprometida.js
      (ver docs/plata-comprometida.md). Un solo archivo alcanzó: no depende
      de nada definido más abajo en este documento (usa S.deudores directo
      para "Me devuelven", no funciones de Personas) — mismo caso que
@@ -5082,7 +5175,7 @@
      Carga LAZY desde esta sesión (docs/auditoria-tecnica.md #4): no se
      confirmó ningún otro archivo que llame a sus funciones (nadie
      depende de que esté cargado de entrada), y sus propias dependencias
-     (prestado.js, tarjetas_credito.js, cuentas.js, inicio.js) ya están
+     (prestado.js, tarjetas-credito.js, cuentas.js, inicio.js) ya están
      forzadas a cargar de entrada de todos modos por el dashboard de
      Inicio — ver la nota grande al respecto en CHANGELOG.md#arranque.
      Se saca de acá el <script>; ahora lo descarga js/core/lazy-loader.js
@@ -5094,7 +5187,7 @@
      siguen en el archivo, sin cambios, pero ahora son no-op gracias a
      sus propios guards por id).
 ══════════════════════════════════════════════════════════════════ -->
-<!-- plata_comprometida.js: ver js/core/lazy-loader.js (Loader.GROUPS.comprometida) -->
+<!-- plata-comprometida.js: ver js/core/lazy-loader.js (Loader.GROUPS.comprometida) -->
 
     <!-- SISTEMA DE PERSONAS — libreta central vinculada: Encargos, Préstamos y Spotify comparten la
      misma identidad (js/modules/personas.js; su integración vive dentro de cada módulo). -->
@@ -5128,7 +5221,7 @@
          con Personas. Ver CHANGELOG.md#modularización-por-pantalla para el
          detalle completo, incluido por qué Alcancía necesitó un tratamiento
          distinto al resto (se auto-registra parchando showScreen() en vez
-         de depender de una rama if(name===X) en sheet-stack.js). ===== -->
+         de depender de una rama if(name===X) en navegacion.js). ===== -->
 
     <!-- ===== MÓDULO CONFIGURACIÓN =====
          Migrado a js/modules/configuracion.js — ver auditoria-tecnica.md,
@@ -5143,7 +5236,7 @@
          más simple de los tres, porque #screen-config y #mas-config ya
          eran HTML estático desde antes (a diferencia de Plata
          Comprometida, no hubo que copiar nada), y su único caller externo
-         (renderCatsConfig, desde sheet-stack.js) ya tenía guard `typeof`
+         (renderCatsConfig, desde navegacion.js) ya tenía guard `typeof`
          desde el piloto de Alcancía.
 
          2026-08-30: import-validado.js (validación de estructura del JSON,
@@ -5157,7 +5250,7 @@
          Migrado a js/modules/analisis.js — pantalla que nunca apareció en
          auditoria-tecnica.md, descubierta al revisar los onclick restantes
          tras cerrar Configuración. calcPatrimonioTotal()/snapshotPatrimonio()
-         son núcleo (viven en js/core/core-state.js, los llama save()), no
+         son núcleo (viven en el núcleo (js/core/persistencia.js), los llama save()), no
          parte de este módulo.
 
          Carga LAZY desde esta sesión (docs/auditoria-tecnica.md #4,
@@ -5172,7 +5265,7 @@
          Migrado a js/modules/inicio.js — ver auditoria-tecnica.md, punto 3
          (arquitectura monolítica). Se carga al final, después de todos los
          demás módulos, porque renderAttencion() usa funciones definidas en
-         mesada.js, spotify.js, prestado.js y tarjetas_credito.js
+         mesada.js, spotify.js, prestado.js y tarjetas-credito.js
          (getMesadaData, spNombreDe, spPersonaPagadaVigente, tcCupoUsadoPct).
          No define ningún data-action nuevo: screen-inicio no tiene onclick
          inline propios, solo elementos de solo lectura (ver nota en el

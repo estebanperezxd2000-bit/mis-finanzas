@@ -15,9 +15,9 @@
 
    Pagar Spotify con una tarjeta de crédito (fuente 'tc:<id>') es un CARGO a la
    tarjeta, no un descuento de saldo — usa getTCById/tcCupoDisponible/tcRecalcular
-   de js/modules/tarjetas_credito.js, igual que Encargos/Préstamos (S.tcMovimientos
-   con tipo 'cargo_*'). No se asume que tarjetas_credito.js ya esté cargado (ver
-   auditoria-tecnica.md, acoplamiento spotify↔tarjetas_credito): los 3 puntos que
+   de js/modules/tarjetas-credito.js, igual que Encargos/Préstamos (S.tcMovimientos
+   con tipo 'cargo_*'). No se asume que tarjetas-credito.js ya esté cargado (ver
+   auditoria-tecnica.md, acoplamiento spotify↔tarjetas-credito): los 3 puntos que
    usan esas funciones pasan primero por _spEnsureTC(), que llama a
    Loader.ensure('tarjetas') si hace falta — ver ese helper, arriba de
    openSheet_pagarSpotify().
@@ -62,10 +62,10 @@ let sppSplitMode=false;
 // (parte cierra deuda de un ciclo viejo, el resto es del ciclo nuevo — ver
 // confirmarSpDestino), cada registro necesita su propia porción del split para
 // que borrar uno solo revierta solo esa porción de cada cuenta, no el total.
-// ── Libro (core-state.js): origen de cada cambio de saldo ────────────────────────────────────────────────
+// ── Libro (js/core/cuentas-fuentes.js): origen de cada cambio de saldo ────────────────────────────────────────────────
 // _ogSp(ref, rev): cada sumar/descontarFuente deja en el libro { modulo:'spotify', ref:<id del registro de spotifyHistorial,
 // o del pago> }. Con rev=true es una reversión (tipo 'reversion'). `opts.exacto` ya no existe: el saldo no se recorta en 0.
-const _ogSp = (ref, rev) => ({ origen: { modulo: 'spotify', ref, rev: rev || undefined } });
+const _ogSp = Libro.origen('spotify');
 
 function _spProporcionarSplits(splits,montoParcial,montoTotal){
   if(!splits||!splits.length||montoTotal<=0||montoParcial<=0)return null;
@@ -73,56 +73,63 @@ function _spProporcionarSplits(splits,montoParcial,montoTotal){
   return splits.map(s=>({fuente:s.fuente,monto:Math.round(s.monto*factor)}));
 }
 
-function _spSplitFuentesOpts(selectedVal){
-  const fuentes=getFuentesSinTC();
-  return '<option value="" disabled'+(selectedVal?'':' selected')+'>Selecciona una cuenta...</option>'
-    +fuentes.map(f=>`<option value="${f.val}"${f.val===selectedVal?' selected':''}>${escHtml(f.label)}</option>`).join('');
-}
 
-// Opciones del split de PAGO a Spotify (plata que SALE): solo cuentas con saldo >= $50
-// (FuentesFiltro.PRESET.SPOTIFY, js/core/fuentes-filtro.js). Aparte de _spSplitFuentesOpts a
-// propósito: esa la comparte el split de COBRO ('spc'), donde la plata ENTRA y una cuenta
-// vacía es un destino válido — no debe filtrarse por saldo.
-function _spPagarSplitFuentesOpts(selectedVal){
-  return FuentesFiltro.optsHtml(getFuentesSinTC(),{...FuentesFiltro.PRESET.SPOTIFY,selectedVal,placeholder:'Selecciona una cuenta...',sinOpcionesTexto:FuentesFiltro.MSG_SIN_SALDO});
-}
-
-crearSplitWidget('spc', {
+// Split de PAGO a Spotify (plata que SALE): solo cuentas con saldo >= $50 (PRESET.SPOTIFY). Distinto del de COBRO ('spc'): allí la
+// plata ENTRA y una cuenta vacía es un destino válido, así que no se filtra por saldo.
+const _sp_spc = crearSplitWidget('spc', {
   simpleId:'spCobModoSimple', splitId:'spCobModoDividido', toggleId:'spCobSplitToggle', rowsId:'spCobSplitRows',
   getModo:()=>spcSplitMode, setModo:v=>{spcSplitMode=v;},
-  getFuentesFn:_spSplitFuentesOpts,
+  fuentes:{ placeholder:'Selecciona una cuenta...', placeholderDeshabilitado:true },
   onPreview:actualizarSpDestinoPreview
 });
-function toggleSpCobSplit(){ splitToggle('spc'); }
-function agregarSpCobSplitRow(){ splitAgregarRow('spc'); }
-function getSpCobSplitData(){ return splitGetData('spc'); }
 
-crearSplitWidget('spp', {
+const _sp_spp = crearSplitWidget('spp', {
   simpleId:'spPagarModoSimple', splitId:'spPagarModoDividido', toggleId:'spPagarSplitToggle', rowsId:'spPagarSplitRows',
   getModo:()=>sppSplitMode, setModo:v=>{sppSplitMode=v;},
-  getFuentesFn:_spPagarSplitFuentesOpts,
+  fuentes:{ sentido:'sale', preset:'SPOTIFY', placeholder:'Selecciona una cuenta...', sinOpcionesTexto:FuentesFiltro.MSG_SIN_SALDO },
   onPreview:actualizarSpPagarPreview
 });
-function toggleSpPagarSplit(){ splitToggle('spp'); }
-function agregarSpPagarSplitRow(){ splitAgregarRow('spp'); }
-function getSpPagarSplitData(){ return splitGetData('spp'); }
 
-function getSpCajita(){
-  // Finds or returns null for the Spotify cajita
-  if(S.spotify.cajitaId){
-    const c=(S.cajitas||[]).find(x=>x.id===S.spotify.cajitaId);
-    if(c)return c;
-  }
-  // Try to find one named Spotify
-  const c=(S.cajitas||[]).find(x=>x.nombre&&x.nombre.toLowerCase().includes('spotify'));
-  if(c){S.spotify.cajitaId=c.id;return c;}
-  return null;
+// DÓNDE guardas la plata de Spotify: una cuenta o una cajita CUALQUIERA, la que el usuario elija (S.spotify.fuenteId, p. ej.
+// 'cajita:abc' o 'cuenta:nequi'). Nunca se adivina por el nombre. Una referencia que ya no es válida (cajita eliminada, cuenta
+// archivada o de ahorro) cuenta como «sin elegir»; eliminarCajita la limpia.
+function getSpFuente(){
+  const f=S.spotify.fuenteId;
+  if(!f)return null;
+  return getFuentesSinTC().some(x=>x.val===f)?f:null;
+}
+function getSpFuenteSaldo(){
+  const f=getSpFuente();
+  // getSaldoFuente() ya incluye el interés real de una cajita (calcC, js/core/nu-calc.js).
+  return f?getSaldoFuente(f):0;
 }
 
-function getSpCajitaSaldo(){
-  const c=getSpCajita();
-  // calcC() (interés real de la cajita) vive en js/core/nu-calc.js, núcleo de carga de entrada.
-  return c?calcC(c).val:0;
+// Elegir (o quitar) esa cuenta/cajita. Siempre hay dónde elegir: Efectivo no se puede eliminar. Si todavía no hay una elegida y existe
+// UNA sola cajita con «spotify» en el nombre, se deja preseleccionada como sugerencia (el usuario aún tiene que Guardar).
+function abrirElegirFuenteSpotify(){
+  const sel=document.getElementById('spFuenteSel');
+  if(!sel)return;
+  const actual=getSpFuente();
+  let sugerida='';
+  if(!actual){
+    const cand=getFuentesSinTC().filter(x=>Fuente.esCajita(x.val)&&/spotify/i.test(x.label));
+    if(cand.length===1)sugerida=cand[0].val;
+  }
+  sel.innerHTML=opcionesCuenta({selectedVal:actual||sugerida,placeholder:'Ninguna (no mostrar saldo)'});
+  const nota=document.getElementById('spFuenteSelNota');
+  if(nota)nota.textContent=sugerida?'Te sugerimos esta cajita por su nombre. Confírmala con Guardar.':'La cuenta o cajita donde vas guardando lo que cobras para pagar Spotify.';
+  openSheet('sp-fuente');
+}
+function guardarFuenteSpotify(){
+  const sel=document.getElementById('spFuenteSel');
+  if(!sel)return;
+  const f=sel.value||'';
+  if(f&&!getFuentesSinTC().some(x=>x.val===f)){toast('Esa cuenta ya no está disponible','err');return;}
+  S.spotify.fuenteId=f;
+  save();
+  closeSheet('sp-fuente');
+  refresh();
+  toast(f?'Guardado: '+fuenteLabel(f):'Spotify ya no muestra saldo de ninguna cuenta','ok');
 }
 
 // spNombreDe() y spPersonaPagadaVigente() se movieron a js/core/calc-helpers.js
@@ -140,12 +147,13 @@ function spPeriodosVencidos(p,fechaCorte,estricto){
   // un ciclo largo y luego se le venció OTRO sin pagarlo, "total cobrado ≥ una cuota"
   // ya daba pend=0 aunque en la realidad debía el período nuevo. Ver CHANGELOG.md.
   if(!p||!p.proximoPago)return 0;
-  const corte=new Date(fechaCorte+'T00:00:00');
-  let cursor=new Date(p.proximoPago+'T00:00:00');
+  if(!Fecha.esValida(fechaCorte)||!Fecha.esValida(p.proximoPago))return 0;
+  const corte=Fecha.iso(_fechaSafe(fechaCorte));
+  let cursor=Fecha.iso(_fechaSafe(p.proximoPago));   // 'YYYY-MM-DD' (normalizado): se compara como texto
   let n=0;
   // `estricto`: no cuenta el período que empieza EXACTAMENTE el día de corte (ver
   // SP_EMPATE_PERIODOS más abajo — ese período ya pertenece al ciclo nuevo).
-  while(estricto?cursor<corte:cursor<=corte){ n++; cursor.setDate(cursor.getDate()+30); }
+  while(estricto?cursor<corte:cursor<=corte){ n++; cursor=Fecha.sumarDias(cursor,SP_PERIODO_DIAS); }
   return n;
 }
 
@@ -164,16 +172,6 @@ function spCicloCobrosActual(){
 function spCobradoDePersona(p,cicloCobros){
   // Suma lo que una persona ya aportó en el ciclo actual, vinculando por id.
   return (cicloCobros||spCicloCobrosActual()).filter(h=>h.spId===p.id).reduce((a,h)=>a+(h.monto||0),0);
-}
-
-function nextMonthFixed(dateStr, mesesAdelantar){
-  // Avanza N*30 dias desde la fechaProximoPago (no desde hoy ni desde cuando pago)
-  // Ej: si la proxima fecha era el 8-jun y pago el 5-jun o el 10-jun, la siguiente es 8-jun + 30d
-  if(!dateStr)return'';
-  const d=new Date(dateStr+'T00:00:00');
-  const dias=(mesesAdelantar||1)*30;
-  d.setDate(d.getDate()+dias);
-  return d.toISOString().split('T')[0];
 }
 
 // ── Períodos flotantes y atribución de cobros a ciclos ─────────────────────
@@ -195,11 +193,9 @@ function nextMonthFixed(dateStr, mesesAdelantar){
 const SP_PERIODO_DIAS=30;
 const SP_EMPATE_PERIODOS=2;
 
-function spSumarDias(fechaStr,dias){
-  const d=new Date(fechaStr+'T00:00:00');
-  d.setDate(d.getDate()+dias);
-  return d.toISOString().split('T')[0];
-}
+// Avanza `meses` períodos de 30 días desde una fecha (desde la fecha de próximo pago, no desde hoy ni desde cuando se pagó:
+// si tocaba el 8-jun y pagó el 5 o el 10, el siguiente es 8-jun + 30 d). Antes: nextMonthFixed(f,k) ≡ spSumarDias(f,30*k).
+function spSumarDias(fechaStr,dias){ return Fecha.sumarDias(fechaStr,dias); }
 
 function spTramosDeCobro(h){
   // Divide un registro de cobro en sus períodos. Un cobro sin `proximoPagoAntes` (la persona
@@ -332,7 +328,7 @@ function renderSpotify(){
     if(spPersonaPagadaVigente(x))return a;
     return a+spPeriodosVencidos(x,hoy())*(x.monto||0);
   },0)+cicloCobros.reduce((a,h)=>a+(h.pendiente>0?h.pendiente:0),0);
-  const cajitaSaldo=getSpCajitaSaldo();
+  const cajitaSaldo=getSpFuenteSaldo();
   
   document.getElementById('spCob').textContent=fmt(cob);
   document.getElementById('spPend').textContent=fmt(cobPend);
@@ -371,12 +367,14 @@ function renderSpotify(){
       statusEl.textContent='Faltan '+fmt(-diferencia)+' para pagar';
       statusEl.style.color='var(--amber)';
     } else {
-      statusEl.textContent='Sin saldo en cajita';
+      statusEl.textContent=getSpFuente()?'Sin saldo disponible':'Toca «Elegir» para vincular una cuenta';
       statusEl.style.color='var(--text3)';
     }
   } else {
-    statusEl.textContent='';
+    statusEl.textContent=getSpFuente()?'':'Toca «Elegir» para vincular una cuenta';
   }
+  const btnCaj=document.getElementById('btn-sp-elegir-cajita');
+  if(btnCaj)btnCaj.textContent=getSpFuente()?'Cambiar':'Elegir';
   
   // El estado vacío ya trae «Agregar persona»: el botón de pie solo aparece con personas.
   mostrarSi(document.getElementById('btn-add-spotify-persona'),p.length>0);
@@ -391,8 +389,8 @@ function renderSpotify(){
     // Ordenar por proximidad al próximo pago: vencidos primero (más negativos), luego más próximos
     const pOrdenado=[...p].map((x,i)=>({...x,_origIdx:i})).sort((a,b)=>{
       const far=99999;
-      const dA=a.proximoPago?Math.ceil((new Date(a.proximoPago+'T00:00:00')-new Date())/86400000):far;
-      const dB=b.proximoPago?Math.ceil((new Date(b.proximoPago+'T00:00:00')-new Date())/86400000):far;
+      const dA=a.proximoPago?Fecha.diasEntre(hoy(),a.proximoPago):far;
+      const dB=b.proximoPago?Fecha.diasEntre(hoy(),b.proximoPago):far;
       return dA-dB;
     });
     // Migrado a html`` (js/core/html-tag.js, ver auditoria-tecnica.md, punto 2):
@@ -404,7 +402,7 @@ function renderSpotify(){
     const i=x._origIdx;
       let fechaInfo='';
       if(x.proximoPago){
-        const diasRestantes=Math.ceil((new Date(x.proximoPago+'T00:00:00')-new Date())/86400000);
+        const diasRestantes=Fecha.diasEntre(hoy(),x.proximoPago);
         const vencido=diasRestantes<0;
         const hoy0=diasRestantes===0;
         fechaInfo=html`<span class="badge badge-xs ${raw(vencido?'bg-red':hoy0?'bg-amber':'bg-purple')}">${vencido?'Vencido hace '+Math.abs(diasRestantes)+'d':hoy0?'Vence hoy':'Paga en '+diasRestantes+'d · '+x.proximoPago}</span>`;
@@ -431,6 +429,7 @@ function renderSpotify(){
         </div>
       </div>`;
     })}</div>`;
+    _spPintarAvatares(el, pOrdenado); // color/foto/nombre de la persona vinculada (sección Personas, más abajo)
   }
   
   // Badge en home: avisar si hay pagos próximos o vencidos (<= 3 días)
@@ -451,7 +450,7 @@ function renderSpHistorial(){
   const hist=total.map((h,i)=>({...h,_realIdx:i}))
     .sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||'')||(b._realIdx-a._realIdx))
     .slice(0,12);
-  if(!hist.length){el.innerHTML='<div class="card card-sm sp-hist-vacio">Sin pagos registrados aún.</div>';return;}
+  if(!hist.length){el.innerHTML=emptyInline('Sin pagos registrados aún.',{centro:true,clase:'card card-sm'});return;}
   // Migrado a html`` (js/core/html-tag.js, ver auditoria-tecnica.md, punto 2).
   // Hallazgo real de paso: fuenteLabel() en `fuentesInfo` (nombre de cajita/cuenta,
   // texto libre) nunca pasaba por escHtml() acá — a diferencia del badge de
@@ -612,7 +611,7 @@ function renderSpStats(){
       <div class="stat-label">Margen proyectado</div>
       <div class="sp-stat-base">
         <div class="stat-value ${cV(margen)}">${margen>=0?'+':''}${fmt(Math.abs(margen))}</div>
-        <div class="sp-stat-nota2">cobras ${fmt(ingresoEstimado)} en cuotas · el plan cuesta ${costo>0?fmt(costo):'—'}</div>
+        <div class="sp-stat-nota2">cobras ${fmt(ingresoEstimado)} en cuotas · el plan cuesta ${costo>0?fmt(costo):SIN_DATO}</div>
       </div>
       <div class="sp-stat-hint">proyección con tu configuración actual, no con tu frecuencia real de pago — registra un pago a Spotify para ver el promedio real por ciclo</div>
     </div>`;
@@ -649,7 +648,7 @@ function renderSpStats(){
   } else {
     html+=`<div class="stat">
       <div class="stat-label">Ganancia acumulada</div>
-      <div class="stat-value sp-t-muted">\u2014</div>
+      <div class="stat-value sp-t-muted">${SIN_DATO}</div>
       <div class="sp-stat-hint">sin cobros aún</div>
     </div>`;
   }
@@ -702,10 +701,10 @@ async function deleteSpHistorial(i){
   }
 
   const tienePendienteAlBorrar=h.tipo==='cobro'&&(h.pendiente||0)>0;
-  const msgBorrar=tienePendienteAlBorrar
-    ?'¿Eliminar este registro del historial? Esta acción no se puede deshacer. Esto revierte la plata movida por este registro (incluyendo abonos de lo pendiente ya recibidos) y cancela la deuda de '+fmt(h.pendiente)+' que quedaba abierta.'
-    :'¿Eliminar este registro del historial? Esta acción no se puede deshacer. Esto también revierte la plata movida por este registro'+((h.tipo==='cobro'&&(h.extra||0)>0)?', incluido el extra de '+fmt(h.extra):'')+'.';
-  const ok=await dialogo('Eliminar movimiento',msgBorrar,'Eliminar',true);
+  const detalleBorrar=tienePendienteAlBorrar
+    ?'Esto revierte la plata movida por este registro (incluyendo abonos de lo pendiente ya recibidos) y cancela la deuda de '+fmt(h.pendiente)+' que quedaba abierta.'
+    :'Esto también revierte la plata movida por este registro'+((h.tipo==='cobro'&&(h.extra||0)>0)?', incluido el extra de '+fmt(h.extra):'')+'.';
+  const ok=await confirmarEliminar({titulo:'Eliminar movimiento',objeto:'este registro del historial',detalle:detalleBorrar});
   if(!ok)return;
   return _borrarSpHistorial(i,h);
 }
@@ -773,7 +772,7 @@ async function _borrarSpHistorial(i,h){
       const mov=(S.tcMovimientos||[]).find(m=>m.id===h._tcMovId&&!m.eliminado);
       if(mov){
         // mov.eliminado se marca siempre (es solo un dato) aunque la carga de
-        // tarjetas_credito.js falle o tarde — así el estado no queda a medias.
+        // tarjetas-credito.js falle o tarde — así el estado no queda a medias.
         // Solo tcRecalcular() (una función real del módulo) espera la carga.
         mov.eliminado=true;
         if(await _spEnsureTC()){
@@ -817,7 +816,7 @@ async function deshacerAbonoPendienteSp(i,abIdx){
   if(!h||!h.pendienteHistorial)return;
   const ab=h.pendienteHistorial[abIdx];
   if(!ab)return;
-  const ok=await dialogo('Deshacer abono',`¿Deshacer este abono de ${fmt(ab.monto)}? Esta acción no se puede deshacer. Esto revierte esa plata de ${ab.destino?fuenteLabel(ab.destino):'la cuenta elegida'} y vuelve a marcar esa parte como pendiente.`,'Deshacer',true);
+  const ok=await confirmarEliminar({titulo:'Deshacer abono',verbo:'Deshacer',etiqueta:'Deshacer',objeto:'este abono de '+fmt(ab.monto),detalle:'Esto revierte esa plata de '+(ab.destino?fuenteLabel(ab.destino):'la cuenta elegida')+' y vuelve a marcar esa parte como pendiente.'});
   if(!ok)return;
   if(ab.destino)descontarFuente(ab.destino,ab.monto||0,_ogSp(h.id,true));
   h.monto=Math.max(0,(h.monto||0)-(ab.monto||0));
@@ -982,7 +981,7 @@ function actualizarSpDestinoPreview(){
   const recibidoSplit=(montoRecInp||montoRecInp===0)?montoRecInp:montoEsperadoSplit;
   // Si dio de más, el extra tiene su propio destino: el split reparte solo la cuota.
   const monto=Math.min(recibidoSplit,montoEsperadoSplit);
-  const splits=getSpCobSplitData();
+  const splits=_sp_spc.data();
   const totalSplit=splits.reduce((a,s)=>a+s.monto,0);
   const restante=monto-totalSplit;
   if(splits.length===0){prev.textContent=fmt(monto)+' por distribuir';prev.style.color='var(--text2)';return;}
@@ -1025,7 +1024,7 @@ function confirmarSpDestino(){
   let splits=null;
   let spDestinoSel='';
   if(spcSplitMode){
-    splits=getSpCobSplitData();
+    splits=_sp_spc.data();
     const totalSplit=splits.reduce((a,s)=>a+s.monto,0);
     if(splits.length===0||totalSplit<=0){
       document.getElementById('spCobPreview').textContent='Asigna el cobro a al menos una cuenta';
@@ -1076,7 +1075,7 @@ function confirmarSpDestino(){
     sumarFuente(spDestinoSel,cuotaRecibida,_ogSp(_cobroRef));
   }
   // Avanzar fecha de cobro N meses pero respetando el día original fijo
-  if(p.proximoPago)p.proximoPago=nextMonthFixed(p.proximoPago,meses);
+  if(p.proximoPago)p.proximoPago=spSumarDias(p.proximoPago,(meses||1)*SP_PERIODO_DIAS);
   if(!S.spotify.historial)S.spotify.historial=[];
   const notaPeriodos=meses>1?`${meses} períodos × ${fmt(p.monto||0)} (pago adelantado)`:'';
   const notaBase=[notaUsuario,notaPeriodos].filter(Boolean).join(' · ');
@@ -1139,10 +1138,10 @@ function confirmarSpDestino(){
   spcSplitMode=false;
   save();refresh();closeSheet('sp-destino');
   if(diferenciaSp>0){
-    toast(`Cobro registrado · ${escHtml(nombreActual)} quedó debiendo ${fmt(diferenciaSp)}`,'ok',3500);
+    toast(`Cobro registrado · ${nombreActual} quedó debiendo ${fmt(diferenciaSp)}`,'ok',3500);
   } else {
     const sufijoExtra=extraSp>0?` · extra +${fmt(extraSp)}`:'';
-    toast((meses>1?`Cobrados ${meses} períodos adelantados a ${escHtml(nombreActual)} · ${fmt(cuotaRecibida)}`:`Cobro registrado · ${escHtml(nombreActual)}`)+sufijoExtra,'ok');
+    toast((meses>1?`Cobrados ${meses} períodos adelantados a ${nombreActual} · ${fmt(cuotaRecibida)}`:`Cobro registrado · ${nombreActual}`)+sufijoExtra,'ok');
   }
 }
 
@@ -1209,11 +1208,11 @@ function confirmarSpResolverPendiente(){
   toast(h.pendiente>0?('Abono registrado — todavía debe '+fmt(h.pendiente)):'¡Pendiente saldado!','ok',3000);
 }
 
-// FIX (auditoria-tecnica.md — acoplamiento spotify↔tarjetas_credito): las 3
+// FIX (auditoria-tecnica.md — acoplamiento spotify↔tarjetas-credito): las 3
 // llamadas a getTCById/tcCupoDisponible/tcRecalcular de este archivo asumían
-// que tarjetas_credito.js ya estaba cargado porque hasta ahora cargaba eager.
+// que tarjetas-credito.js ya estaba cargado porque hasta ahora cargaba eager.
 // Este helper asegura la carga bajo demanda con Loader.ensure('tarjetas')
-// antes de usarlas — funciona igual si tarjetas_credito.js sigue cargando
+// antes de usarlas — funciona igual si tarjetas-credito.js sigue cargando
 // eager (typeof ya es 'function', Loader.ensure ni se llama) que si en el
 // futuro se vuelve un grupo lazy real. Si la descarga falla (sin conexión),
 // avisa con un toast en vez de dejar la acción muda.
@@ -1245,11 +1244,11 @@ function openSheet_pagarSpotify(){
   // Pre-llenar con el costo
   document.getElementById('spPagarMonto').value=costo?fmtInput(costo):'';
   // Poblar fuentes
-  const cajita=getSpCajita();
+  const fuenteSp=getSpFuente();
   const sel=document.getElementById('spPagarFuente');
   // Solo cuentas con saldo >= $50 y TC con cupo disponible (FuentesFiltro.PRESET.SPOTIFY,
   // js/core/fuentes-filtro.js). Si la cajita de Spotify no llega al mínimo, no se preselecciona.
-  sel.innerHTML=FuentesFiltro.optsHtml(getFuentes(),{...FuentesFiltro.PRESET.SPOTIFY,selectedVal:cajita?'cajita:'+cajita.id:''});
+  sel.innerHTML=FuentesFiltro.optsHtml(getFuentes(),{...FuentesFiltro.PRESET.SPOTIFY,selectedVal:fuenteSp||''});
   actualizarSpPagarPreview();
   const notaEl=document.getElementById('spPagarNota');
   if(notaEl)notaEl.value='';
@@ -1268,7 +1267,7 @@ async function actualizarSpPagarPreview(){
   if(sppSplitMode){
     fuenteInfo.textContent='';
     const monto=parseMoney(document.getElementById('spPagarMonto').value)||0;
-    const splits=getSpPagarSplitData();
+    const splits=_sp_spp.data();
     if(!monto){prev.textContent='';return;}
     const totalSplit=splits.reduce((a,s)=>a+s.monto,0);
     const restante=monto-totalSplit;
@@ -1283,8 +1282,8 @@ async function actualizarSpPagarPreview(){
   const fuente=document.getElementById('spPagarFuente').value;
   // Pagar con tarjeta de crédito es un CARGO (sube la deuda de la tarjeta), no un
   // retiro de saldo de una cuenta/cajita — por eso se muestra aparte, igual que en
-  // ptcActualizarPreview() (tarjetas_credito.js) para el flujo inverso de "Pagar TC".
-  if(fuente&&fuente.startsWith('tc:')){
+  // ptcActualizarPreview() (tarjetas-credito.js) para el flujo inverso de "Pagar TC".
+  if(fuente&&Fuente.esTC(fuente)){
     if(!(await _spEnsureTC())){ fuenteInfo.textContent=''; prev.textContent=''; return; }
     const tc=getTCById(fuente.slice(3));
     if(tc){
@@ -1336,7 +1335,7 @@ async function confirmarPagarSpotify(){
     // Modo dividido: sin TC (ver comentario junto a spcSplitMode/sppSplitMode
     // más arriba) — todo o nada, valida saldo en CADA cuenta antes de
     // descontar de cualquiera, para no dejar el pago a medias si una falla.
-    splits=getSpPagarSplitData();
+    splits=_sp_spp.data();
     const totalSplit=splits.reduce((a,s)=>a+s.monto,0);
     if(splits.length===0||Math.abs(totalSplit-monto)>1){
       const prev=document.getElementById('spPagarPreview');
@@ -1344,31 +1343,29 @@ async function confirmarPagarSpotify(){
       prev.style.color='var(--red)';
       return;
     }
-    for(const s of splits){
-      const v=validarSalidaFuente(s.fuente,s.monto); // core-state.js: saldo/cupo, mensaje ya escapado
-      if(!v.ok){toast(v.mensaje,'err',3500);return;}
-    }
+    const vs=Plata.validarSalidas(splits); // suma por fuente (núcleo)
+    if(!vs.ok){toast(vs.motivo,'err',3500);return;}
     splits.forEach(s=>descontarFuente(s.fuente,s.monto,_ogSp(_pagoRef)));
     notaGasto+=' · dividido entre '+splits.map(s=>fuenteLabel(s.fuente)).join(', ');
   } else {
     fuente=document.getElementById('spPagarFuente').value;
-    if(fuente&&fuente.startsWith('tc:')){
+    if(fuente&&Fuente.esTC(fuente)){
       if(!(await _spEnsureTC())) return;
       // Pagar con tarjeta de crédito es un CARGO: sube la deuda de la tarjeta, no
       // descuenta el saldo de una cuenta/cajita. Mismo patrón que Encargos/Préstamos
-      // (ver tcRecalcular en tarjetas_credito.js, que suma S.tcMovimientos con
+      // (ver tcRecalcular en tarjetas-credito.js, que suma S.tcMovimientos con
       // tipo 'cargo_*'), en vez de descontarFuente().
       const tc=getTCById(fuente.slice(3));
       if(!tc){toast('Tarjeta no encontrada','err');return;}
-      const v=validarSalidaFuente(fuente,monto);
-      if(!v.ok){toast(v.mensaje,'err',3500);return;}
+      const v=Plata.validarSalida(fuente,monto);
+      if(!v.ok){toast(v.motivo,'err',3500);return;}
       if(!S.tcMovimientos)S.tcMovimientos=[];
       tcMovId=uid();
       S.tcMovimientos.push({id:tcMovId,tcId:tc.id,tipo:'cargo_spotify',monto,fecha:fechaPago0,nota:nota||'Pago Spotify',eliminado:false});
       tcRecalcular(tc);
     } else if(fuente){
-      const v=validarSalidaFuente(fuente,monto);
-      if(!v.ok){toast(v.mensaje,'err',3500);return;}
+      const v=Plata.validarSalida(fuente,monto);
+      if(!v.ok){toast(v.motivo,'err',3500);return;}
       descontarFuente(fuente,monto,_ogSp(_pagoRef));
     }
   }
@@ -1459,7 +1456,7 @@ async function confirmarPagarSpotify(){
   // volver a Pendiente solo porque yo ya le pagué a Spotify.
   (S.spotify.personas||[]).forEach(p=>{
     const hoy0=new Date();hoy0.setHours(0,0,0,0);
-    const sigueVigente=p.proximoPago&&new Date(p.proximoPago+'T00:00:00')>hoy0;
+    const sigueVigente=p.proximoPago&&_fechaSafe(p.proximoPago)>hoy0;
     if(!sigueVigente)p.pagado=false;
   });
   sppSplitMode=false;
@@ -1467,36 +1464,51 @@ async function confirmarPagarSpotify(){
 }
 
 function addSpotify(){
+  // El integrante es una persona real (S.personas): sp_n es un input oculto que llena el selector «¿Quién es?».
   const n=document.getElementById('sp_n').value.trim();
   const m=parseMoney(document.getElementById('sp_m').value)||0;
-  if(!n){toast('Ingresa el nombre','err');return;}
+  if(!n){
+    _spPicker().marcarError();
+    toast('Selecciona una persona','err');
+    return;
+  }
+  const pId=_spPicker().valor;
+  if(pId&&(S.spotify.personas||[]).some(x=>x.personaId===pId)){
+    toast('Esta persona ya está agregada en Spotify','err');
+    return;
+  }
   const yaExisteNombre=(S.spotify.personas||[]).some(p=>(p.nombre||'').trim().toLowerCase()===n.toLowerCase());
   if(yaExisteNombre){
-    toast(`Ya hay un integrante llamado "${escHtml(n)}". Usa un nombre distinto (agrega un apellido o apodo) para no mezclar sus cobros en el historial.`,'err',4200);
+    toast(`Ya hay un integrante llamado "${n}". Usa un nombre distinto (agrega un apellido o apodo) para no mezclar sus cobros en el historial.`,'err',4200);
     return;
   }
   const fechaIngresoRaw=document.getElementById('sp_fecha_ingreso').value;
   if(!fechaIngresoRaw){toast('Ingresa la fecha de ingreso','err');return;}
   // proximoPago = fechaIngreso + 30 dias (primer cobro)
-  const dIng=new Date(fechaIngresoRaw+'T00:00:00');
-  dIng.setDate(dIng.getDate()+30);
-  const proximoPago=dIng.toISOString().split('T')[0];
-  S.spotify.personas.push({id:uid(),nombre:n,monto:m,pagado:false,proximoPago,fechaIngreso:fechaIngresoRaw,ultimoDestino:'',ultimoDestinoSplit:false,mesesAdelantados:1});
+  const proximoPago=spSumarDias(fechaIngresoRaw,SP_PERIODO_DIAS);
+  const nuevo={id:uid(),nombre:n,monto:m,pagado:false,proximoPago,fechaIngreso:fechaIngresoRaw,ultimoDestino:'',ultimoDestinoSplit:false,mesesAdelantados:1};
+  if(pId){
+    nuevo.personaId=pId;
+    const per=getPersona(pId);
+    if(per)nuevo.nombre=per.nombre; // el nombre siempre sale del vínculo
+  }
+  S.spotify.personas.push(nuevo);
   document.getElementById('sp_n').value='';
   document.getElementById('sp_m').value='';
   document.getElementById('sp_fecha_ingreso').value='';
+  _spPicker().limpiar();
   save();refresh();closeSheet('spotify');
-  toast(`${escHtml(n)} agregado · primer cobro el ${proximoPago}`,'ok');
+  toast(`${n} agregado · primer cobro el ${proximoPago}`,'ok');
 }
 async function deleteSpotify(i){
   const p=(S.spotify.personas||[])[i];
   if(!p)return;
   const nombreActual=spNombreDe(p);
-  const ok=await dialogo('Eliminar integrante',`¿Eliminar a ${nombreActual} de Spotify? Esta acción no se puede deshacer. Su historial de cobros anteriores se conserva en las estadísticas, pero dejará de aparecer en la lista.`,'Eliminar',true);
+  const ok=await confirmarEliminar({titulo:'Eliminar integrante',objeto:`a ${nombreActual} de Spotify`,detalle:'Su historial de cobros anteriores se conserva en las estadísticas, pero dejará de aparecer en la lista.'});
   if(!ok)return;
   S.spotify.personas.splice(i,1);
   save();refresh();
-  toast(`${escHtml(nombreActual)} eliminado de Spotify`,'ok');
+  toast(`${nombreActual} eliminado de Spotify`,'ok');
 }
 
 let _spEditIdx = null;
@@ -1509,6 +1521,8 @@ function editarSpotify(i) {
   const mEl = document.getElementById('sp_edit_m');
   if (mEl) { mEl.value = fmtInput(p.monto || 0); mEl.dispatchEvent(new Event('input', {bubbles:true})); }
   document.getElementById('sp_edit_fecha_ingreso').value = p.fechaIngreso || '';
+  // Persona vinculada: queda bloqueada si ya existe el vínculo (PersonaPicker, js/modules/personas.js)
+  _spEditPicker().precargar({ personaId: p.personaId, nombre: p.nombre });
   openSheet('editar-spotify');
 }
 function guardarEditarSpotify() {
@@ -1517,11 +1531,26 @@ function guardarEditarSpotify() {
   if (!p) return;
   const n = document.getElementById('sp_edit_n').value.trim();
   if (!n) { toast('Ingresa el nombre', 'err'); return; }
+  // Si se abrió el buscador de "¿Quién es?" pero se cerró sin confirmar ninguna selección (ni elegir a alguien de la lista, ni
+  // crear una persona nueva), el input oculto sigue con el nombre anterior — avisar en vez de guardarlo en silencio.
+  const pk = _spEditPicker();
+  if (pk.abiertoSinConfirmar) {
+    toast(`No se seleccionó una persona nueva — se mantuvo a "${p.nombre || 'la persona anterior'}"`, 'info', 4000);
+  }
+  // Si se vinculó (por primera vez) a una persona que ya está usada por OTRO integrante, bloquear — mismo criterio que addSpotify.
+  if (pk.valor && (S.spotify.personas || []).some((x, idx) => idx !== _spEditIdx && x.personaId === pk.valor)) {
+    toast('Esta persona ya está agregada en Spotify', 'err');
+    return;
+  }
   const m = parseMoney(document.getElementById('sp_edit_m').value) || 0;
   const fechaIngresoRaw = document.getElementById('sp_edit_fecha_ingreso').value;
   const fechaAnterior = p.fechaIngreso;
   p.nombre = n;
   p.monto = m;
+  if (pk.valor) p.personaId = pk.valor;
+  // Si sigue vinculado a una persona (la de antes o la recién elegida), el nombre SIEMPRE se resuelve desde ese vínculo —
+  // nunca queda el texto crudo del campo oculto: nombre y personaId no pueden desincronizarse.
+  if (p.personaId) p.nombre = spNombreDe(p);
   if (fechaIngresoRaw) {
     // Recalcular próximo pago SOLO si la fecha de ingreso realmente cambió — si no,
     // se pisaría el avance ya ganado por pagos adelantados o ciclos ya cobrados.
@@ -1530,22 +1559,18 @@ function guardarEditarSpotify() {
         // Es una corrección de una fecha de ingreso que ya se venía usando (no la primera
         // vez que se define): desplazar proximoPago por la misma cantidad de días que
         // cambió la fecha de ingreso, para no perder los períodos que ya se pagaron.
-        const deltaDias = Math.round((new Date(fechaIngresoRaw + 'T00:00:00') - new Date(fechaAnterior + 'T00:00:00')) / 86400000);
-        const dProx = new Date(p.proximoPago + 'T00:00:00');
-        dProx.setDate(dProx.getDate() + deltaDias);
-        p.proximoPago = dProx.toISOString().split('T')[0];
+        p.proximoPago = spSumarDias(p.proximoPago, Fecha.diasEntre(fechaAnterior, fechaIngresoRaw));
       } else {
         // No había fecha de ingreso previa: es la primera vez que se calcula, cálculo normal.
-        const dIng = new Date(fechaIngresoRaw + 'T00:00:00');
-        dIng.setDate(dIng.getDate() + 30);
-        p.proximoPago = dIng.toISOString().split('T')[0];
+        p.proximoPago = spSumarDias(fechaIngresoRaw, SP_PERIODO_DIAS);
       }
     }
     p.fechaIngreso = fechaIngresoRaw;
   }
   _spEditIdx = null;
+  pk.limpiar();
   save(); refresh(); closeSheet('editar-spotify');
-  toast(escHtml(n) + ' actualizado', 'ok');
+  toast(p.nombre + ' actualizado', 'ok');
 }
 
 /* ── Wiring de controles propios de la pantalla ──────────────────────────
@@ -1562,11 +1587,6 @@ const _spBtnPagar = document.getElementById('btn-pagar-spotify');
 if (_spBtnPagar) _spBtnPagar.addEventListener('click', abrirPagarSpotify);
 
 const _spBtnSave = document.getElementById('btn-guardar-spotify');
-// OJO: igual que con Gastos — index.html sobrescribe el global addSpotify
-// más abajo (_injectErrorSpans(), le agrega validación inline) DESPUÉS de
-// que este módulo se carga. Llamar addSpotify() dentro de una flecha
-// resuelve la referencia en vivo al momento del click, no la capturada
-// acá. Corregido 2026-07-26, ver auditoria-tecnica.md punto 3.
 if (_spBtnSave) _spBtnSave.addEventListener('click', () => addSpotify());
 const _spBtnDest = document.getElementById('btn-confirmar-sp-destino');
 if (_spBtnDest) _spBtnDest.addEventListener('click', confirmarSpDestino);
@@ -1593,14 +1613,14 @@ if (_spPagarMonto) _spPagarMonto.addEventListener('input', actualizarSpPagarPrev
 
 // ── Split de fuentes — cobro (spc) y pago (spp), ver crearSplitWidget arriba ──
 const _spCobSplitToggle = document.getElementById('spCobSplitToggle');
-if (_spCobSplitToggle) _spCobSplitToggle.addEventListener('click', toggleSpCobSplit);
+if (_spCobSplitToggle) _spCobSplitToggle.addEventListener('click', _sp_spc.toggle);
 const _spCobBtnAddRow = document.getElementById('btn-add-spcob-split-row');
-if (_spCobBtnAddRow) _spCobBtnAddRow.addEventListener('click', agregarSpCobSplitRow);
+if (_spCobBtnAddRow) _spCobBtnAddRow.addEventListener('click', _sp_spc.addRow);
 
 const _spPagarSplitToggle = document.getElementById('spPagarSplitToggle');
-if (_spPagarSplitToggle) _spPagarSplitToggle.addEventListener('click', toggleSpPagarSplit);
+if (_spPagarSplitToggle) _spPagarSplitToggle.addEventListener('click', _sp_spp.toggle);
 const _spPagarBtnAddRow = document.getElementById('btn-add-spp-split-row');
-if (_spPagarBtnAddRow) _spPagarBtnAddRow.addEventListener('click', agregarSpPagarSplitRow);
+if (_spPagarBtnAddRow) _spPagarBtnAddRow.addEventListener('click', _sp_spp.addRow);
 
 /* ═══════════════════════════════════════════════════════════════
    REGISTRO DE EVENTOS (funciones base — la integración con Personas
@@ -1608,6 +1628,8 @@ if (_spPagarBtnAddRow) _spPagarBtnAddRow.addEventListener('click', agregarSpPaga
    ═══════════════════════════════════════════════════════════════ */
 
 Events.registerAll('spotify', {
+  abrirElegirFuente: abrirElegirFuenteSpotify,
+  guardarFuente: guardarFuenteSpotify,
   marcarPago: marcarPagoSpotify,
   // OJO: NO pasar editarSpotify directo acá. El bloque INTEGRACIÓN SPOTIFY ↔
   // PERSONAS (más abajo) lo reemplaza (monkeypatch) para precargar la persona vinculada al abrir
@@ -1641,296 +1663,25 @@ Events.on('spotify:abrirSheetAgregar', () => openSheet('spotify'));
    los miembros del plan sean personas reales de S.personas.
    ═══════════════════════════════════════════════════════════════ */
 
-let _spPersonaId = null;       // personaId seleccionado en "Agregar"
-let _spEditPersonaId = null;   // personaId en "Editar"
+// Campos «¿Quién es?» de las hojas Agregar y Editar: PersonaPicker (js/modules/personas.js), markup estático en index.html.
+const _spPicker = () => PersonaPicker.crear({ prefijo: 'sp-persona', inputId: 'sp_n', titulo: '¿Quién es?' });
+const _spEditPicker = () => PersonaPicker.crear({ prefijo: 'sp-edit-persona', inputId: 'sp_edit_n', titulo: '¿Quién es?' });
+// Al abrir «Agregar persona» el campo arranca vacío.
+Ui.hoja('spotify', function() { _spPicker().limpiar(); }, { key: 'spotify-personas' });
 
-/* ── Reemplazar campo de texto en sheet-spotify con selector de persona ── */
-function _initSpotifyPersonaSelector() {
-  const sheet = document.getElementById('sheet-spotify');
-  if (!sheet || sheet._personaHook) return;
-  sheet._personaHook = true;
-
-  const spNEl = document.getElementById('sp_n');
-  if (!spNEl) return;
-  const ig = spNEl.closest('.ig');
-  if (!ig) return;
-
-  ig.innerHTML = `
-    <div class="il">¿Quién es?</div>
-    <div id="sp-persona-btn" ${Events.attr('spotify:abrirSelectorPersona')}
-      class="sp-persona-btn">
-      <div id="sp-persona-avatar" class="avatar sp-persona-avatar" style="display:none;"></div>
-      <span id="sp-persona-label">Seleccionar persona...</span>
-      <svg aria-hidden="true" class="sp-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
-    </div>
-    <input type="hidden" id="sp_n" value="">`;
-}
-
-function _onSelPersonaSpotify(personaId) {
-  const p = getPersona(personaId);
-  if (!p) return;
-  _spPersonaId = personaId;
-  document.getElementById('sp_n').value = p.nombre;
-
-  const btn = document.getElementById('sp-persona-btn');
-  const lbl = document.getElementById('sp-persona-label');
-  const av  = document.getElementById('sp-persona-avatar');
-  if (btn) btn.style.borderColor = 'var(--accent)';
-  if (lbl) { lbl.textContent = p.nombre; lbl.style.color = 'var(--text)'; }
-  if (av) pintarAvatarPersona(av, p, { mostrar: true });
-}
-
-/* ── Reemplazar campo de texto en sheet-editar-spotify con selector ── */
-function _initSpotifyEditPersonaSelector() {
-  const sheet = document.getElementById('sheet-editar-spotify');
-  if (!sheet || sheet._personaEditHook) return;
-  sheet._personaEditHook = true;
-
-  const spEditNEl = document.getElementById('sp_edit_n');
-  if (!spEditNEl) return;
-  const ig = spEditNEl.closest('.ig');
-  if (!ig) return;
-
-  ig.innerHTML = `
-    <div class="il">¿Quién es?</div>
-    <div id="sp-edit-persona-btn" ${Events.attr('spotify:onClickEditPersonaBtn')}
-      class="sp-persona-btn">
-      <div id="sp-edit-persona-avatar" class="avatar sp-persona-avatar" style="display:none;"></div>
-      <span id="sp-edit-persona-label">Seleccionar persona...</span>
-      <svg aria-hidden="true" id="sp-edit-persona-chevron" class="sp-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
-    </div>
-    <div id="sp-edit-persona-hint" class="sp-persona-hint" style="display:none;">Para asignarle este cobro a otra persona, elimina este integrante y agrega uno nuevo — así el historial no se mezcla entre los dos.</div>
-    <input type="hidden" id="sp_edit_n" value="">`;
-}
-
-// Si la persona editada ya está vinculada a alguien (personaId), el botón queda
-// bloqueado: cambiar de persona a mitad de camino es justo lo que causaba
-// desincronizaciones. Para eso ya existe un camino simple y confiable: eliminar
-// este integrante y agregar uno nuevo (ver hint debajo del botón).
-let _spEditPersonaLocked = false;
-function _onClickSpEditPersonaBtn() {
-  if (_spEditPersonaLocked) return;
-  _abrirSelPersonaSpotifyEdit();
-}
-
-let _spEditPersonaPickerAbierto = false;    // se puso true al abrir el buscador en "Editar"
-let _spEditPersonaPickerConfirmado = false; // se puso true solo si de verdad se eligió/creó alguien
-
-// Wrapper del botón "¿Quién es?" en Editar: además de abrir el buscador, marca que
-// se abrió, para poder detectar si se cierra sin confirmar ninguna selección nueva.
-function _abrirSelPersonaSpotifyEdit() {
-  _spEditPersonaPickerAbierto = true;
-  abrirSelPersona(_onSelPersonaSpotifyEdit, '¿Quién es?');
-}
-
-function _onSelPersonaSpotifyEdit(personaId) {
-  const p = getPersona(personaId);
-  if (!p) return;
-  _spEditPersonaId = personaId;
-  _spEditPersonaPickerConfirmado = true;
-  document.getElementById('sp_edit_n').value = p.nombre;
-
-  const btn = document.getElementById('sp-edit-persona-btn');
-  const lbl = document.getElementById('sp-edit-persona-label');
-  const av  = document.getElementById('sp-edit-persona-avatar');
-  if (btn) btn.style.borderColor = 'var(--accent)';
-  if (lbl) { lbl.textContent = p.nombre; lbl.style.color = 'var(--text)'; }
-  if (av) pintarAvatarPersona(av, p, { mostrar: true });
-}
-
-/* ── Hook en openSheet para inicializar los selectores ─────────── */
-// OJO: a diferencia de addSpotify (definido arriba en este mismo archivo y
-// por eso ya hoisted al parsear), openSheet vive en js/core/sheet-stack.js,
-// que carga DESPUÉS de este módulo (ver comentario de orden de carga en
-// sheet-stack.js). Capturar `openSheet` acá arriba, a nivel superior,
-// lanzaba "openSheet is not defined" porque el global todavía no existía
-// al parsear spotify.js. Antes se envolvía en DOMContentLoaded (los scripts
-// con defer, incluido sheet-stack.js, ya habían terminado de ejecutarse
-// para cuando ese evento disparaba). CORREGIDO (ronda de lazy-loading de
-// spotify/prestado/cuentas/analisis/encargos, ver auditoria-tecnica.md):
-// con spotify.js como grupo lazy, este archivo puede cargar mucho DESPUÉS
-// de que DOMContentLoaded ya disparó — ese listener nunca se habría
-// ejecutado, y openSheet('spotify') jamás habría inyectado los sheets de
-// Personas. openSheet sigue siendo seguro de capturar acá arriba sin
-// esperar ningún evento: vive en js/core/sheet-stack.js, que es núcleo y
-// siempre carga eager mucho antes de que cualquier módulo lazy (spotify
-// incluido) pueda siquiera empezar a descargarse.
-const _origOpenSheetSpotifyPersonas = openSheet;
-openSheet = function(id) {
-  if (id === 'spotify') {
-    _inyectarPersonaSheets();
-    _spPersonaId = null;
-    _initSpotifyPersonaSelector();
-    // Resetear UI del selector
-    const lbl = document.getElementById('sp-persona-label');
-    const av  = document.getElementById('sp-persona-avatar');
-    const btn = document.getElementById('sp-persona-btn');
-    if (lbl) { lbl.textContent = 'Seleccionar persona...'; lbl.style.color = 'var(--text2)'; }
-    if (av)  av.style.display = 'none';
-    if (btn) btn.style.borderColor = 'var(--border2)';
-    const spN = document.getElementById('sp_n');
-    if (spN) spN.value = '';
-  }
-  if (id === 'editar-spotify') {
-    _inyectarPersonaSheets();
-    _initSpotifyEditPersonaSelector();
-  }
-  _origOpenSheetSpotifyPersonas.apply(this, arguments);
-};
-
-/* ── Hook en addSpotify para guardar personaId ──────────────────── */
-const _origAddSpotifyPersonas = addSpotify;
-addSpotify = function() {
-  // Validar que se seleccionó una persona (ya que sp_n es ahora input oculto)
-  const spN = document.getElementById('sp_n');
-  if (spN && !spN.value.trim()) {
-    const btn = document.getElementById('sp-persona-btn');
-    if (btn) {
-      btn.style.borderColor = 'var(--red)';
-      setTimeout(() => { if (btn) btn.style.borderColor = 'var(--border2)'; }, 2000);
-    }
-    toast('Selecciona una persona', 'err');
-    return;
-  }
-  const pId = _spPersonaId;
-  if (pId && (S.spotify.personas||[]).some(x=>x.personaId===pId)) {
-    toast('Esta persona ya está agregada en Spotify','err');
-    return;
-  }
-  _origAddSpotifyPersonas.apply(this, arguments);
-  // Asignar personaId al último spotifyPersona creado
-  if (pId && S.spotify.personas && S.spotify.personas.length) {
-    const last = S.spotify.personas[S.spotify.personas.length - 1];
-    if (last && !last.personaId) {
-      last.personaId = pId;
-      // Sincronizar nombre con la persona
-      const p = getPersona(pId);
-      if (p) last.nombre = p.nombre;
-      save();
-      // FIX: faltaba esto. _origAddSpotifyPersonas() (arriba) ya renderizó
-      // la fila ANTES de que este hook asignara personaId — sin este
-      // segundo render, la fila se quedaba con el estado de "sin persona"
-      // (avatar sin color, iniciales crudas de 2 letras) hasta que alguna
-      // otra acción disparara un refresh() en cualquier parte de la app.
-      // El dato en S siempre quedó bien guardado — era solo la pantalla.
-      renderSpotify();
-    }
-  }
-  _spPersonaId = null;
-};
-
-/* ── Hook en editarSpotify para pre-cargar la persona vinculada ─── */
-const _origEditarSpotifyPersonas = editarSpotify;
-editarSpotify = function(i) {
-  _origEditarSpotifyPersonas.apply(this, arguments);
-  const sp = (S.spotify.personas || [])[i];
-  if (!sp) return;
-  _spEditPersonaId = sp.personaId || null;
-  _spEditPersonaLocked = !!sp.personaId;
-  // Pre-cargar UI del selector tras abrir el sheet
-  setTimeout(() => {
-    _initSpotifyEditPersonaSelector();
-    const btn = document.getElementById('sp-edit-persona-btn');
-    const chevron = document.getElementById('sp-edit-persona-chevron');
-    const hint = document.getElementById('sp-edit-persona-hint');
-    if (sp.personaId) {
-      const p = getPersona(sp.personaId);
-      if (p) _onSelPersonaSpotifyEdit(sp.personaId);
-      // Bloqueado: ya hay una persona vinculada — se ve como texto, no como control
-      if (btn) { btn.style.cursor = 'default'; btn.style.background = 'var(--bg2)'; }
-      if (chevron) chevron.style.display = 'none';
-      if (hint) hint.style.display = 'block';
-    } else {
-      // Rellenar con el nombre directo si no tiene personaId
-      const lbl = document.getElementById('sp-edit-persona-label');
-      const spEditN = document.getElementById('sp_edit_n');
-      if (lbl && sp.nombre) { lbl.textContent = sp.nombre; lbl.style.color = 'var(--text)'; }
-      if (btn && sp.nombre) btn.style.borderColor = 'var(--accent)';
-      if (spEditN) spEditN.value = sp.nombre || '';
-      // Sin vínculo todavía: queda disponible para elegir/crear la persona una vez
-      if (btn) { btn.style.cursor = 'pointer'; btn.style.background = 'var(--bg3)'; }
-      if (chevron) chevron.style.display = '';
-      if (hint) hint.style.display = 'none';
-    }
-    // Resetear banderas DESPUÉS de precargar: mostrar el estado actual no cuenta
-    // como una selección nueva confirmada por el usuario.
-    _spEditPersonaPickerAbierto = false;
-    _spEditPersonaPickerConfirmado = false;
-  }, 80);
-};
-
-/* ── Hook en guardarEditarSpotify para guardar personaId ────────── */
-const _origGuardarEditarSpotifyPersonas = guardarEditarSpotify;
-guardarEditarSpotify = function() {
-  // Si se abrió el buscador de "¿Quién es?" pero se cerró sin confirmar ninguna
-  // selección (ni elegir a alguien de la lista, ni crear una persona nueva), el
-  // input oculto sigue con el nombre anterior — avisar en vez de guardarlo en silencio.
-  if (_spEditPersonaPickerAbierto && !_spEditPersonaPickerConfirmado) {
-    const spActual = (S.spotify.personas || [])[_spEditIdx];
-    toast(`No se seleccionó una persona nueva — se mantuvo a "${spActual ? escHtml(spActual.nombre) : 'la persona anterior'}"`, 'info', 4000);
-  }
-  // Capturar idx ANTES de llamar al original (que lo pone a null)
-  const idxAntes = _spEditIdx;
-  // Si se vinculó (por primera vez) a una persona que ya está usada por OTRO integrante
-  // de Spotify, bloquear — mismo criterio que ya aplica en addSpotify.
-  if (_spEditPersonaId) {
-    const yaUsadaPorOtro = (S.spotify.personas || []).some((x, idx) => idx !== idxAntes && x.personaId === _spEditPersonaId);
-    if (yaUsadaPorOtro) {
-      toast('Esta persona ya está agregada en Spotify', 'err');
-      return;
-    }
-  }
-  _origGuardarEditarSpotifyPersonas.apply(this, arguments);
-  // Asignar personaId al spotifyPersona editado (si se confirmó una selección nueva)
-  if (idxAntes !== null && S.spotify.personas && S.spotify.personas[idxAntes]) {
-    const sp = S.spotify.personas[idxAntes];
-    if (_spEditPersonaId) {
-      sp.personaId = _spEditPersonaId;
-    }
-    // Sincronización final: si el registro sigue vinculado a una persona (personaId,
-    // ya sea la que había antes o la recién elegida), el nombre SIEMPRE se resuelve
-    // desde ese vínculo — nunca se deja el texto crudo que haya quedado en el campo
-    // oculto. Así nombre y personaId no pueden quedar desincronizados, así falle
-    // silenciosamente la confirmación del buscador de personas.
-    if (sp.personaId) {
-      sp.nombre = spNombreDe(sp);
-    }
-    save();
-    refresh();
-  }
-  _spEditPersonaId = null;
-  _spEditPersonaPickerAbierto = false;
-  _spEditPersonaPickerConfirmado = false;
-};
-
-/* ── Hook en renderSpotify para aplicar color de persona ─────────── */
-const _origRenderSpotifyPersonas = renderSpotify;
-renderSpotify = function() {
-  _origRenderSpotifyPersonas.apply(this, arguments);
-  // Aplicar color y nombre correcto a cada avatar del listado Spotify
-  const lista = document.getElementById('spotifyList');
-  if (!lista) return;
-  const p = S.spotify.personas || [];
-  // Ordenar igual que en renderSpotify
-  const pOrdenado = [...p].map((x, i) => ({ ...x, _origIdx: i })).sort((a, b) => {
-    const far = 99999;
-    const dA = a.proximoPago ? Math.ceil((new Date(a.proximoPago + 'T00:00:00') - new Date()) / 86400000) : far;
-    const dB = b.proximoPago ? Math.ceil((new Date(b.proximoPago + 'T00:00:00') - new Date()) / 86400000) : far;
-    return dA - dB;
-  });
-  const rows = lista.querySelectorAll('.sp-row');
-  rows.forEach((row, idx) => {
-    const sp = pOrdenado[idx];
+/* Color/foto y nombre de la persona vinculada en cada fila de la lista (la llama renderSpotify con la lista ya ordenada). */
+function _spPintarAvatares(lista, ordenados) {
+  lista.querySelectorAll('.sp-row').forEach((row, idx) => {
+    const sp = ordenados[idx];
     if (!sp || !sp.personaId) return;
     const persona = getPersona(sp.personaId);
     if (!persona) return;
     const av = row.querySelector('.avatar');
     if (av) pintarAvatarPersona(av, persona);
-    // Actualizar nombre si cambió
     const nameEl = row.querySelector('.row-name');
     if (nameEl) nameEl.textContent = persona.nombre;
   });
-};
+}
 
 /* ═══════════════════════════════════════════════════════════════
    REGISTRO DE EVENTOS (acciones propias de la integración con
@@ -1938,6 +1689,9 @@ renderSpotify = function() {
    ═══════════════════════════════════════════════════════════════ */
 
 Events.registerAll('spotify', {
-  abrirSelectorPersona: () => abrirSelPersona(_onSelPersonaSpotify, '¿Quién es?'),
-  onClickEditPersonaBtn: _onClickSpEditPersonaBtn,
 });
+
+/* ── Ciclo de vida de la UI (antes ramas dentro de openSheet/showScreen, navegacion.js) ───────────────────── */
+Ui.hoja('pagar-spotify', () => { save(); openSheet_pagarSpotify(); }, { key: 'spotify-pagar' });
+Ui.hoja('spotify', () => { const fd = document.getElementById('sp_fecha_ingreso'); if (fd && !fd.value) fd.value = hoy(); }, { key: 'spotify-fecha' });
+Ui.pantalla('spotify', () => { if (typeof renderSpotify === 'function') renderSpotify(); }, { key: 'spotify-render' });

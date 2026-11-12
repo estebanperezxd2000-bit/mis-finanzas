@@ -4,7 +4,7 @@
    Funciones de cálculo puras (solo dependen de `S`/`MC`, sin DOM ni UI)
    que Inicio (inicio.js) necesita para "Necesita atención" y el
    health score, pero que conceptualmente "viven" en mesada.js y
-   tarjetas_credito.js — módulos que ahora son lazy (ver
+   tarjetas-credito.js — módulos que ahora son lazy (ver
    js/core/lazy-loader.js) y solo cargan cuando el usuario visita
    esas pantallas.
 
@@ -17,8 +17,8 @@
    También aloja `Deudas` (capa de acceso a "Me deben"/"Yo debo" y sus saldos).
 
    Este archivo carga de entrada (<script defer>, sin passar por
-   Loader), justo después de core-state.js — ver orden de <script>
-   en index.html. mesada.js y tarjetas_credito.js YA NO definen estas
+   Loader), justo después del núcleo — ver orden de <script>
+   en index.html. mesada.js y tarjetas-credito.js YA NO definen estas
    funciones: las usan como globales definidas acá. Por eso este
    archivo tiene que estar cargado ANTES que ellos (irrelevante en la
    práctica ya que son lazy y cargan mucho después, pero se respeta
@@ -72,7 +72,7 @@ function mesadaOrigenDeMovEncargo(movId){
   return null;
 }
 
-/* ---- Tarjetas de crédito (antes en tarjetas_credito.js) ---- */
+/* ---- Tarjetas de crédito (antes en tarjetas-credito.js) ---- */
 function getTCById(id){ return (S.tarjetasCredito||[]).find(x=>x.id===id); }
 
 function tcCupoUsadoPct(tc){
@@ -100,7 +100,7 @@ function tcCupoDisponible(tc){
 
    Vive acá (carga de entrada) y no en prestado.js (lazy) porque el patrimonio,
    "Necesita atención" y Personas la consultan sin esperar al módulo — antes
-   core-state.js caía a 0 con guards typeof y tuvo que bloquear snapshots
+   el núcleo caía a 0 con guards typeof y tuvo que bloquear snapshots
    mientras prestado.js no cargaba (ver _patrimonioDependenciasListas). */
 const Deudas = (() => {
   const COLECCION = { favor: 'deudores', contra: 'misDeudas' };
@@ -171,6 +171,6 @@ function spPersonaPagadaVigente(p){
   if(!p||!p.pagado)return false;
   if(!p.proximoPago)return true;
   const hoy0=new Date();hoy0.setHours(0,0,0,0);
-  const prox=new Date(p.proximoPago+'T00:00:00');
+  const prox=_fechaSafe(p.proximoPago);
   return prox>hoy0;
 }

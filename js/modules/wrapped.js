@@ -73,7 +73,7 @@
      personas.md §8); si no existe todavía, cada dominio nuevo cae al
      nombre crudo que ya guarda su propio registro (`d.nombre`,
      `enc.nombre`), escapado igual con `escHtml`.
-   - `showScreen` — núcleo eager (sheet-stack.js); usada solo para volver
+   - `showScreen` — núcleo eager (navegacion.js); usada solo para volver
      a "Más" al cerrar la historia. Con guard typeof: si no existe, el
      botón cerrar simplemente no navega (no rompe nada).
    - `fmt`, `escHtml`, `hoy` — núcleo eager.
@@ -93,7 +93,7 @@ function _wrappedEnRango(fecha, tipo, mesK, anioK){
 }
 
 function _wrappedHoy(){
-  return typeof hoy === 'function' ? hoy() : new Date().toISOString().slice(0,10);
+  return hoy();
 }
 
 /* Único punto que decide "año actual" y "mes actual (0-indexado)" para todo
@@ -408,7 +408,7 @@ function _wrappedCuotaAnioFallback(cuotas, anio){
 // Mesada e ingresos fijos de un mes: definición única en js/core/periodo.js (la misma de
 // Inicio y Análisis). `mesIdx` es 0-indexado (convención de Mesada), `mesK` es 'YYYY-MM'.
 function _wrappedMesadaMes(S, anio, mesIdx){
-  return Periodo.mesadaDelMes(anio + '-' + String(mesIdx + 1).padStart(2, '0'), S);
+  return Periodo.mesadaDelMes(Fecha.mesKey(anio, mesIdx + 1), S);
 }
 function _wrappedIngresosFijosMes(S, mesK){
   return Periodo.ingresosFijosDelMes(mesK, S);
@@ -437,11 +437,11 @@ function _wrappedItemsRealesPeriodo(S, tipo, mesK, anioK){
   };
 }
 
-// Entradas que cuentan como ingreso real: la definición única de core-state.js
+// Entradas que cuentan como ingreso real: la definición única del núcleo
 // (entradasIngresoReal — la misma de Inicio y Análisis). Recibe el estado porque Wrapped
 // trabaja sobre el `S` que le pasan, no necesariamente el global.
 function _wrappedEntradasIngreso(S){
-  // Sin core-state.js cargado (tests/demos aisladas) se mantiene el comportamiento anterior sin filtro.
+  // Sin el núcleo cargado (tests/demos aisladas) se mantiene el comportamiento anterior sin filtro.
   return typeof entradasIngresoReal === 'function'
     ? entradasIngresoReal(S)
     : ((S && S.movimientos) || []).filter(m => m && m.tipo==='entrada');
@@ -470,7 +470,7 @@ function _wrappedCalcularPeriodo(S, tipo, mesK, anioK){
     const { anioActual, mesActualIdx } = _wrappedAnioYMesActual();
     const mesMax = (anioK === anioActual) ? mesActualIdx : 11;
     for(let m=0; m<=mesMax; m++){
-      const mesKLoop = anioK + '-' + String(m+1).padStart(2,'0');
+      const mesKLoop = Fecha.mesKey(anioK, m+1);
       ingresoMesadaFijos += _wrappedMesadaMes(S, anio, m) + _wrappedIngresosFijosMes(S, mesKLoop) + _wrappedSpotifyMes(S, mesKLoop);
     }
   }
@@ -554,7 +554,7 @@ function _wrappedCalcularPeriodo(S, tipo, mesK, anioK){
 
    La app no tiene ningún campo de "cuándo empezaste a usarme de verdad"
    (a diferencia de, por ejemplo, `creadoEn` por persona en
-   core-state.js) — no hay forma de preguntarle directamente. Lo que sí
+   el núcleo) — no hay forma de preguntarle directamente. Lo que sí
    se puede inferir de los propios datos: el principio real del historial
    es la RACHA de meses activos que termina en `mesMax` (el mes más
    reciente). Se camina hacia atrás desde ahí y se corta apenas aparecen
@@ -576,7 +576,7 @@ function _wrappedInicioRachaReal(S, anioK, mesMax){
   let inicio = mesMax;
   let vaciosSeguidos = 0;
   for(let m = mesMax; m >= 0; m--){
-    const mesK = anioK + '-' + String(m+1).padStart(2,'0');
+    const mesK = Fecha.mesKey(anioK, m+1);
     const stats = _wrappedCalcularPeriodo(S, 'mes', mesK, anioK);
     if(stats.totalIngresos > 0 || stats.totalGastos > 0){
       vaciosSeguidos = 0;
@@ -595,7 +595,7 @@ function _wrappedMejorPeorMesAnio(S, anioK){
   const mesInicio = _wrappedInicioRachaReal(S, anioK, mesMax);
   const meses = [];
   for(let m=mesInicio; m<=mesMax; m++){
-    const mesK = anioK + '-' + String(m+1).padStart(2,'0');
+    const mesK = Fecha.mesKey(anioK, m+1);
     const stats = _wrappedCalcularPeriodo(S, 'mes', mesK, anioK);
     if(stats.totalIngresos > 0 || stats.totalGastos > 0){
       // ingresos/gastos van acá desde 2026-09-15 para que el copy del
@@ -656,7 +656,7 @@ function _wrappedHistoriasMensuales(S, anioK, mesMax){
   const mesInicio = _wrappedInicioRachaReal(S, anioK, mesMax); // ver cabecera de esa función
   const meses = [];
   for(let m=mesInicio; m<=mesMax; m++){
-    const mesK = anioK + '-' + String(m+1).padStart(2,'0');
+    const mesK = Fecha.mesKey(anioK, m+1);
     const stats = _wrappedCalcularPeriodo(S, 'mes', mesK, anioK);
     if(stats.totalIngresos > 0 || stats.totalGastos > 0){
       meses.push({ mesK, balance: stats.balance, topCategoria: stats.topCategoria });
@@ -672,19 +672,45 @@ function _wrappedHistoriasMensuales(S, anioK, mesMax){
    Mismo criterio que analisis-financiero.md §5: `valorVisible` (sin
    alcancía) y se resta el `montoBase` acumulado para no contar
    aperturas/ajustes como crecimiento real. */
+// 'patrimonio' (cierra en rojo, o cayó con gastos sobre ingresos) · 'sin-ingresos' (hay gastos y ningún ingreso) · null (año normal).
+function _wrappedAnioDificil(patrimonio, s){
+  if(s && s.totalGastos > 0 && !(s.totalIngresos > 0)) return 'sin-ingresos';
+  if(patrimonio && Number.isFinite(patrimonio.fin) && (patrimonio.fin < 0 || (patrimonio.diff < 0 && s && s.balance < 0))) return 'patrimonio';
+  return null;
+}
+
 function _wrappedPatrimonioAnio(S, anioK){
-  const hist = (S.patrimonioHistorial || [])
-    .filter(p => (p.fecha||'').slice(0,4) === anioK)
-    .slice()
-    .sort((a,b) => (a.fecha||'').localeCompare(b.fecha||''));
-  if(hist.length < 2) return null;
   const val = p => (typeof p.valorVisible === 'number') ? p.valorVisible : (p.valor||0);
-  const primero = hist[0], ultimo = hist[hist.length-1];
-  let montoBaseAcumulado = 0;
-  hist.forEach(p => { if(p !== primero) montoBaseAcumulado += (p.montoBase||0); });
-  const diff = (val(ultimo) - val(primero)) - montoBaseAcumulado;
-  const pct = val(primero) !== 0 ? (diff/Math.abs(val(primero)))*100 : null;
-  return { diff, pct };
+  const cierres = S.patrimonioCierres || {};
+  // Con el cierre de diciembre del año anterior el año se mide COMPLETO (la serie diaria se poda a 365 días y a mediados de enero ya no
+  // conserva el 1 de enero). Sin él, se usa la serie diaria como siempre.
+  const previo = cierres[(Number(anioK) - 1) + '-12'];
+  const delAnio = Object.keys(cierres).filter(k => k.slice(0,4) === String(anioK)).sort();
+  let inicio, fin, diff;
+  if(previo && delAnio.length){
+    inicio = val(previo);
+    fin = val(cierres[delAnio[delAnio.length - 1]]);
+    const baseAnio = delAnio.reduce((a, k) => a + (cierres[k].base || 0), 0);
+    diff = (fin - inicio) - baseAnio;
+  } else {
+    const hist = (S.patrimonioHistorial || [])
+      .filter(p => (p.fecha||'').slice(0,4) === anioK)
+      .slice()
+      .sort((a,b) => (a.fecha||'').localeCompare(b.fecha||''));
+    if(hist.length < 2) return null;
+    const primero = hist[0], ultimo = hist[hist.length-1];
+    let montoBaseAcumulado = 0;
+    hist.forEach(p => { if(p !== primero) montoBaseAcumulado += (p.montoBase||0); });
+    inicio = val(primero); fin = val(ultimo);
+    diff = (fin - inicio) - montoBaseAcumulado;
+  }
+  // Porcentaje solo sobre una base POSITIVA y proporcionada: sobre una base negativa o minúscula no significa nada (+39.900 % al empezar
+  // con $5.000; −800 % al pasar de −$100.000 a −$900.000; «casi se duplicó» al pasar de −$900.000 a −$100.000, que sigue en deuda).
+  // Sin porcentaje, el texto habla de montos y de cruzar el cero (ver _wrappedCopyPatrimonio). Tope de ±300 % para presentar uno.
+  let pct = inicio > 0 ? (diff/inicio)*100 : null;
+  if(pct !== null && Math.abs(pct) > UMBRALES.wrapped.patrimonio.tope) pct = null;
+  // inicio/fin: el patrimonio visible al empezar y al terminar el año (para saber si se cruzó el cero).
+  return { diff, pct, inicio, fin };
 }
 
 /* ─── Serie mensual de patrimonio (Enero → mes actual) para el gráfico
@@ -708,7 +734,7 @@ function _wrappedSerieMensualAnio(S, anioK){
 
   const serie = [];
   for(let m=0; m<=mesMax; m++){
-    const mesK = anioK + '-' + String(m+1).padStart(2,'0');
+    const mesK = Fecha.mesKey(anioK, m+1);
     const puntosDelMes = hist.filter(p => p.fecha.slice(0,7) === mesK);
     if(puntosDelMes.length) ultimoConocido = val(puntosDelMes[puntosDelMes.length-1]);
     serie.push({ mesK, valor: ultimoConocido });
@@ -717,7 +743,7 @@ function _wrappedSerieMensualAnio(S, anioK){
   return primerIdxConDato === -1 ? [] : serie.slice(primerIdxConDato);
 }
 
-const _MES_NOMBRE = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+const _MES_NOMBRE = Fecha.MESES_CORTOS;
 function _wrappedMesKaNombre(mesK){
   const partes = (mesK||'').split('-');
   const idx = parseInt(partes[1],10) - 1;
@@ -886,10 +912,219 @@ function _wrappedCopyPuente(key){
   ]);
 }
 
-function _wrappedCopyPatrimonio(patrimonio){
-  const { diff, pct } = patrimonio;
-  if(pct === null){
-    return diff >= 0
+/* ═══ WRAPPED SIN DATOS SUFICIENTES — «no alcanzó el tiempo» ═══
+   Cuando el año no tiene datos suficientes (criterio en js/core/wrapped-gate.js, `_wrappedDatosAnio`), en vez de un Wrapped de 17
+   diapositivas casi vacías se muestra un mensaje honesto, con humor suave y sin culpa: no se inventa nada. Dos niveles:
+   'nada' (ningún registro) y 'poco' (hay algo, pero menos del mínimo; se muestra lo poco que hay). Las frases se eligen con el banco
+   con semilla de siempre (`_wrappedBankPick`): para un mismo año y nivel siempre sale la misma, y no se repite ninguna dentro del mismo
+   resumen. Marcadores: {anio} {dias} {registros} {desde} {minDias} {minMeses}. Texto en tuteo (lo vigila tests/estilos.test.js).
+   Para sumar frases basta añadirlas aquí: la prueba exige un mínimo por lista y que todos los marcadores se resuelvan. */
+const WRAPPED_BANCO_INSUFICIENTE = {
+  nada: {
+    titular: [
+      'Este año no alcanzó el tiempo',
+      'Aquí no hay nada que contar… todavía',
+      'Llegamos tarde a {anio}',
+      'Un {anio} en blanco',
+      'Esta historia aún no empieza',
+      'No pudimos armar tu {anio}',
+      'El resumen quedó en pausa',
+      'Hoja en blanco',
+      'Aún no hay película que proyectar',
+      'Nada que mostrar (todavía)',
+      'Se nos acabó el tiempo antes de empezar',
+      '{anio} pasó sin dejar datos',
+    ],
+    explica: [
+      'No encontramos movimientos registrados en {anio}, así que no hay un resumen que armar.',
+      'Para contar un año hace falta que el año quede registrado. En {anio} no llegó nada a la app.',
+      'Sin registros no hay historia. Cuando empieces a anotar tus movimientos, aquí aparecerá tu resumen.',
+      'La app no alcanzó a ver nada de {anio}. No pasa nada: se empieza cuando se quiere.',
+      'Estábamos listos, pero {anio} no dejó datos con los que trabajar.',
+      'Un resumen necesita materia prima, y de {anio} no tenemos ni una pizca.',
+      'No hay movimientos de {anio}. Prometemos no inventar nada.',
+      'Todo en orden con las cuentas: simplemente no hay cuentas que contar de {anio}.',
+    ],
+  },
+  poco: {
+    titular: [
+      'No alcanzó el tiempo',
+      'Tu {anio} apenas empezaba',
+      'Llegamos a ver solo un pedacito',
+      'Todavía no hay mucho que contar',
+      'El año se acabó antes de que arrancáramos',
+      'Un resumen a medio hacer',
+      'Esto fue más un tráiler que una película',
+      'Faltó cuerda para contar {anio}',
+      'No pudimos completar tu {anio}',
+      'Un {anio} corto de datos',
+      'Poco material, mucha buena intención',
+      'Apenas alcanzamos a calentar motores',
+    ],
+    explica: [
+      'Solo alcanzamos a ver {dias} con registros, desde el {desde}. Para un resumen completo necesitamos al menos {minDias} días en {minMeses} meses distintos.',
+      'Con {registros} en {dias} no alcanza para contar una historia. Hacen falta al menos {minDias} días distintos en {minMeses} meses.',
+      'Empezaste a registrar el {desde}. Es un buen comienzo, pero {anio} se acabó antes de juntar suficiente.',
+      'Un resumen honesto necesita más que {dias} de datos. Preferimos no inventar lo que no vimos.',
+      'Lo que hay es poco para sacar conclusiones, y no queremos adivinar tu año.',
+      'Vimos {registros} desde el {desde}: la punta del iceberg, pero no el iceberg.',
+      'Con tan pocos días registrados, cualquier conclusión sería pura imaginación. Mejor esperar al próximo.',
+      'Esto se parece más a un boceto que a un retrato. Con más días registrados, el próximo sale completo.',
+    ],
+  },
+  promesa: [
+    'El próximo enero lo contamos completo.',
+    'Sigue registrando y el año que viene hay función.',
+    'Nos vemos el próximo enero, con más datos y mejores historias.',
+    'Cada movimiento que anotes hoy es una escena del próximo resumen.',
+    'Esto apenas empieza. El próximo Wrapped va a tener mucho más que decir.',
+    'Dale tiempo al tiempo: en enero hablamos.',
+    'Tu próximo año ya está empezando. Que quede registrado.',
+    'No es un adiós, es un «hasta el próximo enero».',
+    'Prepara las palomitas: el próximo año sí hay película.',
+    'Un poquito cada día y en enero habrá mucho que mostrar.',
+    'Esta vez no alcanzó; la próxima, con tus datos, seguro que sí.',
+    'Guardamos tu lugar para el próximo enero.',
+  ],
+};
+
+function _wrappedSlidesInsuficiente(datos, anioK){
+  const tier = datos.tier === 'nada' ? 'nada' : 'poco';
+  _wrappedIniciarBanco('insuf|' + anioK + '|' + tier); // misma semilla → mismas frases al volver a abrirlo
+  const banco = WRAPPED_BANCO_INSUFICIENTE[tier];
+  const n = v => Number(v).toLocaleString('es-CO');
+  const dias = n(datos.dias || 0) + ((datos.dias || 0) === 1 ? ' día' : ' días');
+  const registros = n(datos.registros || 0) + ((datos.registros || 0) === 1 ? ' movimiento' : ' movimientos');
+  const desde = datos.primera ? _fechaSafe(datos.primera, 12).toLocaleDateString('es-CO', { day: 'numeric', month: 'long' }) : '';
+  const um = (typeof window !== 'undefined' && window._wrappedUmbrales) || { dias: 30, meses: 3 };
+  const valores = { anio: anioK, dias, registros, desde, minDias: um.dias, minMeses: um.meses };
+  const llenar = txt => escHtml(txt.replace(/\{(\w+)\}/g, (m, k) => (k in valores ? valores[k] : m)));
+  const titular = llenar(_wrappedBankPick('insuf-titular-' + tier, banco.titular));
+  const explica = llenar(_wrappedBankPick('insuf-explica-' + tier, banco.explica));
+  const promesa = llenar(_wrappedBankPick('insuf-promesa', WRAPPED_BANCO_INSUFICIENTE.promesa));
+
+  const slides = [{
+    id: 'insuf-titular', mood: 'amber',
+    html: `<div class="wrapped-slide-inner">
+      <div class="wrapped-eyebrow">Tu ${anioK}</div>
+      <div class="wrapped-headline">${titular}</div>
+      <div class="wrapped-sub">${explica}</div>
+    </div>`
+  }];
+  if(tier === 'poco'){
+    slides.push({
+      id: 'insuf-lo-que-hay', mood: 'accent',
+      html: `<div class="wrapped-slide-inner">
+        <div class="wrapped-eyebrow">Lo poco que alcanzamos a ver</div>
+        <div class="wrapped-headline">Esto fue lo que vimos</div>
+        <div class="wrapped-pill-list">
+          <span class="wrapped-pill">${escHtml(dias)} con registros</span>
+          <span class="wrapped-pill">${escHtml(registros)}</span>
+          ${desde ? `<span class="wrapped-pill">Desde el ${escHtml(desde)}</span>` : ''}
+        </div>
+      </div>`
+    });
+  }
+  slides.push({
+    id: 'insuf-cierre', mood: 'purple',
+    html: `<div class="wrapped-slide-inner">
+      <div class="wrapped-tag"><i class="fa-solid fa-tag"></i> Wrapped ${anioK}</div>
+      <div class="wrapped-eyebrow">Para el próximo</div>
+      <div class="wrapped-headline">${promesa}</div>
+      <div class="wrapped-cta-row">
+        <button type="button" class="wrapped-cta" data-wrapped-action="replay">Ver de nuevo</button>
+        <button type="button" class="wrapped-cta ghost" data-wrapped-action="cerrar">Cerrar</button>
+      </div>
+    </div>`
+  });
+  return slides;
+}
+
+/* ═══ WRAPPED GUARDADO POR AÑO ═══
+   `S.wrappedAnios[AAAA] = { version, generadoEn, slides:[{id,mood,confetti?,html}] }` — el HTML ya armado de cada diapositiva
+   (≈ 4,5 KB comprimidos por año). Guardar es una ACCIÓN EXPLÍCITA del usuario (botón «Guardar este Wrapped» en la última diapositiva):
+   abrir el Wrapped, aunque sea mil veces, no guarda nada. Si no se guarda, se pierde al cerrar la ventana de enero (modelo Spotify).
+   Un Wrapped guardado se puede ver siempre y se puede ELIMINAR (Configuración → Mis Wrapped, con confirmación y PIN). Mientras la ventana
+   de enero siga abierta, al abrir uno guardado se recalcula y se reemplaza (así entra un movimiento de diciembre añadido tarde); pasada la
+   ventana queda fijo. Esto separa tres operaciones antes mezcladas en renderWrapped: generar (`_wrappedBuildSlides`), guardar
+   (`_wrappedGuardar`) y mostrar (`renderWrapped`). El mensaje «no alcanzó el tiempo» NUNCA se guarda: no hay nada que recordar.
+   El recuerdo no depende del detalle (que un cierre de períodos puede podar) ni cambia si cambian las reglas de cálculo.
+   Lo que depende de quien mira y no del año — el desenfoque de «Ocultar saldos» — NO se congela: se quita al guardar y se aplica al mostrar.
+   OJO, contrato de CSS: el HTML guardado usa clases (wrapped-*, c-*, fa-*) que viven en este archivo/styles.css; renombrar una rompe en
+   silencio los recuerdos viejos. tests/wrapped-guardado.test.js lo vigila con una instantánea de referencia (solo se pueden AÑADIR clases). */
+const WRAPPED_SNAPSHOT_VERSION = 1;
+
+// Botón de la última diapositiva. Se intercambia por su versión «Guardado» cuando el año ya está guardado (y así se guarda el HTML).
+const _WRAPPED_BTN_GUARDAR = '<button type="button" class="wrapped-cta" data-wrapped-action="guardar">Guardar este Wrapped</button>';
+const _WRAPPED_BTN_GUARDADO = '<button type="button" class="wrapped-cta ghost" disabled>Guardado</button>';
+function _wrappedMarcarGuardado(slides){
+  return slides.map(sl => (sl.id === 'cierre' ? Object.assign({}, sl, { html: sl.html.replace(_WRAPPED_BTN_GUARDAR, _WRAPPED_BTN_GUARDADO) }) : sl));
+}
+
+function _wrappedSinMascara(html){ return html.replace(/\s*\bsaldo-hidden\b/g, ''); }
+function _wrappedConMascara(html){
+  return html.replace(/class="(wrapped-bignum [^"]*?)"/, (m, c) => (/saldo-hidden/.test(c) ? m : 'class="' + c + ' saldo-hidden"'));
+}
+
+function _wrappedSnapshotDe(slides){
+  return {
+    version: WRAPPED_SNAPSHOT_VERSION,
+    generadoEn: hoy(),
+    slides: _wrappedMarcarGuardado(slides).map(sl => {
+      const o = { id: sl.id, html: _wrappedSinMascara(sl.html) };
+      if(sl.mood) o.mood = sl.mood;
+      if(sl.confetti) o.confetti = true;
+      return o;
+    })
+  };
+}
+
+// Guardar un año (acción explícita del usuario): reemplaza el guardado de ese año si lo había. Nunca se llama con el mensaje de «no alcanzó».
+function _wrappedGuardar(S, anioK, slides){
+  if(slides.some(sl => sl.id === 'insuf-titular')) throw new Error('El mensaje «no alcanzó el tiempo» no se guarda');
+  if(!S.wrappedAnios) S.wrappedAnios = {};
+  S.wrappedAnios[anioK] = _wrappedSnapshotDe(slides);
+  if(typeof save === 'function') save();
+}
+
+// Las diapositivas guardadas listas para pintar: aquí sí se aplica la preferencia actual de ocultar saldos.
+function _wrappedSlidesDeSnapshot(snap){
+  const ocultar = _wrappedSaldosOcultos();
+  return snap.slides.map(sl => Object.assign({}, sl, { html: (ocultar && sl.id === 'alcancia') ? _wrappedConMascara(sl.html) : sl.html }));
+}
+
+// Frase sobre el patrimonio del año. `ctx` (opcional): { balance, gastoMasGrande } del año, para explicar la CAUSA de una caída.
+function _wrappedCopyPatrimonio(patrimonio, ctx){
+  const { diff, pct, inicio, fin } = patrimonio;
+  const sabeCero = Number.isFinite(inicio) && Number.isFinite(fin);
+  const aRojos = sabeCero && inicio >= 0 && fin < 0;   // cruzó a deuda
+  const deRojos = sabeCero && inicio < 0 && fin >= 0;  // salió de deuda
+  const sigueRojos = sabeCero && inicio < 0 && fin < 0;
+  let frase;
+  if(aRojos){
+    frase = _wrappedBankPick('patrimonio-entraRojos', [
+      'terminaste el año debiendo más de lo que tienes.',
+      'tu patrimonio cruzó a números rojos este año.',
+      'este año pasaste de tener a deber más de lo que tienes.',
+    ]);
+  } else if(deRojos){
+    frase = _wrappedBankPick('patrimonio-saleRojos', [
+      'saliste de números rojos este año.',
+      'empezaste debiendo más de lo que tenías y terminaste con el patrimonio en positivo.',
+      'este año dejaste atrás los números rojos.',
+    ]);
+  } else if(sigueRojos){
+    frase = diff >= 0
+      ? _wrappedBankPick('patrimonio-rojosMejora', [
+          'sigues debiendo más de lo que tienes, pero la deuda neta bajó este año.',
+          'tu patrimonio sigue en números rojos, aunque terminó menos hundido que al empezar.',
+        ])
+      : _wrappedBankPick('patrimonio-rojosEmpeora', [
+          'terminaste el año debiendo más que al empezarlo.',
+          'tu patrimonio siguió en números rojos y se hundió más este año.',
+        ]);
+  } else if(pct === null){
+    frase = diff >= 0
       ? _wrappedBankPick('patrimonio-sinBase-sube', [
           'tu patrimonio creció este año.',
           'tu patrimonio terminó más arriba de donde empezó.',
@@ -900,36 +1135,54 @@ function _wrappedCopyPatrimonio(patrimonio){
           'tu patrimonio terminó más abajo de donde empezó.',
           'este año tu patrimonio fue para abajo.',
         ]);
+  } else {
+    const pctTxt = Math.abs(Math.round(pct));
+    if(diff >= 0){
+      if(pct >= UMBRALES.wrapped.patrimonio.crecimientoFuerte) frase = _wrappedBankPick('patrimonio-fuerte', [
+        `fue un año grande: tu patrimonio subió +${pctTxt}%.`,
+        `+${pctTxt}%. Este año tu patrimonio jugó en otra liga.`,
+        pct >= 90 ? `tu patrimonio casi se duplicó este año (+${pctTxt}%).` : `tu patrimonio creció más de la mitad este año (+${pctTxt}%).`,
+        `pocas veces un año rinde +${pctTxt}% — este fue de esos.`,
+      ]);
+      else if(pct >= UMBRALES.wrapped.patrimonio.crecimientoMedio) frase = _wrappedBankPick('patrimonio-medio', [
+        `tu patrimonio creció con fuerza este año (+${pctTxt}%).`,
+        `+${pctTxt}% de crecimiento — nada de qué quejarse.`,
+        `este año tu plata trabajó de verdad (+${pctTxt}%).`,
+      ]);
+      else frase = _wrappedBankPick('patrimonio-leve', [
+        `tu patrimonio subió un poco este año (+${pctTxt}%).`,
+        `+${pctTxt}%, sin hacer ruido pero yendo para arriba.`,
+        `no fue un año explosivo, pero tu patrimonio sí subió (+${pctTxt}%).`,
+      ]);
+    } else if(pct <= -UMBRALES.wrapped.patrimonio.caidaFuerte) frase = _wrappedBankPick('patrimonio-cayoFuerte', [
+      `este año le exigiste bastante al bolsillo (-${pctTxt}%).`,
+      `-${pctTxt}%. Este año pesó, y se nota.`,
+      `no fue un año fácil para tu patrimonio (-${pctTxt}%).`,
+    ]);
+    else if(pct <= -UMBRALES.wrapped.patrimonio.caidaLeve) frase = _wrappedBankPick('patrimonio-cayoModerado', [
+      `tu patrimonio bajó este año (-${pctTxt}%): vale la pena mirar por qué.`,
+      `-${pctTxt}%. No fue un buen año para tu patrimonio.`,
+      `tu patrimonio cerró un ${pctTxt}% más abajo de donde empezó.`,
+    ]);
+    else frase = _wrappedBankPick('patrimonio-cayoLeve', [
+      `tu patrimonio bajó un poco este año (-${pctTxt}%).`,
+      `-${pctTxt}%, una caída pequeña.`,
+      `apenas bajó (-${pctTxt}%).`,
+    ]);
   }
-  const pctTxt = Math.abs(Math.round(pct));
-  if(diff >= 0){
-    if(pct >= 50) return _wrappedBankPick('patrimonio-fuerte', [
-      `fue un año grande: tu patrimonio subió +${pctTxt}%.`,
-      `+${pctTxt}%. Este año tu patrimonio jugó en otra liga.`,
-      `tu patrimonio casi se ${pct>=90?'duplicó':'redondeó'} este año (+${pctTxt}%).`,
-      `pocas veces un año rinde +${pctTxt}% — este fue de esos.`,
-    ]);
-    if(pct >= 15) return _wrappedBankPick('patrimonio-medio', [
-      `tu patrimonio creció con fuerza este año (+${pctTxt}%).`,
-      `+${pctTxt}% de crecimiento — nada de qué quejarse.`,
-      `este año tu plata trabajó de verdad (+${pctTxt}%).`,
-    ]);
-    return _wrappedBankPick('patrimonio-leve', [
-      `tu patrimonio subió un poco este año (+${pctTxt}%).`,
-      `+${pctTxt}%, sin hacer ruido pero yendo para arriba.`,
-      `no fue un año explosivo, pero tu patrimonio sí subió (+${pctTxt}%).`,
-    ]);
+  // Causa de la caída (solo si bajó y se conocen los datos del año): una compra, o gastar más de lo ingresado, o algo que no explican
+  // los ingresos y gastos (deudas, ajustes). Sin esto la frase solo decía CUÁNTO bajó.
+  if(diff < 0 && ctx){
+    const caida = -diff, g = ctx.gastoMasGrande;
+    if(g && g.monto > 0 && g.monto >= UMBRALES.wrapped.compraExplicaCaida * caida){
+      frase += ` Casi toda la caída fue por una compra: ${escHtml(String(g.desc || 'un gasto'))} (${fmt(g.monto)}).`;
+    } else if(Number.isFinite(ctx.balance)){
+      frase += ctx.balance < 0
+        ? ` Gastaste ${fmt(-ctx.balance)} más de lo que ingresaste.`
+        : ' Tus ingresos superaron tus gastos, pero el patrimonio bajó: revisa deudas o ajustes.';
+    }
   }
-  if(pct <= -25) return _wrappedBankPick('patrimonio-cayoFuerte', [
-    `este año le exigiste bastante al bolsillo (-${pctTxt}%).`,
-    `-${pctTxt}%. Este año pesó, y se nota.`,
-    `no fue un año fácil para tu patrimonio (-${pctTxt}%).`,
-  ]);
-  return _wrappedBankPick('patrimonio-cayoLeve', [
-    `tu patrimonio bajó un poco este año (-${pctTxt}%).`,
-    `-${pctTxt}%, sin ser dramático.`,
-    `bajó un poco, nada que no se recupere (-${pctTxt}%).`,
-  ]);
+  return frase;
 }
 
 function _wrappedCopyCategoria(topCategoria){
@@ -1672,7 +1925,7 @@ function _wrappedSlideBignum(eyebrow, headline, value, color, opts){
    exactamente el mismo corte de fechas, en vez de reimplementarlo. */
 function _wrappedCorteMitadAnio(anioK, mesMax){
   const mitad = Math.floor((mesMax+1) / 2);
-  const mesKDeCorte = anioK + '-' + String(mitad+1).padStart(2,'0'); // primer mesK de la segunda mitad
+  const mesKDeCorte = Fecha.mesKey(anioK, mitad+1); // primer mesK de la segunda mitad
   return {
     enPrimera: fecha => typeof fecha === 'string' && fecha.slice(0,4) === anioK && fecha.slice(0,7) < mesKDeCorte,
     enSegunda: fecha => typeof fecha === 'string' && fecha.slice(0,4) === anioK && fecha.slice(0,7) >= mesKDeCorte
@@ -1746,8 +1999,8 @@ function _wrappedCambioFuerte(primera, segunda){
   if(primera <= 0 || segunda <= 0) return null;
   const total = primera + segunda;
   const shareSegunda = segunda / total;
-  if(shareSegunda >= 0.70) return { direccion: 'crecio', shareSegunda };
-  if(shareSegunda <= 0.30) return { direccion: 'cayo', shareSegunda };
+  if(shareSegunda >= UMBRALES.wrapped.cambioFuerte) return { direccion: 'crecio', shareSegunda };
+  if(shareSegunda <= 1 - UMBRALES.wrapped.cambioFuerte) return { direccion: 'cayo', shareSegunda };
   return null;
 }
 function _wrappedFasesAnio(S, anioK, mesMax){
@@ -2049,7 +2302,7 @@ function _wrappedCalcularComprometida(S, tipo, mesK, anioK){
 /* ─── TARJETAS DE CRÉDITO — Intereses cobrados ────────────────────────
    `S.tarjetasCredito[].compras[]` con `_esCargoEspecial:true` y
    `_motivoCargo:'interes'` son cargos que el BANCO impone (ver
-   `tarjetas_credito.js`, sección "Cargo especial"), no una compra tuya —
+   `tarjetas-credito.js`, sección "Cargo especial"), no una compra tuya —
    se filtran por `fecha` en el período, igual que cualquier otro dominio
    de §7ter. Deliberadamente NO se toca `tc.deuda` (saldo actual — puede
    venir de años anteriores) ni `.pagos[]`/compras normales (eso ya vive,
@@ -2087,7 +2340,7 @@ function _wrappedCalcularInteresesTC(S, tipo, mesK, anioK){
 /* ─── TARJETAS DE CRÉDITO — Comisiones cobradas (2026-09-15) ──────────────
    Mismo patrón EXACTO que `_wrappedCalcularInteresesTC` de arriba, pero
    filtrando `_motivoCargo === 'comision'` en vez de `'interes'` —
-   `tarjetas_credito.js` (`TC_MOTIVOS_CARGO`) distingue tres motivos de
+   `tarjetas-credito.js` (`TC_MOTIVOS_CARGO`) distingue tres motivos de
    cargo especial (interés, comisión, "otro"); hasta esta sesión Wrapped
    solo leía el primero. Se agrega comisión como candidato APARTE (no
    sumado al mismo total de intereses) porque el copy de intereses
@@ -2096,7 +2349,7 @@ function _wrappedCalcularInteresesTC(S, tipo, mesK, anioK){
    conceptos bajo una sola cifra sería honesto en el número pero deshonesto
    en el texto. Deliberadamente NO se agrega el tercer motivo, `'otro'`:
    es un cajón de sastre a propósito genérico en el propio
-   `tarjetas_credito.js` ("Otro cargo del banco") — sin saber qué fue
+   `tarjetas-credito.js` ("Otro cargo del banco") — sin saber qué fue
    realmente, cualquier frase que este módulo le pusiera encima sería
    inventada, y §3 prohíbe justamente eso (nunca forzar un insight sin una
    señal real y concreta detrás). */
@@ -2265,7 +2518,7 @@ function _wrappedCopyCierrePoema(ctx){
    candidatos aplican, el primero de la lista es el rasgo principal. */
 function _wrappedPersonalidad(S, anioK){
   const cajitas = _wrappedListaCajitas(S);
-  const cuentasPersonalizadas = cuentasCustom();
+  const cuentasActivasN = (S.cuentas || []).filter(c => c && !c.archivada && c.tipo !== 'ahorro');
   const deudores = Deudas.lista('favor');
   const prestado = _wrappedCalcularPrestado(S, 'anio', null, anioK);
   const periodo = _wrappedCalcularPeriodo(S, 'anio', null, anioK);
@@ -2296,8 +2549,8 @@ function _wrappedPersonalidad(S, anioK){
       `${racha} veces seguidas mejorando tu ahorro. Eso ya es un patrón.`,
     ], racha) });
   }
-  if((cajitas.length + cuentasPersonalizadas.length) >= 6){
-    candidatos.push({ tipo:'El Multicuenta', evidencia:`${cajitas.length + cuentasPersonalizadas.length} cuentas y cajitas activas`, frase: _wrappedBankPick('personalidad-multicuenta', [
+  if((cajitas.length + cuentasActivasN.length) >= 6){
+    candidatos.push({ tipo:'El Multicuenta', evidencia:`${cajitas.length + cuentasActivasN.length} cuentas y cajitas activas`, frase: _wrappedBankPick('personalidad-multicuenta', [
       'Tu plata vive repartida en muchos lugares distintos.',
       'Tienes más cuentas que la mayoría — y a todas les llevas la cuenta.',
     ]) });
@@ -2443,7 +2696,7 @@ function _wrappedProtagonistas(S, tipo, mesK, anioK){
 function _wrappedSerieMensualIngresoGasto(S, anioK, mesMax){
   const meses = [];
   for(let m=0; m<=mesMax; m++){
-    const mesK = anioK + '-' + String(m+1).padStart(2,'0');
+    const mesK = Fecha.mesKey(anioK, m+1);
     const stats = _wrappedCalcularPeriodo(S, 'mes', mesK, anioK);
     if(stats.totalIngresos > 0 || stats.totalGastos > 0){
       meses.push({ mesK, ingresos: stats.totalIngresos, gastos: stats.totalGastos, balance: stats.balance });
@@ -2646,7 +2899,7 @@ function _wrappedRecuperacionMasRapida(S, anioK){
     if(segundo._perdon) return; // perdonada ≠ recuperada: no es una devolución rápida
     if((segundo.monto||0) < (primero.monto||0)) return;
     if(primero.fecha.slice(0,4) !== anioK) return;
-    const dias = Math.round((new Date(segundo.fecha) - new Date(primero.fecha)) / 86400000);
+    const dias = Fecha.diasEntre(primero.fecha, segundo.fecha);
     if(!Number.isFinite(dias) || dias < 0) return;
     if(!mejor || dias < mejor.dias){
       mejor = { dias, nombre: d.nombre, personaId: d.personaId || null, monto: primero.monto||0 };
@@ -2778,7 +3031,7 @@ function _wrappedPeriodoEnNumeros(S, anioK, s, prestadoAnio, serieMensual){
   ];
 }
 function _wrappedRecordsHtml(registros, fmt2){
-  const filas = registros.map(r => `<div class="wrapped-record"><div class="wrapped-record-l">${r.l}</div><div class="wrapped-record-v">${r.v===null?'—':(r.fmt==='money'?fmt2(r.v):escHtml(String(r.v)))}</div></div>`).join('');
+  const filas = registros.map(r => `<div class="wrapped-record"><div class="wrapped-record-l">${r.l}</div><div class="wrapped-record-v">${r.v===null?SIN_DATO:(r.fmt==='money'?fmt2(r.v):escHtml(String(r.v)))}</div></div>`).join('');
   return `<div class="wrapped-records-grid">${filas}</div>`;
 }
 
@@ -2870,12 +3123,12 @@ function _wrappedScoreInsight(c){
    artistas. */
 const WRAPPED_MAX_INSIGHTS_POOL = 8;
 
-/* Lee el estado de "Ocultar saldos" (mejoras-adicionales.js) directo de
+/* Lee el estado de "Ocultar saldos" (saldos-ocultos.js) directo de
    su localStorage ya documentado (`mf-saldos-ocultos`) — Wrapped no
    tiene forma de leer la variable interna de ese módulo (no está
    expuesta como `window._algo`, a diferencia de `_alcRachaAhorro`), así
    que usa la misma llave pública que ya persiste el toggle.
-   Confirmado 2026-09-15 contra `mejoras-adicionales.js`:
+   Confirmado contra `saldos-ocultos.js`:
    `toggleSaldos()` guarda literalmente `'1'`/`'0'` (no `'true'`/`'false'`,
    que era mi supuesto sin verificar de la pasada anterior — corregido
    acá). El fallback ante cualquier error sigue siendo "no ocultar"
@@ -2887,7 +3140,7 @@ function _wrappedSaldosOcultos(){
   } catch(e){ return false; }
 }
 
-function _wrappedBuildSlides(S, fmt2){
+function _wrappedBuildSlides(S, fmt2, anioOpt){
   // Año que toca mostrar: decidido por js/core/wrapped-gate.js (núcleo
   // eager, siempre cargado antes que este módulo lazy) — resuelve la
   // decisión que había quedado abierta en wrapped.md §7decies. Antes
@@ -2897,9 +3150,13 @@ function _wrappedBuildSlides(S, fmt2){
   // Fallback al año en curso SOLO si wrapped-gate.js no llegó a cargar —
   // no debería pasar nunca en producción (carga antes que lazy-loader.js
   // en index.html), pero un dato faltante acá no debe romper el render.
-  const anioK = typeof window._wrappedAnioObjetivo === 'function'
+  const anioK = anioOpt ? String(anioOpt) : (typeof window._wrappedAnioObjetivo === 'function'
     ? window._wrappedAnioObjetivo()
-    : _wrappedHoy().slice(0,4);
+    : _wrappedHoy().slice(0,4));
+  // ¿Hay datos suficientes? Si no, un mensaje honesto en vez de 17 diapositivas casi vacías (criterio en wrapped-gate.js; si ese archivo
+  // no cargó —no pasa en producción— se asume que sí hay, como siempre).
+  const datosAnio = typeof window._wrappedDatosAnio === 'function' ? window._wrappedDatosAnio(anioK, S) : { tier: 'suficiente' };
+  if(datosAnio.tier !== 'suficiente') return _wrappedSlidesInsuficiente(datosAnio, anioK);
   const { anioActual, mesActualIdx } = _wrappedAnioYMesActual();
   const mesMax = (anioK === anioActual) ? mesActualIdx : 11;
   const s = _wrappedCalcularPeriodo(S, 'anio', null, anioK);
@@ -2934,7 +3191,7 @@ function _wrappedBuildSlides(S, fmt2){
   const spotifyAnio     = _wrappedCalcularSpotify(S, 'anio', null, anioK);
   const comprometidaAnio = _wrappedCalcularComprometida(S, 'anio', null, anioK);
   // Tarjetas de Crédito (2026-09-15) — nuevo dominio, agregado después de
-  // revisar `tarjetas_credito.js` a pedido del usuario. Deliberadamente
+  // revisar `tarjetas-credito.js` a pedido del usuario. Deliberadamente
   // acotado a los INTERESES cobrados en el período (`_esCargoEspecial &&
   // _motivoCargo==='interes'`), no a la deuda actual (`tc.deuda`, que
   // puede venir de antes — mismo motivo por el que Préstamos tampoco
@@ -2984,10 +3241,19 @@ function _wrappedBuildSlides(S, fmt2){
     ? `Movimiento por movimiento, desde el ${_wrappedFmtFechaLarga(rangoFechas.inicio)} hasta el ${_wrappedFmtFechaLarga(rangoFechas.fin)}.`
     : 'Lo repasamos un dato a la vez.';
 
+  // «Balance honesto»: un año con patrimonio negativo al cierre, patrimonio cayendo con gastos sobre ingresos, o gastos sin ningún ingreso
+  // registrado no se abre con fiesta. Mismos datos, otra portada y sin confeti; los números y las demás diapositivas no cambian.
+  const dificil = _wrappedAnioDificil(patrimonio, s);
   slides.push({
     id: 'intro',
-    mood: 'purple',
-    html: `<div class="wrapped-slide-inner">
+    mood: dificil ? 'accent' : 'purple',
+    html: dificil
+      ? `<div class="wrapped-slide-inner">
+      <div class="wrapped-eyebrow">Tu balance ${anioK}</div>
+      <div class="wrapped-headline">${dificil === 'sin-ingresos' ? 'Este año faltan ingresos en tus registros.' : 'Un año exigente, contado sin maquillaje.'}</div>
+      <div class="wrapped-sub">${dificil === 'sin-ingresos' ? 'Registraste gastos pero ningún ingreso, así que el balance no está completo. Aun así, esto es lo que se ve.' : 'Lo importante de un año así es saber dónde estás parado. Esto es lo que pasó.'} ${introSub}</div>
+    </div>`
+      : `<div class="wrapped-slide-inner">
       <div class="wrapped-tag"><i class="fa-solid fa-tag"></i> Wrapped ${anioK}</div>
       <div class="wrapped-eyebrow">Tu resumen ${anioK}</div>
       <div class="wrapped-headline">${_wrappedCopyIntro()}</div>
@@ -3027,7 +3293,7 @@ function _wrappedBuildSlides(S, fmt2){
     let bignum = '', sub = '';
     if(patrimonio && Number.isFinite(patrimonio.diff)){
       bignum = `<div class="wrapped-bignum ${patrimonio.diff >= 0 ? 'c-green' : 'c-red'}" data-value="${patrimonio.diff}" data-signed="1">0</div>`;
-      sub = `<div class="wrapped-sub">${_wrappedCopyPatrimonio(patrimonio)}</div>`;
+      sub = `<div class="wrapped-sub">${_wrappedCopyPatrimonio(patrimonio, { balance: s.balance, gastoMasGrande: s.gastoMasGrande })}</div>`;
     }
     slides.push({
       id: 'patrimonio',
@@ -3479,14 +3745,8 @@ function _wrappedBuildSlides(S, fmt2){
   const huboAlgo = slides.length > 1; // más que solo el intro
 
   if(!huboAlgo){
-    return [{
-      id: 'vacio',
-      html: `<div class="wrapped-slide-inner">
-        <div class="wrapped-eyebrow">Tu resumen</div>
-        <div class="wrapped-headline">Todavía no hay mucho que contar</div>
-        <div class="wrapped-sub">Todavía no hay suficiente historial este año para contarte algo. Vuelve más adelante.</div>
-      </div>`
-    }];
+    // Había registros suficientes pero ninguna diapositiva de datos pudo armarse: se cuenta como «poco», con la misma voz.
+    return _wrappedSlidesInsuficiente(Object.assign({}, datosAnio, { tier: 'poco' }), anioK);
   }
 
   const lineaCierre = _wrappedCopyCierre({ anioK, patrimonio, racha, s, gastoMasGrande: s.gastoMasGrande });
@@ -3535,13 +3795,14 @@ function _wrappedBuildSlides(S, fmt2){
   slides.push({
     id: 'cierre',
     mood: 'purple',
-    confetti: true,
+    confetti: !dificil,
     html: `<div class="wrapped-slide-inner">
       <div class="wrapped-tag"><i class="fa-solid fa-tag"></i> Wrapped ${anioK}</div>
       <div class="wrapped-eyebrow">Eso fue ${anioK}</div>
       <div class="wrapped-headline">${lineaCierre}</div>
       <div class="wrapped-cierre-poema">${poemaCierre}</div>
       <div class="wrapped-cta-row">
+        ${_WRAPPED_BTN_GUARDAR}
         <button type="button" class="wrapped-cta" data-wrapped-action="replay">Ver de nuevo</button>
         <button type="button" class="wrapped-cta ghost" data-wrapped-action="cerrar">Cerrar</button>
       </div>
@@ -3691,7 +3952,22 @@ function _wrappedVisible(el){
   return true;
 }
 
-function _wrappedSetupNav(overlay, fmt2){
+// Botón «Guardar este Wrapped»: guarda el año que se está viendo y deja el botón en «Guardado».
+function _wrappedAlGuardar(boton, contexto){
+  try{
+    _wrappedGuardar(window.S || {}, contexto.anioK, contexto.slides);
+  }catch(e){
+    console.warn('[wrapped] No se pudo guardar el Wrapped:', e);
+    if(typeof toast === 'function') toast('No se pudo guardar el Wrapped.', 'err', 4000);
+    return;
+  }
+  const marca = document.createElement('div');
+  marca.innerHTML = _WRAPPED_BTN_GUARDADO;
+  boton.replaceWith(marca.firstChild);
+  if(typeof toast === 'function') toast('Wrapped guardado. Lo encuentras en Configuración, en la sección Mis Wrapped.', 'ok', 4000);
+}
+
+function _wrappedSetupNav(overlay, fmt2, contexto){
   _wrappedLimpiarNav();
 
   const slidesEls = Array.prototype.slice.call(overlay.querySelectorAll('.wrapped-slide'));
@@ -3734,6 +4010,7 @@ function _wrappedSetupNav(overlay, fmt2){
       const accion = interactivo.getAttribute('data-wrapped-action');
       if(accion === 'replay') _wrappedGoTo(0);
       else if(accion === 'cerrar') _wrappedCerrar();
+      else if(accion === 'guardar') _wrappedAlGuardar(interactivo, contexto);
       return;
     }
     const rect = contSlides.getBoundingClientRect();
@@ -3782,14 +4059,19 @@ function _wrappedSetupNav(overlay, fmt2){
 }
 
 /* ─── ENTRADA PRINCIPAL ────────────────────────────────────────────────── */
-window.renderWrapped = function(){
-  // Cinturón de seguridad, no la gate real (esa vive en
-  // js/core/wrapped-gate.js): en el uso normal de la app nunca se llega
-  // hasta acá fuera de la ventana de enero, porque la fila de "Más" que
-  // dispara esto está oculta (_wrappedGateAplicarFila). Esto solo cubre a
-  // alguien entrando por otro camino (deep link viejo, showScreen('wrapped')
-  // a mano desde la consola) — ver wrapped.md §7decies.
-  if(typeof window._wrappedDisponible === 'function' && !window._wrappedDisponible()){
+window.renderWrapped = function(anioOpt){
+  // Año a mostrar: el pedido (`renderWrapped(2026)`), el que dejó _wrappedAbrir (wrapped-gate.js, se consume) o el recién cerrado.
+  const objetivo = typeof window._wrappedAnioObjetivo === 'function' ? window._wrappedAnioObjetivo() : _wrappedHoy().slice(0,4);
+  const anioK = String(anioOpt || window._wrappedAnioVista || objetivo);
+  window._wrappedAnioVista = undefined;
+
+  const S = window.S || {};
+  const guardado = S.wrappedAnios && S.wrappedAnios[anioK];
+
+  // GENERAR solo se puede para el año recién cerrado y durante la ventana de enero; VER uno guardado, siempre. Fuera de eso, quien llega por
+  // otro camino (deep link viejo, showScreen('wrapped') a mano desde la consola) vuelve a Configuración — ver wrapped.md §7decies.
+  const generable = anioK === objetivo && !(typeof window._wrappedDisponible === 'function' && !window._wrappedDisponible());
+  if(!guardado && !generable){
     if(typeof toast === 'function') toast('Tu resumen del año vuelve en enero.', 'info', 4000);
     if(typeof showScreen === 'function') showScreen('config');
     return;
@@ -3799,17 +4081,33 @@ window.renderWrapped = function(){
   // (wrapped-gate.js) no insiste si el usuario ya entró por su cuenta
   // desde el menú. Flag de UI en localStorage, no un dato financiero
   // nuevo en S (mismo criterio de siempre, ver cabecera del archivo §3).
-  if(typeof window._wrappedAnioObjetivo === 'function'){
-    try{ localStorage.setItem('mf_wrapped_visto_' + window._wrappedAnioObjetivo(), '1'); }catch(_){}
+  if(anioK === objetivo){
+    try{ localStorage.setItem('mf_wrapped_visto_' + objetivo, '1'); }catch(_){}
   }
 
-  const S = window.S || {};
-  const fmt2 = typeof fmt === 'function' ? fmt : v => '$' + Math.round(v).toLocaleString('es-CO');
+  const fmt2 = fmt; // se inyecta en las funciones de copy (_wrappedCopy*) para que sigan siendo puras
 
   _wrappedLogDebug(S);
   _wrappedInyectarEstilos();
 
-  const slides = _wrappedBuildSlides(S, fmt2);
+  // Mostrar. Dentro de la ventana de enero SIEMPRE se calcula: si el año ya estaba guardado y el cálculo sigue dando un Wrapped real, el
+  // guardado se reemplaza (entra lo añadido tarde); si ya no hay datos suficientes se conserva el guardado. Fuera de la ventana, el guardado
+  // se muestra tal cual, sin recalcular nada. Abrir NUNCA guarda por sí solo: eso es el botón «Guardar» de la última diapositiva.
+  let slides;
+  if(generable){
+    const frescas = _wrappedBuildSlides(S, fmt2, anioK);
+    const esMensaje = frescas.some(sl => sl.id === 'insuf-titular');
+    if(guardado && esMensaje){
+      slides = _wrappedSlidesDeSnapshot(guardado);
+    } else {
+      if(guardado){
+        try{ _wrappedGuardar(S, anioK, frescas); }catch(e){ console.warn('[wrapped] No se pudo actualizar el Wrapped de ' + anioK + ':', e); }
+      }
+      slides = guardado ? _wrappedMarcarGuardado(frescas) : frescas;
+    }
+  } else {
+    slides = _wrappedSlidesDeSnapshot(guardado); // el recuerdo tal como se guardó: no se recalcula nada
+  }
 
   const progresoHtml = slides.map(() => `<div class="wrapped-seg"><i></i></div>`).join('');
   const slidesHtml = slides.map(sl => `<div class="wrapped-slide" data-mood="${sl.mood || 'accent'}"${sl.confetti ? ' data-confetti="1"' : ''}>${sl.html}</div>`).join('');
@@ -3818,7 +4116,7 @@ window.renderWrapped = function(){
   // la URL trae `?debug=1`/`#debug` (ver `_wrappedDebugPanelHtml`); en
   // cualquier otro caso `debugHtml` queda vacío y no se agrega nada al
   // DOM ni se paga el costo de armar las tablas.
-  const debugOn = _wrappedDebugOn();
+  const debugOn = _wrappedDebugOn() && !!slides._wrappedDebugInfo; // el panel de debug necesita los datos del armado: un guardado no los tiene
   const debugHtml = debugOn
     ? `<button type="button" id="wrapped-debug-toggle" aria-label="Panel de debug" title="Panel de debug">
          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
@@ -3871,7 +4169,7 @@ window.renderWrapped = function(){
     if(panel) panel.addEventListener('click', function(e){ e.stopPropagation(); });
   }
 
-  _wrappedSetupNav(overlay, fmt2);
+  _wrappedSetupNav(overlay, fmt2, { anioK, slides });
   _wrappedGoTo(0);
 };
 
@@ -3883,7 +4181,44 @@ window.renderWrapped = function(){
 
 /* Exportadas solo para poder testear los cálculos y el armado de slides
    de forma aislada — no se usan desde ningún otro archivo. */
+// Sonda de la huella (js/core/huella.js): lo que Wrapped calcula del ÚNICO año que la app puede mostrar — el recién cerrado, año actual − 1
+// (_wrappedVentana en wrapped-gate.js, que es la fuente; sin él se calcula igual desde hoy()). Cubre totales, mejor/peor mes, gasto más
+// grande y categoría líder (dentro de _wrappedCalcularPeriodo) y cada dominio de terceros (encargos, préstamos, mesada, Spotify, comprometida,
+// intereses y comisiones de tarjeta). Los años anteriores no se ven en ninguna pantalla, así que no se exige conservarlos: la política de
+// corte (Cierre.corteMasReciente, ≥ 24 meses, siempre ≤ dic de año − 2) deja intacto este año por construcción y la sonda lo comprueba.
+// Corre aislada: las funciones reciben la copia como `S`. docs/cierre-de-periodos.md.
+registrarSonda('wrapped',function(st){
+  const out={};
+  const anioObjetivo=typeof window._wrappedAnioObjetivo==='function'?window._wrappedAnioObjetivo():String(parseInt(hoy().slice(0,4),10)-1);
+  [anioObjetivo].forEach(anioK=>{
+    out[anioK]={
+      periodo:_wrappedCalcularPeriodo(st,'anio',null,anioK),
+      mejorPeor:_wrappedMejorPeorMesAnio(st,anioK),
+      encargos:_wrappedCalcularEncargos(st,'anio',null,anioK),
+      prestado:_wrappedCalcularPrestado(st,'anio',null,anioK),
+      misDeudas:_wrappedCalcularMisDeudas(st,'anio',null,anioK),
+      mesada:_wrappedCalcularMesada(st,'anio',null,anioK),
+      spotify:_wrappedCalcularSpotify(st,'anio',null,anioK),
+      comprometida:_wrappedCalcularComprometida(st,'anio',null,anioK),
+      interesesTC:_wrappedCalcularInteresesTC(st,'anio',null,anioK),
+      comisionesTC:_wrappedCalcularComisionesTC(st,'anio',null,anioK),
+      protagonistas:_wrappedProtagonistas(st,'anio',null,anioK),
+      recuperacion:_wrappedRecuperacionMasRapida(st,anioK)
+    };
+  });
+  return out;
+});
+
 window._wrappedInternals = {
+  WRAPPED_BANCO_INSUFICIENTE,
+  WRAPPED_SNAPSHOT_VERSION,
+  _wrappedSlidesInsuficiente,
+  _wrappedSnapshotDe,
+  _wrappedGuardar,
+  _wrappedMarcarGuardado,
+  _wrappedSlidesDeSnapshot,
+  _wrappedSinMascara,
+  _wrappedConMascara,
   _wrappedBankPick,
   _wrappedIniciarBanco,
   _wrappedHashStr,
@@ -3892,6 +4227,7 @@ window._wrappedInternals = {
   _wrappedInicioRachaReal,
   _wrappedMejorPeorMesAnio,
   _wrappedPatrimonioAnio,
+  _wrappedAnioDificil,
   _wrappedSerieMensualAnio,
   _wrappedGraficoAnimadoSvg,
   _wrappedMesKaNombre,
@@ -3959,3 +4295,5 @@ window._wrappedInternals = {
 };
 
 })();
+
+Ui.pantalla('wrapped', () => { if (typeof renderWrapped === 'function') renderWrapped(); }, { key: 'wrapped-render' });

@@ -66,7 +66,7 @@ function loadApp(appFiles, options = {}) {
   // cuentas.js/prestado.js referencian por nombre corto, a nivel de
   // módulo (dentro de Events.registerAll(...) y wiring de listeners),
   // funciones de UI que viven en otros archivos core que este harness
-  // NO carga (openSheet/closeSheet/toast/dialogo — sheet-stack.js /
+  // NO carga (openSheet/closeSheet/toast/dialogo — navegacion.js /
   // events.js). Sin esto, cargarlos revienta con un ReferenceError
   // distinto por cada función de UI que no conocemos.
   let context = sandbox;
@@ -82,6 +82,16 @@ function loadApp(appFiles, options = {}) {
   }
 
   vm.createContext(context);
+
+  // js/core/fecha.js es núcleo puro y core-state.js delega en él (hoy, mesActual, _fechaSafe, MC): en el navegador carga antes que
+  // core-state.js, así que aquí se precarga siempre (una sola vez) y ningún test tiene que acordarse de listarlo.
+  // js/core/ui.js (registro de ganchos de hojas/pantallas) tampoco depende de nada: los módulos se registran en él al cargar.
+  const NUCLEO = ['fecha.js', 'ui.js', 'formulario.js'];
+  const pre = NUCLEO.filter(n => !appFiles.some(f => f.endsWith('/' + n) || f.endsWith('\\' + n)))
+    .map(n => require('path').join(__dirname, '..', '..', 'js', 'core', n));
+  appFiles = [...pre, ...appFiles];
+  // core-state.js ya no es un archivo: se expande a sus partes, en el orden de index.html (ver nucleo-estado.js).
+  appFiles = appFiles.flatMap(f => /(^|[\\/])core-state\.js$/.test(f) ? require('./nucleo-estado').RUTAS : [f]);
 
   for (const file of appFiles) {
     const code = fs.readFileSync(file, 'utf8');

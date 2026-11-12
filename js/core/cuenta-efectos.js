@@ -17,14 +17,13 @@
         → lo quita; devuelve true si lo encontró y lo quitó.
 
    Estas funciones NO tocan saldos: el efecto sobre el saldo sigue siendo
-   sumarFuente()/descontarFuente() de core-state.js. Solo escriben/borran el
+   sumarFuente()/descontarFuente() de js/core/cuentas-fuentes.js. Solo escriben/borran el
    registro del historial.
 
    TODAS las cuentas guardan su historial en una sola lista, S.movimientos, con la cuenta en `fuente`:
 
         cuenta                 tipo entrada / salida    texto   fuente
-        nequi / efectivo       'entrada' / 'salida'     desc    'nequi' | 'efectivo'
-        custom:<id>            'entrada' / 'salida'     desc    'custom:<id>'
+        cuenta:<id>            'entrada' / 'salida'     desc    'cuenta:<id>'
         cajita:<id>            'entrada' / 'salida'     desc    'cajita:<id>'
 
    `extra` se mezcla en el registro (ej. { _esExtraIngreso: true }).
@@ -32,8 +31,8 @@
    excluye del ingreso sin depender del texto ni del prefijo de _origenSeccion. Las
    banderas de "sí es ingreso" de `extra` tienen prioridad sobre `_esEspejo`.
 
-   Carga de entrada (<script defer>), después de core-state.js: usa uid(),
-   getCuentaCustom() y S. Por ser núcleo, lo pueden usar módulos lazy
+   Carga de entrada (<script defer>), después del núcleo: usa uid(),
+   getCuentaDeFuente() y S. Por ser núcleo, lo pueden usar módulos lazy
    (prestado, mesada, alcancia, encargos) sin depender del orden de carga.
    ═══════════════════════════════════════════════════════════════ */
 
@@ -42,9 +41,8 @@
 function _espejoLista(cuenta, flujo, crear) {
   if (!cuenta || typeof cuenta !== 'string') return null;
   const entra = flujo !== 'salida';
-  const existe = cuenta === 'efectivo' || cuenta === 'nequi'
-    || (cuenta.startsWith('custom:') && !!getCuentaCustom(cuenta.split(':')[1]))
-    || (cuenta.startsWith('cajita:') && !!(S.cajitas || []).find(x => x.id === cuenta.split(':')[1]));
+  const existe = (esFuenteCuenta(cuenta) && !!getCuentaDeFuente(cuenta))
+    || (Fuente.esCajita(cuenta) && !!(S.cajitas || []).find(x => x.id === cuenta.split(':')[1]));
   if (!existe) return null;
   if (!S.movimientos) { if (!crear) return null; S.movimientos = []; }
   return { lista: S.movimientos, tipo: entra ? 'entrada' : 'salida', campoTexto: 'desc', conFuente: true };

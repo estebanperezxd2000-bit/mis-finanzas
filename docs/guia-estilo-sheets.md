@@ -10,10 +10,10 @@ Los cambios puntuales de una sesión de limpieza (renombres, tildes, reordenamie
 
 ## 0. Estilos: clases, no `style=""`
 
-Los sheets y pantallas **no llevan `style="…"` en el HTML ni en los strings de JS**: se usan las clases de `css/styles.css` (en Wrapped, el CSS que inyecta su propio archivo). El Paso 5 (conversión de todo el proyecto) **terminó el 2026-10-24**; `tests/estilos.test.js` impide que vuelvan a aparecer. Se mantiene `'unsafe-inline'` en `style-src` (decisión A, razones en `auditoria-tecnica.md`, «Seguridad — pendiente»).
+Los sheets y pantallas **no llevan `style="…"` en el HTML ni en los strings de JS**: se usan las clases de `css/styles.css` (en Wrapped, el CSS que inyecta su propio archivo). El Paso 5 (conversión de todo el proyecto) **terminó el 2026-10-24**; `tests/interfaz.test.js` impide que vuelvan a aparecer. Se mantiene `'unsafe-inline'` en `style-src` (decisión A, razones en `auditoria-tecnica.md`, «Seguridad — pendiente»).
 
 - **Color semántico de un texto:** `c-green`, `c-red`, `c-amber`, `c-blue`, `c-purple`. Chip chico: `badge badge-xs`. Ícono en línea: `ico-inline`. Marcas de label: `<span class="c-red">*</span>` y `<span class="lbl-opc">(opcional)</span>` (ver §2). Cada módulo tiene su prefijo de clases propias (`nu-`, `alc-`, `tc-`, `enc-`, `pe-`, `cp-`, `mdet-`, `ix-` para el HTML de `index.html`).
-- **Lo único que puede seguir en `style`:** (1) un valor que solo se conoce al ejecutar (ancho de una barra `width:${pct}%`, color elegido por el usuario), registrado como permitido en `tests/estilos.test.js`; (2) `display:none` de un elemento que el JS muestra con `el.style.display = ''` (si fuera clase, vaciar el inline no lo revelaría); (3) lo que se ve antes de que cargue `styles.css` (es async): `#fb-loading-screen`, `#fb-login-screen`, `#pin-screen`, `#toast-container`; (4) lo que el JS vacía con `style.X = ''` o `cssText = ''` (con una clase el vaciado dejaría el valor inicial) y lo que un selector de atributo de `styles.css` necesita (`#gv_fuente_hint[style*="visibility:hidden"]`, `#health-score-card`, `#encargoAvatar`).
+- **Lo único que puede seguir en `style`:** (1) un valor que solo se conoce al ejecutar (ancho de una barra `width:${pct}%`, color elegido por el usuario), registrado como permitido en `tests/interfaz.test.js`; (2) `display:none` de un elemento que el JS muestra con `el.style.display = ''` (si fuera clase, vaciar el inline no lo revelaría); (3) lo que se ve antes de que cargue `styles.css` (es async): `#fb-loading-screen`, `#fb-login-screen`, `#pin-screen`, `#toast-container`; (4) lo que el JS vacía con `style.X = ''` o `cssText = ''` (con una clase el vaciado dejaría el valor inicial) y lo que un selector de atributo de `styles.css` necesita (`#gv_fuente_hint[style*="visibility:hidden"]`, `#health-score-card`, `#encargoAvatar`).
 - **Mostrar/ocultar en vivo:** `el.style.display` desde JS (la CSP lo permite) o una clase.
 - **Si alguna vez hay que volver a convertir estilos en línea** (la herramienta salió del repo; está en el tag de git `paso5-cerrado`, carpeta `scripts/paso5/`), las trampas que costaron errores reales: (a) un `style` dentro de `${cond ? ' style="…"' : ''}` es **condicional**, no fijo; (b) al copiar un `style` desde una cadena JS hay que des-escapar `\'`: una comilla escapada en CSS rompe la regla y el navegador descarta también las siguientes; (c) buscar en `styles.css` selectores de atributo `[style*=…]` antes de mover un `style`; (d) buscar `style.X = ''` y `cssText` sobre el elemento; (e) una clase `(0,1,0)` pierde contra `input[type=…]`, `.btn-primary:active`, `#id{…}`, etc., que antes perdían contra el inline: usar selectores compuestos (`input.x`, `.btn.x`, `#id.x`); (f) comprobar con un comparador de cascada real (jsdom), no solo comparando texto: así se detectaron los tres errores de la verificación final (ver `CHANGELOG.md`, "Verificación con `jsdom` y correcciones").
 
@@ -21,7 +21,7 @@ Los sheets y pantallas **no llevan `style="…"` en el HTML ni en los strings de
 
 ### Filas de historial: `filaMovimiento()`
 
-Las filas de movimientos de Tarjetas, Encargos, Gastos y Cuentas se arman con `filaMovimiento({…})` y su botón de borrar con `botonEliminarFila(accion, args, titulo)` (ambos en `core-state.js`); no se escribe a mano `.gasto-item-top`. El borde o color de una variante se pide con una clase en `clase` (`tc-item-b-*`, `enc-item-b-*`), nunca con estilo en línea. Los atributos `data-mov-*` van en `attrs`. Una prueba (`tests/nucleo.test.js`, bloque `fila-movimiento`) falla si un módulo vuelve a repetir el esqueleto.
+Las filas de movimientos de Tarjetas, Encargos, Gastos y Cuentas se arman con `filaMovimiento({…})` y su botón de borrar con `botonEliminarFila(accion, args, titulo)` (ambos en `js/core/utilidades-ui.js`); no se escribe a mano `.gasto-item-top`. El borde o color de una variante se pide con una clase en `clase` (`tc-item-b-*`, `enc-item-b-*`), nunca con estilo en línea. Los atributos `data-mov-*` van en `attrs`. Una prueba (`tests/nucleo.test.js`, bloque `fila-movimiento`) falla si un módulo vuelve a repetir el esqueleto.
 
 ## 1. Regla general de orden
 
@@ -105,7 +105,9 @@ Los grupos de campo usan `class="ig"` con `margin-bottom: 13px`.
 
 No usar "Sumar"/"Restar", "Entró plata"/"Salió plata" en Cuentas. **Encargos** conserva "Entró plata / Salió plata" a propósito: no es una cuenta propia sino plata ajena que se administra.
 
-**Tipos de toast** (`toast(msg, tipo)` en `core-state.js`; los estilos `.toast-<tipo>` están en el CSS crítico de `index.html`):
+**El mensaje del toast es TEXTO** (2026-11-10): `toast(\`Cuenta "${nombre}" creada\`)` — **no** uses `escHtml()` ahí (se vería `&amp;`); se pinta con `textContent`. Para marcado deliberado (un ícono, un `<br>`) pasa `html\`…\`` o `raw(…)`: `toast(html\`Listo <i class="fa-solid fa-check"></i>\`)`. `tests/toast.test.js` falla si vuelve un `escHtml()` dentro de `toast(`. Los validadores (`Plata.validarSalida().motivo`, etc.) devuelven texto plano; si lo pintas con `innerHTML`, escápalo (o usa `textContent`).
+
+**Tipos de toast** (`toast(msg, tipo)` en `js/core/dialogos.js`; los estilos `.toast-<tipo>` están en el CSS crítico de `index.html`):
 
 | Tipo | Color / ícono | Cuándo |
 |---|---|---|
@@ -185,6 +187,8 @@ Agregar/Retirar dinero de una cuenta personalizada ya no tiene sheet propio — 
 **`sheet-editar-spotify`** — Editar persona en Spotify: Nombre → Cuota mensual → Fecha de ingreso
 
 **`sheet-sp-destino`** — Registrar cobro: ¿Cuántos períodos pagó? → ¿Cuánto te dio? → ¿A dónde metiste esa plata? → Fecha en que te pagó → Nota (opcional)
+
+**`sheet-sp-fuente`** — Cuenta de Spotify: ¿Cuál cuenta o cajita? (cualquier cuenta no-ahorro activa o cajita; «Ninguna» la desvincula; sugiere una cajita llamada «spotify» si es la única, sin guardarla sola)
 
 **`sheet-sp-hist-pend`** — Pago de lo pendiente (Spotify): Monto recibido → ¿A dónde metiste esa plata? → Fecha en que te pagó → Nota (opcional)
 
@@ -306,3 +310,39 @@ Al destapar se generan hasta 3 movimientos automáticos, y **no son intercambiab
 - `_esAlcanciaIngreso: true` identifica los ingresos reales generados al momento del depósito (regalo, mandado, yo-directo, partes sin cuenta de un depósito dividido). Son tipo `'entrada'` y **sí aparecen** en el feed porque son ingresos reales visibles.
 - Al destapar, `S.alcancia.saldoRegistrado` se resetea a `0` — necesario porque `calcPatrimonioTotal()` suma ese campo mientras está activa; si no se reseteara, el dinero quedaría contado dos veces.
 - El historial (`entradaHist`) **incluye** `movimientos: [...a.movimientos]` para que las tarjetas de historial muestren el desglose por tipo. Sin esto, `_alcDesgloseHtml` no tendría de dónde sacar el desglose de los ciclos anteriores.
+
+---
+
+## 4. Teclado, entrada y posición del sheet (contrato)
+
+Reglas para que un sheet suba y baje con el teclado sin saltos. Código: `js/core/sheet-behavior.js` (§ TECLADO) y `css/styles.css` (bloque «Sheet y teclado: contrato»).
+
+**Por qué antes saltaba.** El teclado se anima por su cuenta (~300 ms) y el navegador le avisa a la página de golpe (resize / `visualViewport`). Todo diseño donde el sheet *sigue al layout* lo teletransporta al valor final antes de que llegue el teclado (hueco al subir, tapado al bajar). Medido con el diseño anterior: salto de 330 px en un solo cuadro. Con el actual: ≤ 37 px por cuadro al subir (≤ 81 al bajar) y ninguna inversión de sentido.
+
+**Cómo funciona ahora**
+1. El `.overlay` **nunca** cambia de tamaño por el teclado.
+2. `sheet-behavior.js` publica `--kb` (alto del teclado que tapa la pantalla) y, solo en iOS/Firefox, `--pan` (desplazamiento del viewport visual) en `<html>`.
+3. El `.sheet` usa `translate: 0 calc(var(--kb) * -1)` y baja su `max-height` con `--kb`, ambos con `transition` (`--kb-ms`, `--kb-ease`; la bajada tiene su propia curva). `translate` es una propiedad individual: no pisa el `transform` del gesto de cierre ni el de la pila de sheets.
+4. Fuente de `--kb`: **VirtualKeyboard API** (Chrome/Edge/Samsung) con un sheet abierto la página pasa a `overlaysContent = true` (el teclado se dibuja encima y el fondo no se reacomoda); fuera de los sheets el navegador se comporta como siempre y se suelta el modo solo cuando el teclado ya se fue. En el resto: `innerHeight - visualViewport.height` con un campo de texto enfocado.
+5. Entrada: el sheet sube desde abajo (`sheet-in`, `--sheet-in-ms`) y el fondo se enciende. Cerrar es instantáneo; el gesto de arrastre anima su propio recorrido.
+
+**Al crear o tocar un sheet**
+- Para enfocar su primer campo usa `focusSheetField('id')` (o el elemento). **No** `setTimeout(...focus(), 200)`: el ayudante enfoca en el frame correcto (teclado y entrada arrancan juntos) y, si ya hay teclado abierto (pasar de un sheet a otro), pasa el foco sin cerrarlo ni reabrirlo. Opción `{select:true}` para seleccionar el contenido.
+- No leas `visualViewport`/`innerHeight` para posicionar un sheet, no pongas `margin`/`padding-bottom`/`height` por JS según el teclado ni cambies el tamaño del `.overlay`.
+- No agregues `transition` a `.sheet` sin incluir `translate` y `max-height`.
+- Un sheet con campos y mucho contenido scrollea internamente (`.sheet` es el contenedor de scroll); `ensureFocusedVisible` solo corrige si el campo queda tapado y espera a que la transición termine.
+- Tras un deploy, abre la app dos veces (la primera instala el SW nuevo) y confirma el build con `#sheetdebug`: el panel muestra la fuente de teclado activa, `--kb` y la **latencia** entre enfocar y el primer `--kb > 0`. Si esa latencia fuera alta en algún teléfono (el navegador avisa tarde del teclado), el sheet empezaría a subir tarde: sería el momento de añadir una predicción con la última altura conocida.
+
+## Validación de formularios (`Formulario`, `js/core/formulario.js`)
+
+Regla de producto: **error de campo → inline; error de operación → toast.** Falta el nombre, monto 0, fecha vacía = el campo se pinta de rojo con el mensaje debajo (`Formulario.validar([...])`). «Saldo insuficiente», «no se pudo guardar» = `toast('…', 'err')`.
+
+```js
+if (!Formulario.validar([
+  { campo: 'gv_desc',  mensaje: 'La descripción es obligatoria' },                 // regla por defecto: no vacío
+  { campo: 'gv_monto', mensaje: 'Ingresa un monto mayor a 0', regla: 'monto' },    // 'monto' = parseMoney > 0
+  { campo: 'gv_fecha', mensaje: 'Fecha inválida', regla: (v) => Fecha.esValida(v) } // o una función (valor, elemento)
+])) return;
+```
+Marca todos los que fallan y enfoca el primero; el error se quita al escribir o a los 3 s. El `<span class="field-error-msg" id="CAMPO_err">` se crea solo, no se escribe en el HTML. Se llama **desde la función de guardar del módulo** (nunca por parche del núcleo). Un campo que ya trae `{field, msg}` (planes de Préstamos): `Formulario.error(campo, mensaje)`. Pruebas: `tests/formulario.test.js`.
+

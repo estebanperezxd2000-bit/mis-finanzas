@@ -6,7 +6,7 @@
 
 ## Seguridad — pendiente
 
-- **La CSP sigue permitiendo estilos inline (`'unsafe-inline'` en `style-src`, `index.html`) — decisión tomada el 2026-10-24 (Paso 5, opción A).** Los `style="…"` estáticos se convirtieron a clases (quedan solo los casos de `guia-estilo-sheets.md` §0) y `tests/estilos.test.js` impide que vuelvan. Quitar la directiva exigiría un hash `sha256-…` por cada uno de los 5 bloques `<style>` de `index.html` y por el que inyecta `wrapped.js`, reubicar el primer pintado y reescribir ~140 usos de `style.display`; el riesgo real de XSS lo frena `script-src` sin `unsafe-inline` y el escapado de `html\`\``. Se reabre solo si se decide endurecer la CSP.
+- **La CSP sigue permitiendo estilos inline (`'unsafe-inline'` en `style-src`, `index.html`) — decisión tomada el 2026-10-24 (Paso 5, opción A).** Los `style="…"` estáticos se convirtieron a clases (quedan solo los casos de `guia-estilo-sheets.md` §0) y `tests/interfaz.test.js` impide que vuelvan. Quitar la directiva exigiría un hash `sha256-…` por cada uno de los 5 bloques `<style>` de `index.html` y por el que inyecta `wrapped.js`, reubicar el primer pintado y reescribir ~140 usos de `style.display`; el riesgo real de XSS lo frena `script-src` sin `unsafe-inline` y el escapado de `html\`\``. Se reabre solo si se decide endurecer la CSP.
 
 ## Rendimiento — pendiente
 
@@ -21,7 +21,6 @@ Del plan original de modularización, los puntos 1 y 2 (extraer módulos a `js/m
 
 - **Namespace único** (`S.encargos.xxx` en vez de funciones sueltas globales) — ya existe el patrón en `S.personas`/`S.ingresosFijos`, extenderlo al resto es una decisión de diseño grande, no un bug.
 - **Bundler ligero (Vite/esbuild) solo para desarrollo**, deployando igual un único `index.html`+`styles.css` a GitHub Pages — habilitaría la minificación de arriba.
-- **`window.refresh` parcheado en cadena por 6 archivos distintos.** Discutido con el usuario (2026-09-08), no implementado a propósito por ahora.
 
 ## Buenas prácticas a repetir (no hallazgos)
 

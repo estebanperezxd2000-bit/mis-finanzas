@@ -29,12 +29,12 @@ calcPatrimonioTotal()         ← calcula el patrimonio real en ese instante
         ↓
 S.patrimonioHistorial[]       ← array de hasta 365 snapshots diarios
         ↓
-renderProyeccion()            ← lee los últimos 90 días y calcula tendencia
+renderProyeccion()            ← lee los últimos 120 puntos (UMBRALES.proyeccion.puntosHistorial) y calcula tendencia
 ```
 
 ### Cómo se calcula la tendencia mensual
 
-`renderProyeccion()` (en `js/modules/inicio.js`) toma los últimos 90 snapshots y recorre pares consecutivos sumando dos totales: el cambio neto de patrimonio y los días reales transcurridos entre el primer y el último punto.
+`renderProyeccion()` (en `js/modules/inicio.js`) toma los últimos 120 snapshots (≈ 4 meses; con 90 la ventana nunca llegaba a los 90 días que pide «estable») y recorre pares consecutivos sumando dos totales: el cambio neto de patrimonio y los días reales transcurridos entre el primer y el último punto.
 
 ```
 cambioDelDía = (valorVisible[i] - valorVisible[i-1]) - montoBase[i]
@@ -51,9 +51,39 @@ tendenciaMensual = (cambioNetoTotal / díasReales) * 30
 
 | Días de historial | Qué se muestra |
 |---|---|
-| < 30 | Sin cifras a 3/6/12 meses: «Tendencia en construcción: llevas N de 30 días de historial» (`MIN_DIAS_PARA_TENDENCIA = 30`) |
-| 30–59 | Tendencia y proyecciones con la marca «estimación» |
-| 60+ | Tendencia y proyecciones con la marca ESTABLE (verde) |
+| < 30 | Sin cifras a 3/6/12 meses: «Tendencia en construcción: llevas N de 30 días de historial» (`UMBRALES.proyeccion.diasMinimos`) |
+| 30–89 | Tendencia y proyecciones con la marca «estimación» |
+| 90+ y ritmo consistente | Marca ESTABLE (verde). «Consistente» = el ritmo mensual de cada uno de los tres **tercios** del historial (`_ritmosPorTercio`) va en la misma dirección que la tendencia total (tolerancia del 10 %) |
+| 90+ pero ritmo irregular | «estimación» y una línea con el rango («Tu ritmo cambió mucho entre períodos (de −$X a +$Y al mes)»): una compra grande en un solo tercio ya no se extrapola como ritmo mensual ni se llama «estable» |
+
+### Calendario de caja a 30 días (lo ya programado)
+
+La proyección de 3/6/12 meses extrapola el **pasado**. El calendario de caja mira lo que ya se **sabe** del futuro y responde «¿se me acaba la plata antes del día 30, y cuándo?». No depende de la tendencia: se muestra también sin historial. Lo calcula `calcCalendarioCaja()` (`inicio.js`) con la función pura `Periodo.saldoProyectado(saldoInicial, eventos, hoy, dias)`, partiendo de la **liquidez neta** de hoy (`calcLiquidez().neta`, que ya descuenta lo que debes: por eso no hay evento de tarjeta, pagarla no la cambia).
+
+| Evento | Qué hace | Detalle |
+|---|---|---|
+| Gasto fijo con día, sin pagar | **Sale** en su fecha | El vencido sin pagar sale hoy (es lo primero que saldrá). Recurre el mes siguiente si cae dentro del horizonte |
+| Ingreso fijo con día, sin cobrar | **Entra** en su fecha | Solo si su día **no** ha pasado: uno atrasado no se da por hecho (igual que «lo que te deben» no cuenta hasta que llega) |
+| CDT que vence | **Entra** (capital + rendimiento) | Desde el día siguiente al vencimiento (`cdtVencido`) |
+
+- **Se evalúa al cierre de cada día:** las entradas y salidas del mismo día se **netean** (no se sabe en qué orden pasan: un «déficit» de media mañana por el orden sería una falsa alarma; sueldo y arriendo el mismo día no alertan).
+- **Resultado:** `puntos` (saldo tras cada día con eventos), `minimo` (el día más bajo) y `primerDeficit` (el primer día en negativo y qué lo causó: la mayor salida de ese día). `primerDeficit` solo existe si hoy no estás ya en negativo (eso ya lo dicen el hero, la Salud y Atención).
+- **En la tarjeta:** «Próximos 30 días, con lo ya programado (gastos e ingresos fijos, CDT que vencen): tu plata disponible pasaría de $X a $Y. Lo más bajo: $Z el 12 de nov. El 5 de nov quedaría en −$W (vence Arriendo)». **En Atención** (rojo): «El 5 de nov tu plata disponible quedaría en −$W (vence Arriendo: $900.000)».
+- Solo ve lo que registraste con día: un gasto o ingreso fijo sin día no aparece. Horizonte en `UMBRALES.caja.horizonteDias`.
+
+### Compras grandes (una moto)
+
+Las compras marcadas como «compra grande» (`gv.grande`, ver `docs/gastos.md`) bajaron el patrimonio, y ese golpe **ya está** en el valor de hoy (el punto de partida de la proyección). Lo que no es, es un ritmo: para la pendiente, en cada intervalo del historial se suma de vuelta lo que cayó por una compra grande de esa fecha (`Periodo.comprasGrandesEntre`). Sin esto, una moto de 15 M se extrapolaba como −15 M cada mes, o la tendencia quedaba en «estimación» para siempre. La tarjeta lo dice sin esconderlo: «Sin contar tu compra grande (Moto: $15.000.000), tu ritmo es +$300.000 al mes. Ya está descontada de tu patrimonio de hoy; la proyección no la repite». La compra no tiene que estar marcada: si el usuario no ha decidido, se detecta sola cuando supera su gasto mensual normal (`Periodo.compraGrandeEstado`, ver `docs/gastos.md`); y si dijo que **no** es una compra grande, se respeta y cuenta como ritmo. Con menos de 2 meses de historia no se detecta nada sola (la proyección se limita a mostrar «estimación» y el rango cuando el ritmo no fue parejo).
+
+### Valores negativos y patrimonio en cero
+
+- Las tarjetas de 3/6/12 meses muestran el valor **con signo** (antes `Math.max(0, valor)` los mostraba como `$0`, justo cuando la proyección era peor: −$1.100.000 aparecía como «$0»).
+- El **porcentaje** solo se calcula sobre una base positiva; con patrimonio ≤ 0 se omite y la nota dice «Pasarías a números rojos», «Seguirías en números rojos» o «Saldrías de números rojos».
+- «Sin datos» solo si no hay **ningún** activo visible ni deuda (la alcancía no cuenta: está oculta). Un patrimonio exactamente 0 con cuentas y deudas es un dato real y sí se proyecta.
+- Fechas del historial leídas con `_fechaSafe` (una «2026-9-26» sin cero no produce `NaN`).
+- **«A este ritmo, tu plata disponible duraría unos N meses»:** solo con tendencia negativa y liquidez neta positiva (`calcLiquidez().neta ÷ |tendencia|`, máximo `UMBRALES.proyeccion.maxMesesRunway`). Es una extrapolación del ritmo del patrimonio, no el runway de gastos de la tarjeta de Salud.
+- **Texto de deuda de tarjeta:** «Deuda TC: $total (propia $x) ya descontada del patrimonio» — el patrimonio resta la deuda TOTAL (incluida la de encargos y préstamos), así que se muestra el total y cuánto es propio.
+
 
 Con menos de un mes un solo movimiento grande domina el promedio y se extrapola como si se repitiera todo el año (una mesada de $80.000 dentro de una ventana de 9 días daba +$267.000 al mes, unos $3,2 millones a 12 meses). Hasta 2026-10-27 el mínimo era 7 días y existía una marca PRELIMINAR (7–29 días) que mostraba la cifra de todos modos; se retiraron las dos (ver `CHANGELOG.md`).
 
@@ -72,7 +102,7 @@ Esta función es el corazón del módulo. La proyección hereda todo lo que ella
 | Saldo Nequi | `S.cuentas` (cuenta `nequi`, vía `getSaldoFuente('nequi')`) |
 | Saldo Efectivo | `S.cuentas` (cuenta `efectivo`, vía `getSaldoFuente('efectivo')`) |
 | Saldo deudores (lo que me deben, positivo únicamente) | `S.deudores` → `getDeudorSaldoPatrimonio(d)` |
-| Cuentas personalizadas (todas, sin filtro) | `S.cuentas` con `tipo: 'custom'` (`cuentasCustom()`) → suma de `saldo` |
+| Cuentas personalizadas (todas, sin filtro) | `S.cuentas` activas que no son de ahorro (`cuentasActivas()`) → suma de `saldo` |
 | Alcancía oculta (saldo registrado mientras está activa) | `S.alcancia.saldoRegistrado` |
 
 ### Resta (pasivos)
@@ -139,7 +169,7 @@ Cualquier flujo que suba el saldo de Nequi, Efectivo, cajita o cuenta personaliz
 ## 5. Qué NO afecta la proyección
 
 - **Transferencias entre cuentas propias:** la suma de activos no cambia.
-- **Préstamos a terceros con fuente especificada:** neto cero (una cuenta baja, el saldo deudor sube). **Sin fuente especificada:** `descontarFuente('')` no hace nada, así que el saldo deudor sube pero ninguna cuenta baja → el patrimonio sube sin que haya ingreso. Es un uso legítimo (se sabe que existe la deuda pero no de qué cuenta salió), y desde 2026-10-10 se trata como **ajuste de base**: `montoBase` del día lo descuenta, igual que una apertura, así que **no cuenta como crecimiento** en la tendencia ni en la proyección (`_movsDeudaSinCuenta()`, `recalcularMontoBaseHistorial()` en `core-state.js`). Antes un solo préstamo de $500.000 sin cuenta llevó la proyección a 12 meses de +$1,2 M a +$6,7 M. Lo mismo vale para un abono/pago recibido sin cuenta destino (−) y para "Yo debo" (recibido sin cuenta −, pago sin cuenta +). Si ese préstamo en realidad es plata nueva (p. ej. un regalo), el movimiento lleva `clase: 'ingreso'` y cuenta como ingreso del mes en vez de ajuste.
+- **Préstamos a terceros con fuente especificada:** neto cero (una cuenta baja, el saldo deudor sube). **Sin fuente especificada:** `descontarFuente('')` no hace nada, así que el saldo deudor sube pero ninguna cuenta baja → el patrimonio sube sin que haya ingreso. Es un uso legítimo (se sabe que existe la deuda pero no de qué cuenta salió), y desde 2026-10-10 se trata como **ajuste de base**: `montoBase` del día lo descuenta, igual que una apertura, así que **no cuenta como crecimiento** en la tendencia ni en la proyección (`_movsDeudaSinCuenta()`, `recalcularMontoBaseHistorial()` en `el núcleo`). Antes un solo préstamo de $500.000 sin cuenta llevó la proyección a 12 meses de +$1,2 M a +$6,7 M. Lo mismo vale para un abono/pago recibido sin cuenta destino (−) y para "Yo debo" (recibido sin cuenta −, pago sin cuenta +). Si ese préstamo en realidad es plata nueva (p. ej. un regalo), el movimiento lleva `clase: 'ingreso'` y cuenta como ingreso del mes en vez de ajuste.
 - **Que alguien me preste plata (con cuenta especificada):** neto cero (la cuenta sube, `misDeudas` sube y se resta). **Excepción sin cuenta especificada:** `_aplicarMovMiDeuda(p)` llama `sumarFuente(cuenta, monto, …)` solo por cada cuenta indicada en `p.cuentas`; con la lista vacía no toca ninguna cuenta, así que `misDeudas` sube sin que suba ningún activo.
 - **Saldos iniciales / aperturas:** descontados del cálculo vía `montoBase`.
 - **Pagos de TC:** neto cero (baja la cuenta de pago, baja la deuda en igual medida).

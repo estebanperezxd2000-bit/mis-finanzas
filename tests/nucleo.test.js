@@ -1,4 +1,6 @@
 'use strict';
+const { leerEstado, REL: PARTES_ESTADO, esParte } = require('./support/nucleo-estado');
+
 // tests/nucleo.test.js — Núcleo y cálculos: patrimonio, salud financiera, Periodo (ingresos/gastos del mes), migraciones, ingreso real y clase de los movimientos.
 // Un archivo por sección de la app. Cada bloque `describe` es lo que antes era un archivo suelto.
 // Corre con:  node --test tests/nucleo.test.js   (o todo: npm test)
@@ -19,8 +21,8 @@ describe('calcPatrimonioTotal', () => {
   // Saldos en el modelo actual: S.cuentas[] (Nequi y Efectivo fijos + personalizadas). Antes estos tests
   // cargaban los campos viejos de saldo y migrarCuentasLegacy() los convertía; esa migración ya no existe.
   const cuentas = ({ nequi = 0, efectivo = 0, custom = [] } = {}) => [
-    { id: 'nequi', tipo: 'nequi', saldo: nequi },
-    { id: 'efectivo', tipo: 'efectivo', saldo: efectivo },
+    { id: 'nequi', tipo: 'billetera', nombre: 'Nequi', saldo: nequi },
+    { id: 'efectivo', tipo: 'efectivo', nombre: 'Efectivo', saldo: efectivo },
     ...custom,
   ];
 
@@ -37,7 +39,7 @@ describe('calcPatrimonioTotal', () => {
 
   test('calcPatrimonioTotal — suma Nequi + Efectivo + cuentas personalizadas', () => {
     const ctx = freshApp({
-      cuentas: cuentas({ nequi: 100000, efectivo: 50000, custom: [{ id: 'c1', tipo: 'custom', nombre: 'C1', saldo: 200000, movimientos: [] }] }),
+      cuentas: cuentas({ nequi: 100000, efectivo: 50000, custom: [{ id: 'c1', tipo: 'banco', nombre: 'C1', saldo: 200000, movimientos: [] }] }),
     });
     assert.equal(ctx.calcPatrimonioTotal(), 350000);
   });
@@ -91,11 +93,12 @@ describe('calcPatrimonioTotal', () => {
 
   test('calcPatrimonioTotal — una cajita sin fecha (recién creada) vale su saldo; con fecha suma el interés real de calcC (nu-calc.js)', () => {
     // calcC/calcCDT viven en js/core/nu-calc.js (núcleo): ya no hay fallback "c.saldo" porque nunca faltan.
-    const sinFecha = freshApp({ cajitas: [{ id: 'nu1', saldo: 300000 }] });
+    const nu = (tasaEA) => ({ id: 'nu', tipo: 'ahorro', nombre: 'Nu', tasaEA });
+    const sinFecha = freshApp({ cuentas: [nu(9.3003)], cajitas: [{ id: 'nu1', cuentaId: 'nu', saldo: 300000 }] });
     assert.equal(sinFecha.calcPatrimonioTotal(), 300000);
     const d = new Date(Date.now() - 365 * 86400000);
     const fecha = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-    const conInteres = freshApp({ nuRate: 9.3003, cajitas: [{ id: 'nu1', saldo: 1000000, fecha }] });
+    const conInteres = freshApp({ cuentas: [nu(9.3003)], cajitas: [{ id: 'nu1', cuentaId: 'nu', saldo: 1000000, fecha }] });
     assert.ok(conInteres.calcPatrimonioTotal() > 1050000);
   });
 
@@ -130,8 +133,8 @@ describe('calcHealthScore', () => {
   // Saldos en el modelo actual: S.cuentas[] (Nequi y Efectivo fijos + personalizadas). Antes estos tests
   // cargaban los campos viejos de saldo y migrarCuentasLegacy() los convertía; esa migración ya no existe.
   const cuentas = ({ nequi = 0, efectivo = 0, custom = [] } = {}) => [
-    { id: 'nequi', tipo: 'nequi', saldo: nequi },
-    { id: 'efectivo', tipo: 'efectivo', saldo: efectivo },
+    { id: 'nequi', tipo: 'billetera', nombre: 'Nequi', saldo: nequi },
+    { id: 'efectivo', tipo: 'efectivo', nombre: 'Efectivo', saldo: efectivo },
     ...custom,
   ];
 
@@ -152,7 +155,7 @@ describe('calcHealthScore', () => {
   function freshApp(sOverrides = {}) {
     const ctx = loadApp([
       path.join(CORE_DIR, 'core-state.js'), path.join(CORE_DIR, 'periodo.js'), path.join(CORE_DIR, 'nu-calc.js'),
-      path.join(CORE_DIR, 'calc-helpers.js'),
+      path.join(CORE_DIR, 'calc-helpers.js'), path.join(CORE_DIR, 'umbrales.js'), path.join(CORE_DIR, 'reglas.js'), path.join(CORE_DIR, 'salud.js'), path.join(CORE_DIR, 'plan-deudas.js'),
       path.join(MODULES_DIR, 'inicio.js'),
     ]);
     Object.assign(ctx.S, sOverrides);
@@ -195,7 +198,7 @@ describe('calcHealthScore', () => {
     assert.ok(r.tips.some((t) => t.includes('menos de 3 meses')));
   });
 
-  test('calcHealthScore — liquidez negativa (deuda TC > patrimonio líquido) penaliza -15', () => {
+  test('calcHealthScore — liquidez negativa (deuda TC > plata disponible) penaliza -15', () => {
     const ctx = freshApp({
       cuentas: cuentas({ nequi: 100000 }),
       tarjetasCredito: [{ id: 'tc1', deuda: 300000, cupo: 1000000 }],
@@ -203,27 +206,38 @@ describe('calcHealthScore', () => {
       pagosGastosFijos: { ['g1_' + currentMonthKey()]: { monto: 50000 } },
     });
     const r = ctx.calcHealthScore();
-    assert.ok(r.tips.some((t) => t.includes('deuda en tarjetas supera tu patrimonio líquido')));
+    assert.ok(r.tips.some((t) => t.includes('Tu deuda en tarjetas supera la plata que tienes disponible')));
   });
 
-  test('calcHealthScore — deuda TC alta y patrimonio que no la cubre (rama sin ingresos registrados)', () => {
+  test('calcHealthScore — deuda TC alta sin ingresos registrados: una sola alerta (no se penaliza dos veces la misma deuda)', () => {
     const ctx = freshApp({
       tarjetasCredito: [{ id: 'tc1', deuda: 800000, cupo: 1000000 }],
     });
     const r = ctx.calcHealthScore();
-    assert.ok(r.tips.some((t) => t.includes('patrimonio no la cubre')));
+    assert.ok(r.tips.some((t) => t.includes('Tu deuda en tarjetas supera la plata que tienes disponible')));
+    assert.ok(!r.tips.some((t) => t.includes('patrimonio no la cubre')), 'antes salía una segunda alerta casi igual (−15 otra vez)');
+    assert.equal(r.score, 35, '50 − 15 por liquidez negativa; la misma deuda no resta de nuevo');
   });
 
-  test('calcHealthScore — gastando más de lo que ingresa este mes avisa', () => {
+  test('calcHealthScore — gastando más de lo que ingresa este mes avisa (con historial) y no concluye nada en el primer mes (sin base)', () => {
     const mes = currentMonthKey();
-    const ctx = freshApp({
+    const ingreso = { id: 'i1', nombre: 'Sueldo', monto: 1000000, desde: '2020-01', cobros: [{ id: 'c1', mesCubre: mes, monto: 1000000, fecha: mes + '-01' }] };
+    // Primer mes de uso: en el mes en curso los ingresos pueden estar a medio anotar; «gastas más de lo que ingresas» sería una conclusión precipitada.
+    const primerMes = freshApp({
+      cuentas: cuentas({ nequi: 2000000 }), ingresosFijos: [ingreso],
+      gastosFijos: [{ id: 'g1', monto: 1500000 }], pagosGastosFijos: { ['g1_' + mes]: { monto: 1500000 } },
+    }).calcHealthScore();
+    assert.equal(primerMes.sinBase, true);
+    assert.ok(!primerMes.tips.some((t) => t.includes('gastando más de lo que ingresas')), 'sin base no se juzga el flujo');
+    // Con dos meses completos de historial sí se avisa.
+    const conHistorial = freshApp({
       cuentas: cuentas({ nequi: 2000000 }),
-      ingresosFijos: [{ id: 'i1', nombre: 'Sueldo', monto: 1000000, desde: '2020-01', cobros: [{ id: 'c1', mesCubre: mes, monto: 1000000, fecha: mes + '-01' }] }],
+      ingresosFijos: [{ ...ingreso, cobros: [...ingreso.cobros, ...[1, 2].map((n) => ({ id: 'p' + n, mesCubre: mesHace(n), monto: 1000000, fecha: mesHace(n) + '-15' }))] }],
       gastosFijos: [{ id: 'g1', monto: 1500000 }],
-      pagosGastosFijos: { ['g1_' + mes]: { monto: 1500000 } },
-    });
-    const r = ctx.calcHealthScore();
-    assert.ok(r.tips.some((t) => t.includes('gastando más de lo que ingresas')));
+      pagosGastosFijos: { ['g1_' + mes]: { monto: 1500000 }, ...pagosPrevios(500000, 2) },
+    }).calcHealthScore();
+    assert.equal(conHistorial.sinBase, false);
+    assert.ok(conHistorial.tips.some((t) => t.includes('gastando más de lo que ingresas')));
   });
 
   // Meses previos con ingreso: un cobro de ingreso fijo en el día 15 de cada uno de los últimos `n` meses.
@@ -265,15 +279,19 @@ describe('calcHealthScore', () => {
   test('calcHealthScore — cada consejo trae su tipo: una sugerencia (CDT) no es un logro y lleva a donde se resuelve', () => {
     const mes = currentMonthKey();
     const ctx = freshApp({
-      cuentas: cuentas({ nequi: 9000000 }), // 9 meses de reserva: el fondo de emergencia ya está cubierto
+      cuentas: cuentas({ nequi: 9000000, custom: [{ id: 'nu', tipo: 'ahorro', nombre: 'Nu', tasaEA: 9.25 }] }), // 9 meses de reserva: el fondo de emergencia ya está cubierto
       ingresosFijos: [{ id: 'i1', nombre: 'Sueldo', monto: 3000000, desde: '2020-01', cobros: [{ id: 'c1', mesCubre: mes, monto: 3000000, fecha: mes + '-01' }] }],
       gastosFijos: [{ id: 'g1', monto: 1000000 }],
-      pagosGastosFijos: { ['g1_' + mes]: { monto: 1000000 } },
+      pagosGastosFijos: { ['g1_' + mes]: { monto: 1000000 }, ...pagosPrevios(1000000, 3) }, // con gasto típico medido: sin él no se sabe cuánto sobra
     });
     const cdt = ctx.calcHealthScore().consejos.find((c) => c.texto.includes('CDT'));
     assert.ok(cdt, 'con ahorros que sobran se sugiere el CDT');
     assert.equal(cdt.tipo, 'sugerencia');
-    assert.equal(cdt.ir, 'cuentas');
+    assert.equal(cdt.ir, 'cuentas/cuenta:nu', 'lleva directo a la cuenta de ahorro, donde se crea el CDT');
+    assert.match(cdt.texto, /Te sobran .* por encima de tus 3 meses de reserva/, 'dice cuánto sobra: lo que se pone en el CDT no toca el fondo mínimo');
+    // Sin gasto típico (usuario nuevo) no se sabe qué es «de sobra»: no se sugiere.
+    const sinGastoTipico = freshApp({ cuentas: cuentas({ nequi: 9000000 }), gastosFijos: [{ id: 'g1', monto: 1000000 }], pagosGastosFijos: { ['g1_' + mes]: { monto: 1000000 } } });
+    assert.ok(!sinGastoTipico.calcHealthScore().tips.some((t) => t.includes('CDT')));
   });
 
   test('calcHealthScore — el CDT no se sugiere si las reservas no llegan a 3 meses ni con deuda de tarjeta', () => {
@@ -300,7 +318,7 @@ describe('calcHealthScore', () => {
       tarjetasCredito: [{ id: 'tc1', deuda: 300000, cupo: 1000000 }],
       gastosFijos: [{ id: 'g1', monto: 50000 }],
       pagosGastosFijos: { ['g1_' + mes]: { monto: 50000 } },
-      gastosVar: [{ id: 'v1', monto: 1000, fecha: mes + '-01', cat: 'Comida', fuente: 'nequi' }],
+      gastosVar: [{ id: 'v1', monto: 1000, fecha: mes + '-01', cat: 'Comida', fuente: 'cuenta:nequi' }],
     });
     const tipos = Array.from(ctx.calcHealthScore().consejos, (c) => c.tipo); // Array.from: el array viene de otro contexto de `vm`
     const orden = { alerta: 0, aviso: 1, sugerencia: 2, ok: 3 };
@@ -357,8 +375,9 @@ describe('calcHealthScore', () => {
     assert.ok(inicioDeMes.tips.includes('Tus reservas cubren menos de 3 meses de gastos.'), 'mide contra el gasto típico, no contra el gasto parcial del mes');
     // Sin ningún mes anterior con gastos no hay con qué medir: ni puntos ni consejo de reservas.
     const sinHistorial = freshApp({ ...base, pagosGastosFijos: { ['g1_' + mes]: { monto: 25000 } } }).calcHealthScore();
-    assert.ok(!sinHistorial.tips.some((t) => t.includes('reservas')));
-    assert.equal(sinHistorial.score, 50 + 10 /* gastos 2,5 % de los ingresos */, 'sin +20 de reservas inflado');
+    assert.ok(!sinHistorial.tips.some((t) => t.includes('menos de 3 meses')), 'sin gasto típico no se puntúa ni se aconseja sobre las reservas');
+    assert.ok(sinHistorial.tips.some((t) => t.includes('Sigue registrando tus ingresos y gastos')), 'pero se explica por qué todavía no hay medición');
+    assert.equal(sinHistorial.score, 50 + 5 /* sin deudas */, 'ni +20 de reservas inflado ni +10 gratis por un mes que apenas empieza (el ratio de gasto mide meses completos)');
   });
 
   test('calcHealthScore — el gasto típico es el promedio de los últimos 3 meses con datos, no el del mes en curso', () => {
@@ -367,7 +386,7 @@ describe('calcHealthScore', () => {
     const r = freshApp({
       cuentas: cuentas({ nequi: 9000000 }),
       gastosFijos: [{ id: 'g1', monto: 1 }],
-      ingresosFijos: [{ id: 'i1', nombre: 'Sueldo', monto: 20000000, desde: '2020-01', cobros: [{ id: 'c1', mesCubre: mes, monto: 20000000, fecha: mes + '-01' }] }],
+      ingresosFijos: [...ingresosPrevios(5000000), { id: 'i1', nombre: 'Sueldo', monto: 20000000, desde: '2020-01', cobros: [{ id: 'c1', mesCubre: mes, monto: 20000000, fecha: mes + '-01' }] }],
       pagosGastosFijos: { ['g1_' + mes]: { monto: 5000000 }, ...pagosPrevios(1000000, 3) },
     }).calcHealthScore();
     assert.ok(!r.tips.some((t) => t.includes('reservas')));
@@ -459,7 +478,7 @@ describe('periodo', () => {
   function app(estado = {}) {
     const ctx = loadApp([path.join(CORE_DIR, 'core-state.js'), path.join(CORE_DIR, 'periodo.js')]);
     Object.assign(ctx.S, {
-      modulos: { mesada: true }, cuentas: [{ id: 'nequi', tipo: 'nequi', saldo: 0 }, { id: 'efectivo', tipo: 'efectivo', saldo: 0 }],
+      modulos: { mesada: true }, cuentas: [{ id: 'nequi', tipo: 'billetera', nombre: 'Nequi', saldo: 0 }, { id: 'efectivo', tipo: 'efectivo', nombre: 'Efectivo', saldo: 0 }],
       movimientos: [], gastosVar: [], gastosFijos: [], pagosGastosFijos: {}, ingresosFijos: [], mesadas: undefined,
     }, estado);
     return ctx;
@@ -483,10 +502,10 @@ describe('periodo', () => {
     assert.equal(P(ctx).mesadaDelMes('2026-10'), 0);
   });
 
-  test('mesadaDelMes — con el módulo apagado o sin datos da 0; suma papá y mamá', () => {
+  test('mesadaDelMes — sin datos da 0; suma papá y mamá; apagar el módulo NO borra la plata que ya entró', () => {
     const datos = { papa: { cuotas: { 2026: 10 }, pagos: { '2026-0': { monto: 10 } } }, mama: { cuotas: { 2026: 5 }, pagos: { '2026-0': { monto: 5 } } } };
     assert.equal(P(app({ mesadas: datos })).mesadaDelMes('2026-01'), 15);
-    assert.equal(P(app({ mesadas: datos, modulos: {} })).mesadaDelMes('2026-01'), 0);
+    assert.equal(P(app({ mesadas: datos, modulos: {} })).mesadaDelMes('2026-01'), 15, 'módulo apagado: sigue contando como ingreso');
     assert.equal(P(app()).mesadaDelMes('2026-01'), 0);
   });
 
@@ -505,12 +524,12 @@ describe('periodo', () => {
   test('gastos fijos — se cuentan con el monto PAGADO (editar el gasto fijo no reescribe el pasado)', () => {
     const ctx = app({ gastosFijos: [{ id: 'g1', nombre: 'Arriendo', monto: 900, cat: 'Hogar' }], pagosGastosFijos: { 'g1_2026-09': { fecha: '2026-09-02', monto: 800 } } });
     const g = P(ctx).gastosDelMes('2026-09');
-    assert.equal(g.gfTotal, 800);
-    assert.equal(P(ctx).gastosDelMes('2026-10').gfTotal, 0);
+    assert.equal(g.gastoFijoTotal, 800);
+    assert.equal(P(ctx).gastosDelMes('2026-10').gastoFijoTotal, 0);
   });
 
   test('Spotify — cada cuota cobrada cuenta como ingreso en SU fecha y el pago del plan como gasto: el balance es la caja real', () => {
-    const cobro = (id, fecha, monto) => ({ id, spId: id, tipo: 'cobro', nombre: id, monto, fecha, fuente: 'nequi' });
+    const cobro = (id, fecha, monto) => ({ id, spId: id, tipo: 'cobro', nombre: id, monto, fecha, fuente: 'cuenta:nequi' });
     const ctx = app({
       spotify: { historial: [cobro('a', '2026-10-28', 15000), cobro('b', '2026-10-28', 15000), cobro('c', '2026-10-28', 15000), { id: 'p', tipo: 'pago', monto: 50000, fecha: '2026-10-28' }] },
       gastosVar: [{ id: 'g', desc: 'Spotify Premium', monto: 50000, fecha: '2026-10-28', cat: 'Suscripciones', clase: 'gasto', _secundario: true, _origenSeccion: 'Spotify' }],
@@ -539,9 +558,9 @@ describe('periodo', () => {
       spotify: { historial: [
         { id: 'h1', spId: 'x', tipo: 'cobro', monto: 5100, fecha: '2026-09-28', pendiente: 0, pendienteHistorial: [{ id: 'ab', monto: 2100, fecha: '2026-10-03' }] },
         { id: 'h2', spId: 'y', tipo: 'cobro', monto: 5100, fecha: '2026-10-05', extra: 400, extraFuente: '' },
-        { id: 'h3', spId: 'z', tipo: 'cobro', monto: 5100, fecha: '2026-10-06', extra: 700, extraFuente: 'nequi', extraMovId: 'm1' },
+        { id: 'h3', spId: 'z', tipo: 'cobro', monto: 5100, fecha: '2026-10-06', extra: 700, extraFuente: 'cuenta:nequi', extraMovId: 'm1' },
       ] },
-      movimientos: [{ id: 'm1', tipo: 'entrada', clase: 'ingreso', fuente: 'nequi', monto: 700, fecha: '2026-10-06', _esExtraIngreso: true, _secundario: true, _origenSeccion: 'Spotify' }],
+      movimientos: [{ id: 'm1', tipo: 'entrada', clase: 'ingreso', fuente: 'cuenta:nequi', monto: 700, fecha: '2026-10-06', _esExtraIngreso: true, _secundario: true, _origenSeccion: 'Spotify' }],
     });
     assert.equal(P(ctx).spotifyDelMes('2026-09'), 3000, 'principal del cobro (5100 − 2100 abonados)');
     assert.equal(P(ctx).spotifyDelMes('2026-10'), 2100 + 5100 + 400 + 5100, 'abono + cuotas + extra sin cuenta');
@@ -555,22 +574,22 @@ describe('periodo', () => {
 
   test('gastos fijos — cuentan en el mes de la FECHA del pago, no en el mes que cubren (regla de caja)', () => {
     const ctx = app({ gastosFijos: [{ id: 'g1', nombre: 'Arriendo', monto: 800, cat: 'Hogar' }], pagosGastosFijos: { 'g1_2026-09': { fecha: '2026-10-03', monto: 800 }, 'g1_2026-08': { monto: 700 } } });
-    assert.equal(P(ctx).gastosDelMes('2026-09').gfTotal, 0, 'el arriendo de septiembre pagado en octubre no es gasto de septiembre');
-    assert.equal(P(ctx).gastosDelMes('2026-10').gfTotal, 800);
-    assert.equal(P(ctx).gastosDelMes('2026-08').gfTotal, 700, 'sin fecha, cae en el mes que cubre');
+    assert.equal(P(ctx).gastosDelMes('2026-09').gastoFijoTotal, 0, 'el arriendo de septiembre pagado en octubre no es gasto de septiembre');
+    assert.equal(P(ctx).gastosDelMes('2026-10').gastoFijoTotal, 800);
+    assert.equal(P(ctx).gastosDelMes('2026-08').gastoFijoTotal, 700, 'sin fecha, cae en el mes que cubre');
     const p = P(ctx).pagosFijos().find(x => x.fecha === '2026-10-03');
     assert.equal(p.mesCubre, '2026-09');
   });
 
   test('gastos fijos — un pago cuyo gasto fijo ya se eliminó SIGUE contando (con la categoría que guardó el pago)', () => {
     const ctx = app({ pagosGastosFijos: { 'borrado_2026-09': { fecha: '2026-09-05', monto: 100, cat: 'Ocio', nombre: 'Netflix' } } });
-    assert.equal(P(ctx).gastosDelMes('2026-09').gfTotal, 100);
+    assert.equal(P(ctx).gastosDelMes('2026-09').gastoFijoTotal, 100);
     assert.deepEqual(plano(P(ctx).gastoPorCategoria('2026-09')), { Ocio: 100 });
   });
 
   test('gastos fijos — un pago sin monto cuenta 0 (no se inventa el monto actual del gasto fijo)', () => {
     const ctx = app({ gastosFijos: [{ id: 'g1', monto: 300 }], pagosGastosFijos: { 'g1_2026-09': { fecha: '2026-09-10' } } });
-    assert.equal(P(ctx).gastosDelMes('2026-09').gfTotal, 0);
+    assert.equal(P(ctx).gastosDelMes('2026-09').gastoFijoTotal, 0);
   });
 
   test('gastos variables — los pagos de gasto fijo (ya contados como fijos) no se cuentan dos veces', () => {
@@ -579,7 +598,7 @@ describe('periodo', () => {
       gastosVar: [{ fecha: '2026-09-02', monto: 800, esPagoGastoFijo: true, clase: 'neutro' }, { fecha: '2026-09-03', monto: 50, cat: 'Comida', clase: 'gasto' }, { fecha: '2026-10-01', monto: 9, clase: 'gasto' }],
     });
     const g = P(ctx).gastosDelMes('2026-09');
-    assert.equal(g.gvTotal, 50);
+    assert.equal(g.gastoVariableTotal, 50);
     assert.equal(g.total, 850);
     assert.equal(g.items.length, 2);
   });
@@ -596,7 +615,7 @@ describe('periodo', () => {
     const ctx = app({
       mesadas: { papa: { cuotas: { 2026: 80000 }, pagos: { '2026-8': {} } }, mama: { cuotas: {}, pagos: {} } },
       ingresosFijos: [{ id: 'if', monto: 20000, desde: '2026-01', cobros: [{ id: 'c1', mesCubre: '2026-09', monto: 20000, fecha: '2026-09-15' }] }],
-      movimientos: [{ id: 'm', tipo: 'entrada', monto: 10000, fecha: '2026-09-10', fuente: 'nequi', clase: 'ingreso' }, { id: 'e', tipo: 'entrada', monto: 999, fecha: '2026-09-11', _esEspejo: true, clase: 'neutro' }],
+      movimientos: [{ id: 'm', tipo: 'entrada', monto: 10000, fecha: '2026-09-10', fuente: 'cuenta:nequi', clase: 'ingreso' }, { id: 'e', tipo: 'entrada', monto: 999, fecha: '2026-09-11', _esEspejo: true, clase: 'neutro' }],
       gastosVar: [{ fecha: '2026-09-03', monto: 30000, cat: 'Comida', clase: 'gasto' }],
     });
     const b = P(ctx).balanceDelMes('2026-09');
@@ -634,21 +653,24 @@ describe('migraciones', () => {
   const app = () => loadApp([path.join(CORE_DIR, 'core-state.js')]);
   const plano = x => JSON.parse(JSON.stringify(x));
 
-  test('datos nuevos (sin schemaVersion) nacen en la versión actual (9)', () => {
+  test('datos nuevos (sin schemaVersion) nacen en la versión actual (10)', () => {
     const d = plano(app().aplicarMigraciones({ cuentas: [] }));
-    assert.equal(d.schemaVersion, 9);
+    assert.equal(d.schemaVersion, 10);
   });
 
   describe('estado de Spotify (S.spotify, esquema 9)', () => {
     test('el estado por defecto y load() dejan S.spotify completo (sin guardas en el resto de la app)', () => {
       const ctx = app();
-      assert.deepEqual(plano(ctx.S.spotify), { personas: [], costo: 0, cajitaId: '', historial: [] });
+      assert.deepEqual(plano(ctx.S.spotify), { personas: [], costo: 0, fuenteId: '', historial: [] });
       ctx.S.spotify = { costo: '12000' }; ctx._ensureSpotify();
-      assert.deepEqual(plano(ctx.S.spotify), { personas: [], costo: 12000, cajitaId: '', historial: [] });
+      assert.deepEqual(plano(ctx.S.spotify), { personas: [], costo: 12000, fuenteId: '', historial: [] });
     });
-    test('guardia: ningún archivo de la app usa las cuatro llaves sueltas de antes (S.spotifyPersonas/Costo/CajitaId/Historial)', () => {
+    test('guardia: ningún archivo de la app NI de scripts/ usa las cuatro llaves sueltas de antes (S.spotifyPersonas/Costo/CajitaId/Historial)', () => {
+      // scripts/notificaciones/checks.js quedaba fuera del recorrido y por eso siguió leyendo S.spotifyPersonas tras la migración (v36).
       const fs = require('fs'), dir = path.join(CORE_DIR, '..');
-      const archivos = ['core', 'modules'].flatMap(d => fs.readdirSync(path.join(dir, d)).filter(f => f.endsWith('.js')).map(f => path.join(dir, d, f)));
+      const raiz = path.join(dir, '..');
+      const archivos = ['core', 'modules'].flatMap(d => fs.readdirSync(path.join(dir, d)).filter(f => f.endsWith('.js')).map(f => path.join(dir, d, f)))
+        .concat(['scripts', path.join('scripts', 'notificaciones')].flatMap(d => fs.readdirSync(path.join(raiz, d)).filter(f => f.endsWith('.js')).map(f => path.join(raiz, d, f))));
       const mal = [];
       for (const f of archivos) {
         const t = fs.readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1');
@@ -699,24 +721,30 @@ describe('backup-import', () => {
   const app = () => loadApp([core('core-state.js'), core('periodo.js'), core('nu-calc.js'), core('calc-helpers.js'), core('cuenta-efectos.js'), modulo('configuracion.js')], { permissive: true });
   const plano = x => JSON.parse(JSON.stringify(x));
 
-  test('un backup exportado sin tasa de Nu (nuRate: null) se puede importar', () => {
+  const nuCta = (tasaEA) => ({ id: 'nu', tipo: 'ahorro', nombre: 'Nu', tasaEA });
+  test('un backup exportado con una cuenta de ahorro sin tasa (tasaEA: null) se puede importar', () => {
     const ctx = app();
-    assert.deepEqual(plano(ctx._validarEstructuraJSON({ schemaVersion: 9, nuRate: null, cajitas: [] })), []);
+    assert.deepEqual(plano(ctx._validarEstructuraJSON({ schemaVersion: 10, cuentas: [nuCta(null)], cajitas: [] })), []);
   });
-  test('nuRate numérico sigue siendo válido; texto u otro tipo se rechaza', () => {
+  test('tasaEA numérica sigue siendo válida; texto u otro tipo se rechaza', () => {
     const ctx = app();
-    assert.deepEqual(plano(ctx._validarEstructuraJSON({ schemaVersion: 9, nuRate: 9.3, cajitas: [] })), []);
+    assert.deepEqual(plano(ctx._validarEstructuraJSON({ schemaVersion: 10, cuentas: [nuCta(9.3)], cajitas: [] })), []);
     for (const malo of ['9,3', true, {}, []]) {
-      assert.equal(ctx._validarEstructuraJSON({ schemaVersion: 9, nuRate: malo, cajitas: [] }).length, 1, JSON.stringify(malo));
+      assert.equal(ctx._validarEstructuraJSON({ schemaVersion: 10, cuentas: [nuCta(malo)], cajitas: [] }).length, 1, JSON.stringify(malo));
     }
+  });
+  test('una cuenta sin tipo válido, o una cajita sin cuenta, se rechazan', () => {
+    const ctx = app();
+    assert.equal(ctx._validarEstructuraJSON({ schemaVersion: 10, cuentas: [{ id: 'x', nombre: 'X', tipo: 'nequi' }] }).length, 1);
+    assert.equal(ctx._validarEstructuraJSON({ schemaVersion: 10, cuentas: [nuCta(9)], cajitas: [{ id: 'a', cuentaId: 'otra' }] }).length, 1);
   });
   test('un backup de un esquema anterior al actual se rechaza (la app nació limpia: no migra datos viejos)', () => {
     const ctx = app();
-    for (const v of [7, 8]) assert.match(ctx._validarEstructuraJSON({ schemaVersion: v, cajitas: [] })[0], /versión anterior/, 'esquema ' + v);
+    for (const v of [7, 8, 9]) assert.match(ctx._validarEstructuraJSON({ schemaVersion: v, cajitas: [] })[0], /versión anterior/, 'esquema ' + v);
   });
   test('un backup exportado por esta versión se valida y no cambia al pasar por aplicarMigraciones', () => {
     const ctx = app();
-    const actual = { schemaVersion: 9, nuRate: 11, cajitas: [{ id: 'a', saldo: 5 }], spotify: { personas: [], costo: 0, cajitaId: '', historial: [] } };
+    const actual = { schemaVersion: 10, cuentas: [nuCta(11)], cajitas: [{ id: 'a', cuentaId: 'nu', saldo: 5 }], spotify: { personas: [], costo: 0, fuenteId: '', historial: [] } };
     assert.deepEqual(plano(ctx._validarEstructuraJSON(actual)), []);
     assert.deepEqual(plano(ctx.aplicarMigraciones(plano(actual))), actual);
   });
@@ -765,21 +793,23 @@ describe('toast', () => {
   const RAIZ = path.join(__dirname, '..');
   const ctxToast = () => {
     const ctx = loadApp([path.join(RAIZ, 'js', 'core', 'core-state.js')], { permissive: true });
-    const hijos = [];
-    const nuevo = () => { const attrs = {}; return { className: '', innerHTML: '', attrs, setAttribute(k, v) { attrs[k] = v; }, classList: { add() {} }, remove() {} }; };
-    ctx.document.getElementById = () => ({ appendChild(e) { hijos.push(e); } });
-    ctx.document.createElement = nuevo;
+    // DOM real: toast() construye nodos (textContent para el texto), no una cadena de HTML.
+    const { JSDOM } = require('jsdom');
+    const doc = new JSDOM('<!doctype html><body><div id="toast-container"></div></body>').window.document;
+    ctx.document = doc;
     ctx.setTimeout = () => 0;
-    return { ctx, hijos };
+    const hijos = { get length() { return doc.querySelector('#toast-container').children.length; }, get all() { return Array.from(doc.querySelector('#toast-container').children); } };
+    return { ctx, hijos: hijos.all, vivo: hijos };
   };
 
   test('cada tipo lleva su clase; salida y err se distinguen por el ícono, no solo por el color', () => {
-    const { ctx, hijos } = ctxToast();
+    const { ctx, vivo } = ctxToast();
     for (const tipo of ['ok', 'salida', 'warn', 'err', 'info']) ctx.toast('mensaje ' + tipo, tipo);
+    const hijos = vivo.all;
     assert.deepEqual(hijos.map(h => h.className), ['toast toast-ok', 'toast toast-salida', 'toast toast-warn', 'toast toast-err', 'toast toast-info']);
-    const icono = h => /<span class="toast-ico">(.*?)<\/span><span class="toast-msg">/.exec(h.innerHTML)[1];
+    const icono = h => h.querySelector('.toast-ico').innerHTML;
     assert.equal(new Set(hijos.map(icono)).size, 5, 'cinco íconos distintos');
-    assert.ok(hijos.every((h, i) => h.innerHTML.includes('mensaje ' + ['ok', 'salida', 'warn', 'err', 'info'][i])));
+    assert.ok(hijos.every((h, i) => h.querySelector('.toast-msg').textContent === 'mensaje ' + ['ok', 'salida', 'warn', 'err', 'info'][i]));
   });
   test('todo toast() de la app usa un tipo válido y cada tipo tiene su estilo (un tipo mal escrito salía sin color)', () => {
     const fs = require('node:fs');
@@ -796,15 +826,16 @@ describe('toast', () => {
     assert.deepEqual(malos, []);
   });
   test('un error se anuncia como alerta; lo demás como estado', () => {
-    const { ctx, hijos } = ctxToast();
+    const { ctx, vivo } = ctxToast();
     ctx.toast('x', 'err'); ctx.toast('y', 'salida');
-    assert.equal(hijos[0].attrs.role, 'alert');
-    assert.equal(hijos[1].attrs.role, 'status');
+    const hijos = vivo.all;
+    assert.equal(hijos[0].getAttribute('role'), 'alert');
+    assert.equal(hijos[1].getAttribute('role'), 'status');
   });
   test('un tipo desconocido no rompe: usa un punto como ícono', () => {
-    const { ctx, hijos } = ctxToast();
+    const { ctx, vivo } = ctxToast();
     ctx.toast('x', 'raro');
-    assert.match(hijos[0].innerHTML, /toast-ico">•</);
+    assert.equal(vivo.all[0].querySelector('.toast-ico').textContent, '•');
   });
 });
 
@@ -821,13 +852,13 @@ describe('ingreso-real', () => {
   const core = f => path.join(RAIZ, 'js', 'core', f);
   const modulo = f => path.join(RAIZ, 'js', 'modules', f);
   const BASE = [core('core-state.js'), core('periodo.js'), core('nu-calc.js'), core('calc-helpers.js'), core('cuenta-efectos.js')];
-  const TODO = [...BASE, modulo('nu.js'), modulo('cuentas.js'), modulo('inicio.js'), modulo('analisis.js'), core('wrapped-gate.js'), modulo('wrapped.js')];
+  const TODO = [...BASE, core('umbrales.js'), core('reglas.js'), core('salud.js'), core('plan-deudas.js'), modulo('nu.js'), modulo('cuentas.js'), modulo('inicio.js'), modulo('analisis.js'), core('wrapped-gate.js'), modulo('wrapped.js')];
   const MES = '2026-10';
 
   const cuentas = (custom = []) => [
-    { id: 'nequi', tipo: 'nequi', saldo: 0 }, { id: 'efectivo', tipo: 'efectivo', saldo: 0 }, ...custom,
+    { id: 'nequi', tipo: 'billetera', nombre: 'Nequi', saldo: 0 }, { id: 'efectivo', tipo: 'efectivo', nombre: 'Efectivo', saldo: 0 }, ...custom,
   ];
-  const mov = (id, monto, extra = {}) => ({ id, tipo: 'entrada', clase: 'ingreso', monto, fecha: '2026-10-05', fuente: 'nequi', desc: 'x', ...extra });
+  const mov = (id, monto, extra = {}) => ({ id, tipo: 'entrada', clase: 'ingreso', monto, fecha: '2026-10-05', fuente: 'cuenta:nequi', desc: 'x', ...extra });
   const neutro = (id, monto, extra = {}) => mov(id, monto, { clase: 'neutro', ...extra });
 
   function app(archivos = BASE, estado = {}) {
@@ -840,7 +871,7 @@ describe('ingreso-real', () => {
 
   describe('qué cuenta como ingreso real (S.movimientos)', () => {
     test('sueldo, regalo y entradas a cuenta o cajita cuentan', () => {
-      const a = app(BASE, { movimientos: [mov('a', 1), mov('b', 2, { fuente: 'efectivo' }), mov('c', 3, { fuente: 'cajita:k' }), mov('d', 4, { fuente: 'custom:z' })] });
+      const a = app(BASE, { movimientos: [mov('a', 1), mov('b', 2, { fuente: 'cuenta:efectivo' }), mov('c', 3, { fuente: 'cajita:k' }), mov('d', 4, { fuente: 'cuenta:z' })] });
       assert.deepEqual(ids(a), ['a', 'b', 'c', 'd']);
     });
     test('SIN cuenta ni bandera cuenta (regla única: no depende de la cuenta)', () => {
@@ -856,7 +887,7 @@ describe('ingreso-real', () => {
       assert.deepEqual(ids(a), ['dif', 'extra', 'perdon']);
     });
     test('solo cuenta `clase: "ingreso"`: neutro, ajuste y sin clase no cuentan, lleven la etiqueta que lleven', () => {
-    const sinClase = { id: 'sin-clase', tipo: 'entrada', monto: 12, fecha: '2026-10-05', fuente: 'nequi', desc: 'Sueldo' };
+    const sinClase = { id: 'sin-clase', tipo: 'entrada', monto: 12, fecha: '2026-10-05', fuente: 'cuenta:nequi', desc: 'Sueldo' };
     const a = app(BASE, { movimientos: [
       neutro('mesada', 1, { _origenSeccion: 'Mesada' }),
       neutro('prestado', 2, { _origenSeccion: 'Prestado · Me deben' }),
@@ -881,24 +912,24 @@ describe('ingreso-real', () => {
 });
 
   describe('cuentas personalizadas (su historial vive en S.movimientos, con fuente "custom:<id>")', () => {
-    const custom = () => cuentas([{ id: 'z', tipo: 'custom', saldo: 0 }]);
+    const custom = () => cuentas([{ id: 'z', tipo: 'banco', saldo: 0 }]);
     test('un ingreso a una cuenta personalizada cuenta', () => {
-      const a = app(BASE, { cuentas: custom(), movimientos: [mov('c1', 5, { fuente: 'custom:z', fecha: '2026-10-03' })] });
+      const a = app(BASE, { cuentas: custom(), movimientos: [mov('c1', 5, { fuente: 'cuenta:z', fecha: '2026-10-03' })] });
       assert.deepEqual(ids(a), ['c1']);
     });
     test('espejo en la cuenta no cuenta; espejo con extra de ingreso sí', () => {
       const a = app(BASE, { cuentas: custom(), movimientos: [
-        neutro('e1', 5, { fuente: 'custom:z', _esEspejo: true, _origenSeccion: 'Prestado · Me deben' }),
-        mov('e2', 6, { fuente: 'custom:z', _esEspejo: true, _esExtraIngreso: true }),
+        neutro('e1', 5, { fuente: 'cuenta:z', _esEspejo: true, _origenSeccion: 'Prestado · Me deben' }),
+        mov('e2', 6, { fuente: 'cuenta:z', _esEspejo: true, _esExtraIngreso: true }),
       ] });
       assert.deepEqual(ids(a), ['e2']);
     });
     test('una entrada a "custom:" cuyo id NO está en las cuentas (cuenta borrada) cuenta igual', () => {
-      const a = app(BASE, { cuentas: custom(), movimientos: [mov('n', 9, { fuente: 'custom:borrada' })] });
+      const a = app(BASE, { cuentas: custom(), movimientos: [mov('n', 9, { fuente: 'cuenta:borrada' })] });
       assert.deepEqual(ids(a), ['n']);
     });
     test('una cuenta ya no tiene lista propia: lo que quede en cuenta.movimientos (datos de un esquema anterior) no se lee', () => {
-      const a = app(BASE, { cuentas: cuentas([{ id: 'z', tipo: 'custom', saldo: 0, movimientos: [{ id: 'viejo', tipo: 'ingreso', monto: 5, fecha: '2026-10-03' }] }]) });
+      const a = app(BASE, { cuentas: cuentas([{ id: 'z', tipo: 'banco', saldo: 0, movimientos: [{ id: 'viejo', tipo: 'ingreso', monto: 5, fecha: '2026-10-03' }] }]) });
       assert.deepEqual(ids(a), []);
     });
   });
@@ -922,19 +953,19 @@ describe('ingreso-real', () => {
 
   describe('registrarMovEspejo: un espejo nuevo nace marcado', () => {
     test('espejo a Nequi/Efectivo, cajita y personalizada lleva _esEspejo, queda en S.movimientos con su fuente y no cuenta', () => {
-      const a = app(BASE, { cajitas: [{ id: 'k' }], cuentas: cuentas([{ id: 'z', tipo: 'custom', saldo: 0 }]) });
-      for (const cuenta of ['nequi', 'efectivo', 'cajita:k', 'custom:z']) {
+      const a = app(BASE, { cajitas: [{ id: 'k' }], cuentas: cuentas([{ id: 'z', tipo: 'banco', saldo: 0 }]) });
+      for (const cuenta of ['cuenta:nequi', 'cuenta:efectivo', 'cajita:k', 'cuenta:z']) {
         const id = a.registrarMovEspejo({ cuenta, flujo: 'entrada', monto: 10, fecha: '2026-10-05', desc: 'abono', origen: 'Modulo Nuevo' });
         assert.ok(id, cuenta);
       }
-      assert.deepEqual(Array.from(a.S.movimientos, m => m.fuente), ['nequi', 'efectivo', 'cajita:k', 'custom:z']);
+      assert.deepEqual(Array.from(a.S.movimientos, m => m.fuente), ['cuenta:nequi', 'cuenta:efectivo', 'cajita:k', 'cuenta:z']);
       assert.ok(a.S.movimientos.every(m => m._esEspejo === true && m._secundario === true));
       assert.equal(a.ingresosRealesDelMes(MES), 0, 'ni el de un módulo con otro _origenSeccion (no depende del prefijo "Prestado")');
     });
     test('con extra de ingreso (extra/perdón/diferencial) sí cuenta, aunque lleve _esEspejo', () => {
-      const a = app(BASE, { cuentas: cuentas([{ id: 'z', tipo: 'custom', saldo: 0 }]) });
-      a.registrarMovEspejo({ cuenta: 'nequi', flujo: 'entrada', monto: 10, fecha: '2026-10-05', desc: 'extra', origen: 'Prestado · Me deben', extra: { _esExtraIngreso: true } });
-      a.registrarMovEspejo({ cuenta: 'custom:z', flujo: 'entrada', monto: 20, fecha: '2026-10-05', desc: 'extra', origen: 'Prestado · Me deben', extra: { _esExtraIngreso: true } });
+      const a = app(BASE, { cuentas: cuentas([{ id: 'z', tipo: 'banco', saldo: 0 }]) });
+      a.registrarMovEspejo({ cuenta: 'cuenta:nequi', flujo: 'entrada', monto: 10, fecha: '2026-10-05', desc: 'extra', origen: 'Prestado · Me deben', extra: { _esExtraIngreso: true } });
+      a.registrarMovEspejo({ cuenta: 'cuenta:z', flujo: 'entrada', monto: 20, fecha: '2026-10-05', desc: 'extra', origen: 'Prestado · Me deben', extra: { _esExtraIngreso: true } });
       assert.equal(a.ingresosRealesDelMes(MES), 30);
     });
   });
@@ -942,14 +973,14 @@ describe('ingreso-real', () => {
   describe('las tres pantallas dan la misma cifra', () => {
     function escenario() {
       const a = app(TODO, {
-        cuentas: cuentas([{ id: 'ahorro', tipo: 'custom', saldo: 0 }]),
+        cuentas: cuentas([{ id: 'ahorro', tipo: 'banco', saldo: 0 }]),
         movimientos: [
           mov('m1', 100000, { fecha: '2026-10-01' }),
-          mov('m2', 20000, { fuente: 'efectivo', fecha: '2026-10-01' }),
-          mov('c1', 1000, { fuente: 'custom:ahorro', fecha: '2026-10-02' }),
-          mov('c2', 2000, { fuente: 'custom:ahorro', fecha: '2026-10-03' }),
-          mov('c3', 3000, { fuente: 'custom:ahorro', fecha: '2026-10-04', _esEspejo: true, _esExtraIngreso: true }),
-          neutro('c4', 4000, { fuente: 'custom:ahorro', fecha: '2026-10-05', _esEspejo: true, _origenSeccion: 'Prestado · Me deben' }),
+          mov('m2', 20000, { fuente: 'cuenta:efectivo', fecha: '2026-10-01' }),
+          mov('c1', 1000, { fuente: 'cuenta:ahorro', fecha: '2026-10-02' }),
+          mov('c2', 2000, { fuente: 'cuenta:ahorro', fecha: '2026-10-03' }),
+          mov('c3', 3000, { fuente: 'cuenta:ahorro', fecha: '2026-10-04', _esEspejo: true, _esExtraIngreso: true }),
+          neutro('c4', 4000, { fuente: 'cuenta:ahorro', fecha: '2026-10-05', _esEspejo: true, _origenSeccion: 'Prestado · Me deben' }),
           neutro('m4', 8000, { _origenSeccion: 'Mesada' }),
           neutro('m5', 9000, { _esEspejo: true, _origenSeccion: 'Prestado · Me deben' }),
           mov('m7', 700, { fuente: '', _esPerdonRecibido: true, _origenSeccion: 'Prestado · Yo debo' }),
@@ -988,7 +1019,7 @@ describe('clase-movimientos', () => {
   function app(estado = {}) {
     const ctx = loadApp(['core-state.js', 'periodo.js', 'cuenta-efectos.js', 'nu-calc.js'].map(f => path.join(CORE, f)), { permissive: true });
     Object.assign(ctx.S, {
-      modulos: {}, cuentas: [{ id: 'nequi', tipo: 'nequi', saldo: 0 }, { id: 'efectivo', tipo: 'efectivo', saldo: 0 }],
+      modulos: {}, cuentas: [{ id: 'nequi', tipo: 'billetera', nombre: 'Nequi', saldo: 0 }, { id: 'efectivo', tipo: 'efectivo', nombre: 'Efectivo', saldo: 0 }],
       movimientos: [], gastosVar: [], gastosFijos: [], pagosGastosFijos: {}, ingresosFijos: [], cajitas: [],
     }, estado);
     return ctx;
@@ -997,10 +1028,10 @@ describe('clase-movimientos', () => {
 
   test('registrarMovEspejo — por defecto el espejo nace "neutro"; con banderas de plata nueva, "ingreso"; `clase` explícita manda', () => {
     const ctx = app();
-    const a = ctx.registrarMovEspejo({ cuenta: 'nequi', flujo: 'entrada', monto: 10, fecha: '2026-10-01', desc: 'x', origen: 'Prestado · Me deben' });
-    const b = ctx.registrarMovEspejo({ cuenta: 'nequi', flujo: 'entrada', monto: 5, fecha: '2026-10-01', desc: 'extra', origen: 'Prestado', extra: { _esExtraIngreso: true } });
-    const c = ctx.registrarMovEspejo({ cuenta: 'nequi', flujo: 'salida', monto: 3, fecha: '2026-10-01', desc: 's', origen: 'Prestado' });
-    const d = ctx.registrarMovEspejo({ cuenta: 'nequi', flujo: 'entrada', monto: 7, fecha: '2026-10-01', desc: 'y', origen: 'Z', clase: 'ingreso' });
+    const a = ctx.registrarMovEspejo({ cuenta: 'cuenta:nequi', flujo: 'entrada', monto: 10, fecha: '2026-10-01', desc: 'x', origen: 'Prestado · Me deben' });
+    const b = ctx.registrarMovEspejo({ cuenta: 'cuenta:nequi', flujo: 'entrada', monto: 5, fecha: '2026-10-01', desc: 'extra', origen: 'Prestado', extra: { _esExtraIngreso: true } });
+    const c = ctx.registrarMovEspejo({ cuenta: 'cuenta:nequi', flujo: 'salida', monto: 3, fecha: '2026-10-01', desc: 's', origen: 'Prestado' });
+    const d = ctx.registrarMovEspejo({ cuenta: 'cuenta:nequi', flujo: 'entrada', monto: 7, fecha: '2026-10-01', desc: 'y', origen: 'Z', clase: 'ingreso' });
     const por = id => ctx.S.movimientos.find(m => m.id === id).clase;
     assert.deepEqual([por(a), por(b), por(c), por(d)], ['neutro', 'ingreso', 'neutro', 'ingreso']);
   });
@@ -1044,19 +1075,19 @@ describe('clase-movimientos', () => {
   });
 
   test('un ingreso con el mismo id en dos lugares no existe: una sola lista, un solo conteo', () => {
-    const ctx = app({ movimientos: [{ id: 'x', tipo: 'entrada', monto: 10, fecha: '2026-10-01', fuente: 'nequi', clase: 'ingreso' }] });
+    const ctx = app({ movimientos: [{ id: 'x', tipo: 'entrada', monto: 10, fecha: '2026-10-01', fuente: 'cuenta:nequi', clase: 'ingreso' }] });
     assert.equal(ctx.Periodo.ingresosDelMes('2026-10').entradas, 10);
   });
 
   test('registrarMovEspejo / borrarMovEspejo — toda cuenta (Nequi, personalizada, cajita) escribe y borra en S.movimientos con su `fuente`', () => {
-    const ctx = app({ cuentas: [{ id: 'nequi', tipo: 'nequi', saldo: 0 }, { id: 'efectivo', tipo: 'efectivo', saldo: 0 }, { id: 'cu1', tipo: 'custom', nombre: 'Madre', saldo: 0 }],
+    const ctx = app({ cuentas: [{ id: 'nequi', tipo: 'billetera', nombre: 'Nequi', saldo: 0 }, { id: 'efectivo', tipo: 'efectivo', nombre: 'Efectivo', saldo: 0 }, { id: 'cu1', tipo: 'banco', nombre: 'Madre', saldo: 0 }],
       cajitas: [{ id: 'c1', nombre: 'Sobra', saldo: 0 }] });
-    const a = ctx.registrarMovEspejo({ cuenta: 'custom:cu1', flujo: 'entrada', monto: 10, fecha: '2026-10-01', desc: 'x', origen: 'Prestado' });
+    const a = ctx.registrarMovEspejo({ cuenta: 'cuenta:cu1', flujo: 'entrada', monto: 10, fecha: '2026-10-01', desc: 'x', origen: 'Prestado' });
     const b = ctx.registrarMovEspejo({ cuenta: 'cajita:c1', flujo: 'salida', monto: 4, fecha: '2026-10-01', desc: 'y', origen: 'Mesada' });
     const por = id => JSON.parse(JSON.stringify(ctx.S.movimientos.find(m => m.id === id)));
-    assert.deepEqual([por(a).fuente, por(a).tipo, por(a).desc], ['custom:cu1', 'entrada', 'x']);
+    assert.deepEqual([por(a).fuente, por(a).tipo, por(a).desc], ['cuenta:cu1', 'entrada', 'x']);
     assert.deepEqual([por(b).fuente, por(b).tipo, por(b).desc], ['cajita:c1', 'salida', 'y']);
-    assert.equal(ctx.registrarMovEspejo({ cuenta: 'custom:no-existe', flujo: 'entrada', monto: 1, fecha: '2026-10-01', desc: 'z', origen: 'P' }), null, 'cuenta que ya no existe: no se escribe');
+    assert.equal(ctx.registrarMovEspejo({ cuenta: 'cuenta:no-existe', flujo: 'entrada', monto: 1, fecha: '2026-10-01', desc: 'z', origen: 'P' }), null, 'cuenta que ya no existe: no se escribe');
     assert.equal(ctx.borrarMovEspejo('cajita:c1', b), true);
     assert.equal(ctx.borrarMovEspejo('cajita:c1', b), false);
     assert.equal(ctx.S.movimientos.some(m => m.id === b), false);
@@ -1066,13 +1097,13 @@ describe('clase-movimientos', () => {
     const ctx = app({
       gastosVar: [{ id: 'g1', fecha: '2026-10-02', monto: 1000, cat: 'Comida', clase: 'gasto' }],
       movimientos: [
-        { id: 'r1', tipo: 'salida_manual', fuente: 'nequi', monto: 40000, fecha: '2026-10-01', desc: '40', clase: 'gasto' },
-        { id: 'r2', tipo: 'salida_manual', fuente: 'nequi', monto: 500, fecha: '2026-10-03', desc: 'otro retiro', clase: 'gasto' },
-        { id: 'r3', tipo: 'salida', fuente: 'nequi', monto: 7000, fecha: '2026-10-03', _esEspejo: true, clase: 'neutro' },
-        { id: 'r4', tipo: 'salida_manual', fuente: 'nequi', monto: 9, fecha: '2026-09-30', desc: 'otro mes', clase: 'gasto' },
+        { id: 'r1', tipo: 'salida_manual', fuente: 'cuenta:nequi', monto: 40000, fecha: '2026-10-01', desc: '40', clase: 'gasto' },
+        { id: 'r2', tipo: 'salida_manual', fuente: 'cuenta:nequi', monto: 500, fecha: '2026-10-03', desc: 'otro retiro', clase: 'gasto' },
+        { id: 'r3', tipo: 'salida', fuente: 'cuenta:nequi', monto: 7000, fecha: '2026-10-03', _esEspejo: true, clase: 'neutro' },
+        { id: 'r4', tipo: 'salida_manual', fuente: 'cuenta:nequi', monto: 9, fecha: '2026-09-30', desc: 'otro mes', clase: 'gasto' },
       ] });
     const g = ctx.Periodo.gastosDelMes('2026-10');
-    assert.equal(g.gvTotal, 41500, '1.000 gasto + 40.000 + 500 retiros; el espejo (neutro) no cuenta');
+    assert.equal(g.gastoVariableTotal, 41500, '1.000 gasto + 40.000 + 500 retiros; el espejo (neutro) no cuenta');
     assert.equal(g.total, 41500);
     assert.equal(ctx.Periodo.gastoPorCategoria('2026-10').Ajuste, 40500);
     assert.equal(ctx.Periodo.gastosPorMes()['2026-09'], 9);
@@ -1080,7 +1111,7 @@ describe('clase-movimientos', () => {
 
   test('balanceDelMes — con { conRendimientos } los intereses de Nu suben ingresos, balance y tasa de ahorro; sin la opción queda como flujo de caja', () => {
     const ctx = app({
-      movimientos: [{ id: 'i1', tipo: 'entrada', fuente: 'nequi', monto: 1000, fecha: '2026-09-10', desc: 'Sueldo', clase: 'ingreso' }],
+      movimientos: [{ id: 'i1', tipo: 'entrada', fuente: 'cuenta:nequi', monto: 1000, fecha: '2026-09-10', desc: 'Sueldo', clase: 'ingreso' }],
       gastosVar: [{ id: 'g1', fecha: '2026-09-11', monto: 400, clase: 'gasto' }],
       cajitas: [{ id: 'c1', nombre: 'Ahorros', saldo: 0, rendimientos: { '2026-09': 100 } }] });
     const sin = ctx.Periodo.balanceDelMes('2026-09');
@@ -1096,9 +1127,9 @@ describe('clase-movimientos', () => {
 
   test('Periodo.retirosManuales — solo los salida_manual de clase gasto, ya con clase para que Gastos los cuente igual que Análisis', () => {
     const ctx = app({ movimientos: [
-      { id: 'a', tipo: 'salida_manual', fuente: 'efectivo', monto: 400, fecha: '2026-10-09', desc: 'Ajuste', clase: 'gasto' },
-      { id: 'b', tipo: 'salida', fuente: 'nequi', monto: 9, fecha: '2026-10-09', _esEspejo: true, clase: 'neutro' },
-      { id: 'c', tipo: 'entrada', fuente: 'nequi', monto: 5, fecha: '2026-10-09', clase: 'ingreso' }] });
+      { id: 'a', tipo: 'salida_manual', fuente: 'cuenta:efectivo', monto: 400, fecha: '2026-10-09', desc: 'Ajuste', clase: 'gasto' },
+      { id: 'b', tipo: 'salida', fuente: 'cuenta:nequi', monto: 9, fecha: '2026-10-09', _esEspejo: true, clase: 'neutro' },
+      { id: 'c', tipo: 'entrada', fuente: 'cuenta:nequi', monto: 5, fecha: '2026-10-09', clase: 'ingreso' }] });
     const r = ctx.Periodo.retirosManuales();
     assert.equal(r.length, 1);
     assert.deepEqual([r[0].id, r[0].cat, r[0].clase, r[0].monto], ['a', 'Ajuste', 'gasto', 400]);
@@ -1257,10 +1288,11 @@ describe('borrar-todo-pin', () => {
     app.document = dom.document;
     const ls = app.localStorage;
     ls.setItem('mf_pin', '1234'); ls.setItem('mf_bio_enabled', 'true'); ls.setItem('mf_bio_cred', 'credencial'); ls.setItem('mf_auth_hint', '1');
-    app.dialogo = async () => true; app.toast = () => {}; app.setTimeout = f => f();
+    app.dialogo = async () => true; app.confirmarEliminar = async () => true; app.toast = () => {}; app.setTimeout = f => f();
     app.pedirPinAntesDe = async () => true; // el PIN de confirmación se escribió bien (pedirPinAntesDe vive en core-state.js, ver pin-confirmar-acciones-destructivas)
     app._fbUser = { uid: 'u1' };
     app._fb = { db: {}, doc: () => ({}), setDoc: async () => { if (!nubeOk) throw new Error('sin conexión'); } };
+    app._fbEscribirDoc = async (payload, ts) => app._fb.setDoc({}, { payload, updatedAt: ts }); // la capa de sync (firebase-sync.js) no se carga aquí: escribe por el setDoc simulado
     app.location = { reload() { app.__recargado = true; }, href: '' };
     const lanzados = [];
     app._fbLoadData = () => lanzados.push('app');
@@ -1303,7 +1335,7 @@ describe('borrar-todo-pin', () => {
 
   test('si el usuario cancela la confirmación no se borra nada', async () => {
     const { app, ls } = entorno();
-    app.dialogo = async () => false;
+    app.dialogo = async () => false; app.confirmarEliminar = async () => false;
     await app.borrarTodo();
     assert.equal(ls.getItem('mf_pin'), '1234');
     assert.notEqual(app.__recargado, true);
@@ -1338,7 +1370,7 @@ describe('requisitos-y-filtros-de-sheets', () => {
   function entorno(extra = [], { cuentas, tc = true, encargos = [], htmlBase = '' } = {}) {
     const app = loadApp([...BASE, ...extra], { permissive: true });
     Object.assign(app.S, {
-      cuentas: cuentas || [{ id: 'nequi', tipo: 'nequi', saldo: 50000 }, { id: 'efectivo', tipo: 'efectivo', saldo: 0 }],
+      cuentas: cuentas || [{ id: 'nequi', tipo: 'billetera', nombre: 'Nequi', saldo: 50000 }, { id: 'efectivo', tipo: 'efectivo', nombre: 'Efectivo', saldo: 0 }],
       cajitas: [], movimientos: [], gastosVar: [], encargos,
       tarjetasCredito: tc ? [{ id: 't1', nombre: 'Visa', cupo: 1000000, deuda: 0, estado: 'activa' }] : [],
     });
@@ -1354,9 +1386,9 @@ describe('requisitos-y-filtros-de-sheets', () => {
     const app = entorno();
     const F = app.FuentesFiltro;
     assert.equal(F.puedeRecibir('tc:t1'), false);
-    assert.equal(F.puedeRecibir('nequi'), true);
-    assert.equal(F.puedeRecibir('cajita:c1') && F.puedeRecibir('custom:x'), true);
-    assert.deepEqual(Array.from(F.receptoras(app.getFuentes()).map(f => f.val)), ['nequi', 'efectivo']);
+    assert.equal(F.puedeRecibir('cuenta:nequi'), true);
+    assert.equal(F.puedeRecibir('cajita:c1') && F.puedeRecibir('cuenta:x'), true);
+    assert.deepEqual(Array.from(F.receptoras(app.getFuentes()).map(f => f.val)), ['cuenta:nequi', 'cuenta:efectivo']);
     assert.equal(F.hayUtilizable(app.getFuentes(), F.PRESET.SALIDA), true);
     app.S.cuentas[0].saldo = 0;
     app.S.tarjetasCredito = [];
@@ -1366,7 +1398,7 @@ describe('requisitos-y-filtros-de-sheets', () => {
 
   // ── Punto 2: requisitos para abrir los sheets ────────────────────────────────────────────────
   test('«Pagar Spotify» no abre sin costo válido (vacío, 0, NaN, texto) y abre con costo', () => {
-    const app = entorno([modulo('spotify.js')], { htmlBase: '<input id="spotifyCosto">' });
+    const app = entorno([core('split.js'), modulo('spotify.js')], { htmlBase: '<input id="spotifyCosto">' });
     app.S.spotify = { ...(app.S.spotify || {}), personas: [], historial: [] };
     for (const malo of [0, NaN, undefined, '', 'abc', -5]) {
       app.S.spotify.costo = malo; app.abiertos.length = 0; app.toasts.length = 0;
@@ -1382,7 +1414,7 @@ describe('requisitos-y-filtros-de-sheets', () => {
   });
 
   test('aviso de Spotify: misma condición que el bloqueo, con el texto nuevo, sin estilos inline, y desaparece con un costo válido', () => {
-    const app = entorno([modulo('spotify.js')], { htmlBase: '<div id="padre"><div id="spotifyList"></div></div><input id="spotifyCosto">' });
+    const app = entorno([core('split.js'), modulo('spotify.js')], { htmlBase: '<div id="padre"><div id="spotifyList"></div></div><input id="spotifyCosto">' });
     app.S.spotify = { costo: 0, personas: [], historial: [] };
     app.renderSpotify();
     const aviso = app.document.getElementById('sp-costo-warn');
@@ -1398,7 +1430,7 @@ describe('requisitos-y-filtros-de-sheets', () => {
   });
 
   test('«Registrar gasto» no abre sin ninguna cuenta con saldo; con saldo, o con una TC con cupo, abre como antes', () => {
-    const app = entorno([modulo('tarjetas_credito.js'), modulo('gastos.js')], { cuentas: [{ id: 'nequi', tipo: 'nequi', saldo: 0 }, { id: 'efectivo', tipo: 'efectivo', saldo: 0 }], tc: false });
+    const app = entorno([modulo('tarjetas-credito.js'), modulo('gastos.js')], { cuentas: [{ id: 'nequi', tipo: 'billetera', nombre: 'Nequi', saldo: 0 }, { id: 'efectivo', tipo: 'efectivo', nombre: 'Efectivo', saldo: 0 }], tc: false });
     app.abrirNuevoGastoVar();
     assert.deepEqual(app.abiertos, []);
     assert.deepEqual(app.toasts, [['No tienes cuentas con saldo disponible', 'err']]);
@@ -1412,19 +1444,19 @@ describe('requisitos-y-filtros-de-sheets', () => {
   });
 
   // ── Punto 3: filtros de «Me lo regalaron» y «Mover entre cuentas» ───────────────────────────
-  const ENC = () => [{ id: 'e1', nombre: 'Carlos', movimientos: [{ id: 'm1', tipo: 'entrada', monto: 100000, cuenta: 'nequi', fecha: '2026-10-01' }] }];
+  const ENC = () => [{ id: 'e1', nombre: 'Carlos', movimientos: [{ id: 'm1', tipo: 'entrada', monto: 100000, cuenta: 'cuenta:nequi', fecha: '2026-10-01' }] }];
   const HTML_ENC = '<select id="traspaso_destino"></select><select id="traspaso_origen"></select><select id="moverenc_destino"></select><select id="moverenc_origen"></select>';
 
   test('«Me lo regalaron»: el destino no ofrece tarjetas de crédito', () => {
-    const app = entorno([modulo('encargos.js')], { encargos: ENC(), htmlBase: HTML_ENC });
+    const app = entorno([core('split.js'), core('diferencial.js'), modulo('encargos.js')], { encargos: ENC(), htmlBase: HTML_ENC });
     app.abrirEncargoDetalle('e1');
     app.abrirTraspasoEncargo();
     assert.deepEqual(app.abiertos.slice(-1), ['traspaso-encargo']);
-    assert.deepEqual(opciones(app.document, 'traspaso_destino'), ['', 'nequi', 'efectivo']);
+    assert.deepEqual(opciones(app.document, 'traspaso_destino'), ['', 'cuenta:nequi', 'cuenta:efectivo']);
   });
 
   test('«Me lo regalaron»: al confirmar rechaza una TC como destino (aunque el selector no la ofrezca) y sigue funcionando con una cuenta', () => {
-    const app = entorno([modulo('encargos.js')], { encargos: ENC(), htmlBase: '<input id="traspaso_destino"><input id="traspaso_origen">' });
+    const app = entorno([core('split.js'), core('diferencial.js'), modulo('encargos.js')], { encargos: ENC(), htmlBase: '<input id="traspaso_destino"><input id="traspaso_origen">' });
     app.abrirEncargoDetalle('e1');
     const enc = app.S.encargos[0];
     ponerValores(app, { traspaso_monto: '40000', traspaso_desc: 'regalo', traspaso_fecha: '2026-10-24', traspaso_origen: '', traspaso_destino: 'tc:t1' });
@@ -1432,7 +1464,7 @@ describe('requisitos-y-filtros-de-sheets', () => {
     assert.deepEqual(app.toasts.pop(), ['Una tarjeta de crédito no puede recibir plata', 'err']);
     assert.equal(enc.movimientos.length, 1);
     assert.equal(app.S.tarjetasCredito[0].deuda, 0);
-    ponerValores(app, { traspaso_destino: 'nequi' });
+    ponerValores(app, { traspaso_destino: 'cuenta:nequi' });
     app.confirmarTraspasoEncargo();
     assert.equal(enc.movimientos.length, 2);
     assert.equal(app.S.cuentas[0].saldo, 90000);
@@ -1440,36 +1472,36 @@ describe('requisitos-y-filtros-de-sheets', () => {
 
   test('«Mover entre cuentas»: ni origen ni destino ofrecen tarjetas de crédito', () => {
     const enc = ENC(); enc[0].movimientos.push({ id: 'm2', tipo: 'entrada', monto: 5000, cuenta: 'tc:t1', fecha: '2026-10-01' }); // dato raro: plata "guardada" en una TC
-    const app = entorno([modulo('encargos.js')], { encargos: enc, htmlBase: HTML_ENC });
+    const app = entorno([core('split.js'), core('diferencial.js'), modulo('encargos.js')], { encargos: enc, htmlBase: HTML_ENC });
     app.abrirEncargoDetalle('e1');
     app.abrirMoverEntreCuentasEncargo();
-    assert.deepEqual(opciones(app.document, 'moverenc_destino'), ['', 'nequi', 'efectivo']);
-    assert.deepEqual(opciones(app.document, 'moverenc_origen'), ['', 'nequi']);
+    assert.deepEqual(opciones(app.document, 'moverenc_destino'), ['', 'cuenta:nequi', 'cuenta:efectivo']);
+    assert.deepEqual(opciones(app.document, 'moverenc_origen'), ['', 'cuenta:nequi']);
   });
 
   test('«Mover entre cuentas»: al confirmar rechaza una TC como destino o como origen; entre cuentas sigue funcionando', () => {
-    const app = entorno([modulo('encargos.js')], { encargos: ENC(), htmlBase: '<input id="moverenc_destino"><input id="moverenc_origen">' });
+    const app = entorno([core('split.js'), core('diferencial.js'), modulo('encargos.js')], { encargos: ENC(), htmlBase: '<input id="moverenc_destino"><input id="moverenc_origen">' });
     app.abrirEncargoDetalle('e1');
     const enc = app.S.encargos[0];
-    ponerValores(app, { moverenc_monto: '10000', moverenc_fecha: '2026-10-24', moverenc_origen: 'nequi', moverenc_destino: 'tc:t1' });
+    ponerValores(app, { moverenc_monto: '10000', moverenc_fecha: '2026-10-24', moverenc_origen: 'cuenta:nequi', moverenc_destino: 'tc:t1' });
     app.confirmarMoverEncCuentas();
     assert.deepEqual(app.toasts.pop(), ['No puedes mover plata a una tarjeta de crédito', 'err']);
-    ponerValores(app, { moverenc_origen: 'tc:t1', moverenc_destino: 'efectivo' });
+    ponerValores(app, { moverenc_origen: 'tc:t1', moverenc_destino: 'cuenta:efectivo' });
     app.confirmarMoverEncCuentas();
     assert.deepEqual(app.toasts.pop(), ['Una tarjeta de crédito no puede ser cuenta de origen', 'err']);
     assert.equal(enc.movimientos.length, 1);
-    ponerValores(app, { moverenc_origen: 'nequi', moverenc_destino: 'efectivo' });
+    ponerValores(app, { moverenc_origen: 'cuenta:nequi', moverenc_destino: 'cuenta:efectivo' });
     app.confirmarMoverEncCuentas();
     assert.equal(enc.movimientos.length, 3, 'salida + entrada internas');
   });
 
   test('«Compra con TC» de un encargo: el destino de la plata no ofrece TC y al confirmar rechaza una', () => {
-    const app = entorno([modulo('encargos.js')], { encargos: ENC(), htmlBase: '<select id="ctc_destino"></select><select id="ctc_cuenta_enc"></select><select id="ctc_tarjeta"></select>' });
+    const app = entorno([core('split.js'), core('diferencial.js'), modulo('encargos.js')], { encargos: ENC(), htmlBase: '<select id="ctc_destino"></select><select id="ctc_cuenta_enc"></select><select id="ctc_tarjeta"></select>' });
     app.abrirEncargoDetalle('e1');
     app.abrirCompraConTC();
     assert.deepEqual(app.abiertos.slice(-1), ['compra-tc-encargo']);
-    assert.deepEqual(opciones(app.document, 'ctc_destino'), ['', 'nequi', 'efectivo']);
-    const app2 = entorno([modulo('encargos.js')], { encargos: ENC(), htmlBase: '<input id="ctc_destino"><input id="ctc_tarjeta"><input id="ctc_cuenta_enc">' });
+    assert.deepEqual(opciones(app.document, 'ctc_destino'), ['', 'cuenta:nequi', 'cuenta:efectivo']);
+    const app2 = entorno([core('split.js'), core('diferencial.js'), modulo('encargos.js')], { encargos: ENC(), htmlBase: '<input id="ctc_destino"><input id="ctc_tarjeta"><input id="ctc_cuenta_enc">' });
     app2.abrirEncargoDetalle('e1');
     ponerValores(app2, { ctc_desc: 'Zapatos', ctc_monto: '1000', ctc_tarjeta: 't1', ctc_destino: 'tc:t1', ctc_nota: '', ctc_fecha: '2026-10-24' });
     app2.confirmarCompraConTC();
@@ -1490,9 +1522,25 @@ describe('requisitos-y-filtros-de-sheets', () => {
     return { modo: () => modo, filas: () => app.document.getElementById('t_rows').children.length };
   }
 
+  test('dividir: crearSplitWidget devuelve la API completa (toggle/addRow/data/reset/preview) sin envoltorios por módulo', () => {
+    const app = entorno();
+    let modo = false;
+    const api = app.crearSplitWidget('t', {
+      simpleId: 't_simple', splitId: 't_split', toggleId: 't_btn', rowsId: 't_rows',
+      getModo: () => modo, setModo: v => { modo = v; },
+      getFuentesFn: () => '<option value="">Elige cuenta</option><option value="nequi">nequi</option><option value="efectivo">efectivo</option>',
+      onPreview() {},
+    });
+    assert.deepEqual(Object.keys(api).sort(), ['addRow', 'data', 'instId', 'preview', 'reset', 'toggle']);
+    api.toggle();
+    assert.equal(modo, true);
+    assert.equal(app.document.getElementById('t_rows').children.length, 2);
+    assert.deepEqual(Array.from(api.data()), [], 'sin cuenta ni monto elegidos no hay datos');
+  });
+
   test('dividir: con una sola cuenta válida no se activa', () => {
     const app = entorno();
-    const w = widget(app, ['nequi']);
+    const w = widget(app, ['cuenta:nequi']);
     app.splitToggle('t');
     assert.equal(w.modo(), false);
     assert.equal(w.filas(), 0);
@@ -1501,7 +1549,7 @@ describe('requisitos-y-filtros-de-sheets', () => {
 
   test('dividir: el máximo de filas es el número de cuentas válidas y no se repite una cuenta', () => {
     const app = entorno();
-    const w = widget(app, ['nequi', 'efectivo', 'custom:a']);
+    const w = widget(app, ['cuenta:nequi', 'cuenta:efectivo', 'cuenta:a']);
     app.splitToggle('t');
     assert.equal(w.modo(), true);
     assert.equal(w.filas(), 2);
@@ -1512,14 +1560,14 @@ describe('requisitos-y-filtros-de-sheets', () => {
     assert.deepEqual(app.toasts.pop(), ['Ya usaste todas las cuentas disponibles', 'err']);
     // la cuenta elegida en una fila desaparece de las otras
     const filas = Array.from(app.document.getElementById('t_rows').children);
-    filas[0].querySelector('select').value = 'nequi';
+    filas[0].querySelector('select').value = 'cuenta:nequi';
     app.splitActualizarOpciones('t');
-    assert.ok(!Array.from(filas[1].querySelector('select').options).some(o => o.value === 'nequi'));
+    assert.ok(!Array.from(filas[1].querySelector('select').options).some(o => o.value === 'cuenta:nequi'));
   });
 
   test('dividir con exactamente dos cuentas: se activa con dos filas y no admite una tercera', () => {
     const app = entorno();
-    const w = widget(app, ['nequi', 'efectivo']);
+    const w = widget(app, ['cuenta:nequi', 'cuenta:efectivo']);
     app.splitToggle('t');
     assert.equal(w.filas(), 2);
     app.splitAgregarRow('t');
@@ -1537,7 +1585,7 @@ describe('historial-patrimonio', () => {
   const RAIZ = path.join(__dirname, '..');
   const core = f => path.join(RAIZ, 'js', 'core', f), modulo = f => path.join(RAIZ, 'js', 'modules', f);
   const ARCHIVOS = [core('core-state.js'), core('periodo.js'), core('nu-calc.js'), core('calc-helpers.js'), core('cuenta-efectos.js'),
-    modulo('tarjetas_credito.js'), modulo('nu.js'), modulo('cuentas.js'), modulo('gastos.js'), core('movimientos.js'), core('html-tag.js'), core('fuentes-filtro.js'), modulo('analisis.js')];
+    modulo('tarjetas-credito.js'), modulo('nu.js'), modulo('cuentas.js'), core('split.js'), modulo('gastos.js'), core('movimientos.js'), core('html-tag.js'), core('umbrales.js'), core('salud.js'), core('fuentes-filtro.js'), modulo('analisis.js')];
   const plano = x => JSON.parse(JSON.stringify(x));
   const dia = off => { const d = new Date(Date.now() + off * 864e5); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
   const ts = off => { const d = new Date(Date.now() + off * 864e5); d.setHours(12, 0, 0, 0); return d.getTime(); };
@@ -1555,9 +1603,9 @@ describe('historial-patrimonio', () => {
     const app = loadApp(ARCHIVOS, { permissive: true });
     Object.assign(app.S, { modulos: {}, libro: [], movimientos: [], gastosVar: [], cajitas: [], transferencias: [], pagosGastosFijos: {}, tarjetasCredito: [], ingresosFijos: [], presupuestos: {},
       patrimonioHistorial: historial,
-      cuentas: [{ id: 'nequi', tipo: 'nequi', saldo: 0 }, { id: 'efectivo', tipo: 'efectivo', saldo: 0 }] });
-    const dom = createFakeDom({ gv_desc: { value: 'Almuerzo' }, gv_monto: { value: '2.000,00' }, gv_fecha: { value: '' }, gv_cat: { value: 'Comida' }, gv_nota: { value: '' }, gv_fuente: { value: 'nequi' },
-      tr_origen: { value: 'nequi' }, tr_destino: { value: 'efectivo' }, tr_monto: { value: '3.000,00' }, tr_nota: { value: '' }, tr_fecha: { value: '' }, ...campos });
+      cuentas: [{ id: 'nequi', tipo: 'billetera', nombre: 'Nequi', saldo: 0 }, { id: 'efectivo', tipo: 'efectivo', nombre: 'Efectivo', saldo: 0 }] });
+    const dom = createFakeDom({ gv_desc: { value: 'Almuerzo' }, gv_monto: { value: '2.000,00' }, gv_fecha: { value: '' }, gv_cat: { value: 'Comida' }, gv_nota: { value: '' }, gv_fuente: { value: 'cuenta:nequi' },
+      tr_origen: { value: 'cuenta:nequi' }, tr_destino: { value: 'cuenta:efectivo' }, tr_monto: { value: '3.000,00' }, tr_nota: { value: '' }, tr_fecha: { value: '' }, ...campos });
     app.document = dom.document;
     app.dialogo = async () => true; app.save = () => {}; app.refresh = () => {}; app.toast = () => {}; app.fuenteLabel = f => f;
     return app;
@@ -1578,8 +1626,8 @@ describe('historial-patrimonio', () => {
   test('reporte: crear saldos iniciales por error y eliminarlos el mismo día deja el historial y la gráfica como estaban', async () => {
     const app = entorno([{ fecha: dia(-1), valor: 0, valorVisible: 0 }]);
     const antes = valores(app);
-    app.registrarEntradaConApertura('nequi', 4444448888.88, dia(0), 'Saldo inicial', true, '');
-    app.registrarEntradaConApertura('efectivo', 0.0, dia(0), 'Saldo inicial', true, '');
+    app.registrarEntradaConApertura('cuenta:nequi', 4444448888.88, dia(0), 'Saldo inicial', true, '');
+    app.registrarEntradaConApertura('cuenta:efectivo', 0.0, dia(0), 'Saldo inicial', true, '');
     refrescar(app);
     for (const m of plano(app.S.movimientos)) await app.eliminarMovimiento(boton('apertura', m.id, m.fuente, m.monto));
     refrescar(app);
@@ -1607,9 +1655,9 @@ describe('historial-patrimonio', () => {
   test('un ingreso creado hace 3 días y eliminado hoy: las instantáneas intermedias vuelven a lo que eran antes de crearlo', async () => {
     const app = entorno([{ fecha: dia(-4), valor: 0, valorVisible: 0 }, { fecha: dia(-3), valor: 5000, valorVisible: 5000 }, { fecha: dia(-2), valor: 5000, valorVisible: 5000 },
       { fecha: dia(-1), valor: 5000, valorVisible: 5000 }, { fecha: dia(0), valor: 5000, valorVisible: 5000 }]);
-    app.registrarEntradaConApertura('nequi', 5000, dia(-3), 'Sueldo', false, '');
+    app.registrarEntradaConApertura('cuenta:nequi', 5000, dia(-3), 'Sueldo', false, '');
     const m = app.S.movimientos[0]; m.ts = ts(-3);
-    await app.eliminarMovimiento(boton('entrada', m.id, 'nequi', 5000));
+    await app.eliminarMovimiento(boton('entrada', m.id, 'cuenta:nequi', 5000));
     refrescar(app);
     assert.deepEqual(valores(app).map(v => v.slice(1)), [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]);
     const g = grafica(app);
@@ -1620,9 +1668,9 @@ describe('historial-patrimonio', () => {
   test('lo anterior a la creación no se toca: el ingreso eliminado no altera días en que no existía', async () => {
     const app = entorno([{ fecha: dia(-5), valor: 700, valorVisible: 700 }, { fecha: dia(-4), valor: 700, valorVisible: 700 }, { fecha: dia(-3), valor: 5700, valorVisible: 5700 }, { fecha: dia(0), valor: 5700, valorVisible: 5700 }]);
     app.S.cuentas[0].saldo = 700;
-    app.registrarEntradaConApertura('nequi', 5000, dia(-3), 'Sueldo', false, '');
+    app.registrarEntradaConApertura('cuenta:nequi', 5000, dia(-3), 'Sueldo', false, '');
     const m = app.S.movimientos[0]; m.ts = ts(-3);
-    await app.eliminarMovimiento(boton('entrada', m.id, 'nequi', 5000));
+    await app.eliminarMovimiento(boton('entrada', m.id, 'cuenta:nequi', 5000));
     refrescar(app);
     assert.deepEqual(valores(app).map(v => v[1]), [700, 700, 700, 700]);
   });
@@ -1630,11 +1678,11 @@ describe('historial-patrimonio', () => {
   test('saldo inicial corregido y luego eliminado: cada parte sale del día en que entró', async () => {
     const app = entorno([{ fecha: dia(-4), valor: 0, valorVisible: 0 }, { fecha: dia(-3), valor: 1000, valorVisible: 1000, montoBase: 1000 }, { fecha: dia(-2), valor: 1500, valorVisible: 1500, montoBase: 500 },
       { fecha: dia(-1), valor: 1500, valorVisible: 1500 }, { fecha: dia(0), valor: 1500, valorVisible: 1500 }]);
-    app.registrarEntradaConApertura('efectivo', 1000, dia(-3), 'Saldo inicial', true, '');
+    app.registrarEntradaConApertura('cuenta:efectivo', 1000, dia(-3), 'Saldo inicial', true, '');
     const m = app.S.movimientos[0]; m.ts = ts(-3);
-    app.sumarFuente('efectivo', 500, { origen: { modulo: 't', ref: 'edicion' } });
+    app.sumarFuente('cuenta:efectivo', 500, { origen: { modulo: 't', ref: 'edicion' } });
     m.monto = 1500; m._ajustes = [{ fecha: dia(-2), monto: 500 }];
-    await app.eliminarMovimiento(boton('apertura', m.id, 'efectivo', 1500));
+    await app.eliminarMovimiento(boton('apertura', m.id, 'cuenta:efectivo', 1500));
     refrescar(app);
     assert.deepEqual(valores(app).map(v => v[1]), [0, 0, 0, 0, 0]);
     assert.ok(app.S.patrimonioHistorial.every(h => h.montoBase === undefined));
@@ -1642,23 +1690,23 @@ describe('historial-patrimonio', () => {
 
   test('un gasto eliminado desde Gastos devuelve las instantáneas desde el día en que se creó', async () => {
     const app = entorno([{ fecha: dia(-3), valor: 10000, valorVisible: 10000 }, { fecha: dia(-2), valor: 8000, valorVisible: 8000 }, { fecha: dia(-1), valor: 8000, valorVisible: 8000 }, { fecha: dia(0), valor: 8000, valorVisible: 8000 }]);
-    app.sumarFuente('nequi', 10000, { origen: { modulo: 't', ref: 'base' } });
+    app.sumarFuente('cuenta:nequi', 10000, { origen: { modulo: 't', ref: 'base' } });
     app.addGastoVar();
     const g = app.S.gastosVar[0]; g.ts = ts(-2);
-    assert.equal(app.getSaldoFuente('nequi'), 8000);
+    assert.equal(app.getSaldoFuente('cuenta:nequi'), 8000);
     await app.deleteGastoVar(g.id);
     refrescar(app);
-    assert.equal(app.getSaldoFuente('nequi'), 10000);
+    assert.equal(app.getSaldoFuente('cuenta:nequi'), 10000);
     assert.deepEqual(valores(app).map(v => v[1]), [10000, 10000, 10000, 10000]);
   });
 
   test('una transferencia entre cuentas propias no cambia el patrimonio: su eliminación no toca el historial', async () => {
     const app = entorno([{ fecha: dia(-2), valor: 10000, valorVisible: 10000 }, { fecha: dia(-1), valor: 10000, valorVisible: 10000 }, { fecha: dia(0), valor: 10000, valorVisible: 10000 }]);
-    app.sumarFuente('nequi', 10000, { origen: { modulo: 't', ref: 'base' } });
+    app.sumarFuente('cuenta:nequi', 10000, { origen: { modulo: 't', ref: 'base' } });
     app.confirmarTransferir();
     const t = app.S.transferencias[0]; t.ts = ts(-2);
     const antes = valores(app);
-    await app.eliminarMovimiento(boton('transferencia', t.id, 'nequi', 3000));
+    await app.eliminarMovimiento(boton('transferencia', t.id, 'cuenta:nequi', 3000));
     refrescar(app);
     assert.deepEqual(valores(app), antes);
   });
@@ -1747,8 +1795,8 @@ describe('money-input (formateo al escribir en los campos de plata)', () => {
 
   test('parseMoney() lee lo que deja el formateo (y fmtInput lo produce igual)', () => {
     const { w, entrar, el } = entorno();
-    w.eval(fs.readFileSync(path.join(__dirname, '..', 'js', 'core', 'core-state.js'), 'utf8').match(/function parseMoney[\s\S]*?\n}\n/)[0]);
-    w.eval(fs.readFileSync(path.join(__dirname, '..', 'js', 'core', 'core-state.js'), 'utf8').match(/function fmtInput[\s\S]*?\n}\n/)[0]);
+    w.eval(leerEstado().match(/function parseMoney[\s\S]*?\n}\n/)[0]);
+    w.eval(leerEstado().match(/function fmtInput[\s\S]*?\n}\n/)[0]);
     entrar('1500000,5', 9); assert.equal(w.parseMoney(el.value), 1500000.5);
     entrar('500000', 6); assert.equal(w.parseMoney(el.value), 500000);
     assert.equal(w.fmtInput(500000), '500.000');
@@ -1758,7 +1806,7 @@ describe('money-input (formateo al escribir en los campos de plata)', () => {
 
   test('setMoneyInput() precarga con separador de miles (por elemento o por id) y limpia con 0/vacío', () => {
     const { w, el } = entorno();
-    const src = fs.readFileSync(path.join(__dirname, '..', 'js', 'core', 'core-state.js'), 'utf8');
+    const src = leerEstado();
     w.eval(src.match(/function fmtInput[\s\S]*?\n}\n/)[0]);
     w.eval(src.match(/function setMoneyInput[\s\S]*?\n}\n/)[0]);
     w.setMoneyInput(el, 80000); assert.equal(el.value, '80.000');
@@ -1797,7 +1845,7 @@ describe('pin-confirmar-acciones-destructivas', () => {
   const leer = (...p) => fs.readFileSync(path.join(RAIZ, ...p), 'utf8');
   // pin-bio.js es un módulo ES (import de waitFor/hookGlobal): se evalúa sin los imports, con stubs.
   const codigoPin = 'const waitFor = () => {}; const hookGlobal = () => {};\n' + leer('js', 'core', 'pin-bio.js').replace(/^import .*$/gm, '');
-  const pedir = leer('js', 'core', 'core-state.js').match(/async function pedirPinAntesDe[\s\S]*?\n}\n/)[0];
+  const pedir = leerEstado().match(/async function pedirPinAntesDe[\s\S]*?\n}\n/)[0];
 
   function entorno({ pin = '1234', dialogoOk = true } = {}) {
     const dom = new JSDOM(leer('index.html'), { runScripts: 'outside-only', url: 'http://localhost/' });
@@ -1903,8 +1951,13 @@ describe('pin-confirmar-acciones-destructivas', () => {
     const cfg = leer('js', 'modules', 'configuracion.js');
     const borrar = cfg.slice(cfg.indexOf('async function borrarTodo'));
     assert.ok(/pedirPinAntesDe\(/.test(borrar.slice(0, borrar.indexOf("document.getElementById('fb-loading-screen')"))), 'borrar todo: el PIN va antes de tocar nada');
-    const imp = cfg.slice(cfg.indexOf('function leerArchivoImport'));
-    assert.ok(imp.indexOf('pedirPinAntesDe(') > 0 && imp.indexOf('pedirPinAntesDe(') < imp.indexOf('aplicarMigraciones(data)'), 'importar: el PIN va antes de reemplazar');
+    // Importar un JSON y restaurar un respaldo automático comparten _reemplazarDatos: el PIN va dentro, antes de reemplazar nada.
+    const rep = cfg.slice(cfg.indexOf('async function _reemplazarDatos'));
+    assert.ok(rep.indexOf('pedirPinAntesDe(') > 0 && rep.indexOf('pedirPinAntesDe(') < rep.indexOf('aplicarMigraciones(data)'), 'importar/restaurar: el PIN va antes de reemplazar');
+    const imp = cfg.slice(cfg.indexOf('function leerArchivoImport'), cfg.indexOf('/* ---- RESPALDOS AUTOMÁTICOS'));
+    assert.ok(imp.includes('_reemplazarDatos(') && !imp.includes('aplicarMigraciones('), 'importar: reemplaza solo por _reemplazarDatos (la ruta con PIN)');
+    const rest = cfg.slice(cfg.indexOf('async function restaurarRespaldo'));
+    assert.ok(rest.includes('_reemplazarDatos(') && !rest.slice(0, rest.indexOf('_reemplazarDatos(')).includes('Object.assign(S'), 'restaurar: reemplaza solo por _reemplazarDatos (la ruta con PIN)');
     const fb = leer('js', 'core', 'firebase-sync.js');
     const del = fb.slice(fb.indexOf('window._fbDeleteAccount = async function'));
     assert.ok(del.indexOf('pedirPinAntesDe(') > 0 && del.indexOf('pedirPinAntesDe(') < del.indexOf('_fbDeleteAccountEnCurso = true'), 'eliminar cuenta: el PIN va antes de borrar');
@@ -1952,7 +2005,7 @@ describe('fila-movimiento', () => {
     const recorrer = d => fs.readdirSync(d, { withFileTypes: true }).forEach(e => {
       const f = path.join(d, e.name);
       if (e.isDirectory()) return recorrer(f);
-      if (!f.endsWith('.js') || f.endsWith('core-state.js')) return;
+      if (!f.endsWith('.js') || esParte(f)) return;
       if (fs.readFileSync(f, 'utf8').includes('class="gasto-item-top"')) sueltos.push(path.relative(dir, f));
     });
     recorrer(dir);
@@ -1971,15 +2024,15 @@ describe('patrimonio — fuente única (hero, historial, Proyección y Salud lee
   const MODULES_DIR = process.env.MIS_FINANZAS_MODULES_DIR || path.join(__dirname, '..', 'js', 'modules');
 
   const cuentas = ({ nequi = 0, efectivo = 0 } = {}) => [
-    { id: 'nequi', tipo: 'nequi', saldo: nequi },
-    { id: 'efectivo', tipo: 'efectivo', saldo: efectivo },
+    { id: 'nequi', tipo: 'billetera', nombre: 'Nequi', saldo: nequi },
+    { id: 'efectivo', tipo: 'efectivo', nombre: 'Efectivo', saldo: efectivo },
   ];
   const meDeben = (monto) => [{ id: 'd1', nombre: 'Amigo', movimientos: [{ tipo: 'prestamo', monto }] }];
   const yoDebo = (monto) => [{ id: 'm1', nombre: 'Otro amigo', movimientos: [{ tipo: 'recibido', monto }] }];
 
   function freshApp(sOverrides = {}, { conInicio = false } = {}) {
-    const files = [path.join(CORE_DIR, 'core-state.js'), path.join(CORE_DIR, 'periodo.js'), path.join(CORE_DIR, 'nu-calc.js'), path.join(CORE_DIR, 'calc-helpers.js')];
-    if (conInicio) files.push(path.join(MODULES_DIR, 'inicio.js'));
+    const files = [path.join(CORE_DIR, 'html-tag.js'), path.join(CORE_DIR, 'core-state.js'), path.join(CORE_DIR, 'periodo.js'), path.join(CORE_DIR, 'nu-calc.js'), path.join(CORE_DIR, 'calc-helpers.js')];
+    if (conInicio) files.push(path.join(CORE_DIR, 'umbrales.js'), path.join(CORE_DIR, 'reglas.js'), path.join(CORE_DIR, 'salud.js'), path.join(CORE_DIR, 'plan-deudas.js'), path.join(MODULES_DIR, 'inicio.js'));
     const ctx = loadApp(files);
     Object.assign(ctx.S, sOverrides);
     return ctx;
@@ -1999,7 +2052,7 @@ describe('patrimonio — fuente única (hero, historial, Proyección y Salud lee
   test('lo que debes a personas se resta del patrimonio aunque esa plata esté en tus cuentas (caso Nequi $100.000 y deuda de $50.000)', () => {
     const ctx = freshApp({ cuentas: cuentas({ nequi: 100000 }), misDeudas: yoDebo(50000) });
     const d = ctx.calcPatrimonioDesglose();
-    assert.equal(d.nequi, 100000);
+    assert.equal(d.cuentas, 100000);
     assert.equal(d.yoDebo, 50000);
     assert.equal(d.total, 50000);
     assert.equal(d.visible, 50000);
@@ -2049,12 +2102,12 @@ describe('patrimonio — fuente única (hero, historial, Proyección y Salud lee
 
   test('el texto de la fórmula del hero solo nombra los pasivos que existen', () => {
     const sin = freshApp({ cuentas: cuentas({ nequi: 1000 }) });
-    assert.equal(sin.patrimonioFormulaTexto(), 'Cuentas + CDTs + Prestado');
+    assert.equal(sin.patrimonioFormulaTexto(), 'Cuentas');
     const con = freshApp({ cuentas: cuentas({ nequi: 1000 }), misDeudas: yoDebo(500), tarjetasCredito: [{ id: 't1', deuda: 100 }] });
-    assert.equal(con.patrimonioFormulaTexto(), 'Cuentas + CDTs + Prestado − Deuda TC − Yo debo');
+    assert.equal(con.patrimonioFormulaTexto(), 'Cuentas − Deuda TC − Yo debo');
     const els = conDomQueRecuerda(con);
     con.refresh();
-    assert.equal(els['hero-formula'].textContent, 'Cuentas + CDTs + Prestado − Deuda TC − Yo debo');
+    assert.equal(els['hero-formula'].textContent, 'Cuentas − Deuda TC − Yo debo');
   });
 
   test('liquidez: suma lo disponible; resta tarjeta propia, «Yo debo» y plata ajena; NO suma «Me deben» ni CDTs ni alcancía', () => {
@@ -2086,14 +2139,15 @@ describe('patrimonio — fuente única (hero, historial, Proyección y Salud lee
 
   test('Salud: si la liquidez queda negativa por deudas con personas, el consejo lo dice (no habla de tarjetas)', () => {
     const r = freshApp({ cuentas: cuentas({ nequi: 100000 }), misDeudas: yoDebo(400000) }, { conInicio: true }).calcHealthScore();
-    assert.ok(r.tips.some((t) => t.includes('Lo que debes a personas supera tu patrimonio líquido')));
+    assert.ok(r.tips.some((t) => t.includes('Lo que debes a personas supera la plata que tienes disponible')));
     assert.ok(!r.tips.some((t) => t.includes('deuda en tarjetas')));
   });
 
-  test('Salud: patrimonio (para los ratios) es el visible, con deudas a personas restadas', () => {
-    // Sin ingresos y con TC: la rama «deuda vs patrimonio» usa el patrimonio visible. Con una deuda a personas que lo deja ≤ 0 debe alertar.
+  test('Salud: con una deuda a personas que deja el patrimonio visible ≤ 0 y una tarjeta, alerta UNA vez, nombrando ambas deudas', () => {
     const r = freshApp({ cuentas: cuentas({ nequi: 500000 }), misDeudas: yoDebo(500000), tarjetasCredito: [{ id: 't1', nombre: 'TC', deuda: 100000, cupo: 1000000 }] }, { conInicio: true }).calcHealthScore();
-    assert.ok(r.tips.some((t) => t.includes('tu patrimonio no la cubre')));
+    const alertas = r.consejos.filter((c) => c.tipo === 'alerta');
+    assert.equal(alertas.length, 1);
+    assert.ok(alertas[0].texto.includes('Tus deudas y la plata ajena que guardas superan la plata que tienes disponible'));
   });
 
   test('GUARDIA de estructura: nadie más arma el patrimonio a mano (una sola fuente, para que no vuelva a desalinearse)', () => {
@@ -2102,19 +2156,88 @@ describe('patrimonio — fuente única (hero, historial, Proyección y Salud lee
       ...fs.readdirSync(CORE_DIR).map((f) => path.join(CORE_DIR, f)),
       ...fs.readdirSync(MODULES_DIR).map((f) => path.join(MODULES_DIR, f)),
     ].filter((f) => f.endsWith('.js'));
-    const coreState = path.join(CORE_DIR, 'core-state.js');
     for (const f of archivos) {
-      if (f === coreState) continue;
+      if (esParte(f)) continue;
       const code = sinComentarios(fs.readFileSync(f, 'utf8'));
       assert.ok(!/calcPatrimonioTotal\s*\(/.test(code), path.basename(f) + ' llama calcPatrimonioTotal(): usa calcPatrimonioVisible() o calcPatrimonioDesglose()');
     }
     // Quien muestra o guarda el patrimonio visible no resta la alcancía por su cuenta.
     const inicio = sinComentarios(fs.readFileSync(path.join(MODULES_DIR, 'inicio.js'), 'utf8'));
     assert.ok(!/saldoRegistrado/.test(inicio), 'inicio.js no debe tocar la alcancía: calcPatrimonioVisible() ya la excluye');
-    const core = sinComentarios(fs.readFileSync(coreState, 'utf8'));
+    const core = sinComentarios(leerEstado());
     const snap = core.slice(core.indexOf('function snapshotPatrimonio'), core.indexOf('function snapshotPatrimonio') + 2500);
     assert.ok(snap.includes('calcPatrimonioDesglose()') && !/saldoRegistrado/.test(snap), 'snapshotPatrimonio usa el desglose');
     const refreshSrc = core.slice(core.indexOf('function refresh()'), core.indexOf('function refresh()') + 9000);
     assert.ok(refreshSrc.includes('calcPatrimonioDesglose()') && !/disp\s*\+\s*prest/.test(refreshSrc), 'el hero usa el desglose, no su propia suma');
+  });
+});
+
+describe('dinero y fechas — una sola función para formatear pesos y otra para leer fechas', () => {
+  const test = require('node:test');
+  const assert = require('node:assert/strict');
+  const fs = require('node:fs'), path = require('node:path');
+  const { loadApp } = require('./support/load-app');
+  const RAIZ = path.join(__dirname, '..');
+  const CORE = path.join(RAIZ, 'js', 'core');
+  const app = () => loadApp(['core-state.js', 'calc-helpers.js'].map(f => path.join(CORE, f)), { permissive: true });
+
+  test('Dinero.fmt — decimales auto/0/2, redondeo, signo, y NaN/undefined/null → $0 (nunca «$NaN»)', () => {
+    const { Dinero } = app();
+    const f = (n, o) => Dinero.fmt(n, o);
+    assert.deepEqual([f(1234567), f(1234.5), f(-500), f(0), f(NaN), f(undefined), f(null)], ['$1.234.567', '$1.234,50', '-$500', '$0', '$0', '$0', '$0']);
+    assert.deepEqual([f(1234.5, { decimales: 0 }), f(1234.5, { decimales: 0, redondeo: 'truncar' }), f(-1234.5, { decimales: 0, redondeo: 'truncar' })], ['$1.235', '$1.234', '-$1.234']);
+    assert.equal(f(500, { decimales: 2 }), '$500,00');
+    assert.equal(f(1234.5, { decimales: 2 }), '$1.234,50');
+    assert.deepEqual([f(500, { signo: true }), f(-500, { signo: true }), f(0, { signo: true })], ['+$500', '-$500', '$0']);
+    assert.equal(f(-0.004), '$0', 'un negativo que redondea a cero no muestra «-$0»');
+  });
+
+  test('fmt() y fmtNoCents() son atajos de Dinero.fmt: mismo resultado que las llamadas con opciones', () => {
+    const { Dinero, fmt, fmtNoCents } = app();
+    for (const n of [0, 1, 999, 1000, 1999.99, 12345.67, -0.5, -1234.5, 2500000]) {
+      assert.equal(fmt(n), Dinero.fmt(n), 'fmt(' + n + ')');
+      assert.equal(fmtNoCents(n), Dinero.fmt(n, { decimales: 0, redondeo: 'truncar' }), 'fmtNoCents(' + n + ')');
+    }
+    assert.equal(fmtNoCents(-0.5), '$0', 'antes daba «-$0»');
+    assert.equal(fmtNoCents(1999.99), '$1.999', 'el selector de Cuentas trunca a propósito');
+  });
+
+  test('una fecha SIN ceros (2099-1-5) se lee igual que 2099-01-05 en los módulos que antes hacían new Date(str+"T00:00:00")', () => {
+    // Con el parser de strings ISO la fecha sin padding daba Invalid Date y cualquier comparación salía false en silencio.
+    const { spPersonaPagadaVigente } = app();
+    assert.equal(spPersonaPagadaVigente({ pagado: true, proximoPago: '2099-01-05' }), true);
+    assert.equal(spPersonaPagadaVigente({ pagado: true, proximoPago: '2099-1-5' }), true, 'sin ceros también es futura');
+    assert.equal(spPersonaPagadaVigente({ pagado: true, proximoPago: '2000-1-5' }), false, 'sin ceros y pasada: el pago ya no está vigente');
+  });
+
+  // ── Guardas estáticas: que no vuelvan a aparecer las copias que se eliminaron ──
+  const sinComentarios = s => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1');
+  const archivosJs = () => ['core', 'modules'].flatMap(d => fs.readdirSync(path.join(RAIZ, 'js', d)).map(f => path.join(RAIZ, 'js', d, f))).filter(f => f.endsWith('.js'));
+
+  test('guarda: ningún js/ arma su propio formato de moneda (Intl/toLocaleString con currency) — todo pasa por Dinero.fmt', () => {
+    const malos = archivosJs().filter(f => /style\s*:\s*['"]currency['"]/.test(sinComentarios(fs.readFileSync(f, 'utf8')))).map(f => path.relative(RAIZ, f));
+    assert.deepEqual(malos, []);
+  });
+
+  test('_fechaSafe(f, hora): fija la hora local, tolera fechas sin ceros y el sufijo T…; el mediodía no cambia de día al formatear', () => {
+    const { _fechaSafe } = app();
+    assert.equal(_fechaSafe('2099-1-5').getDate(), 5);
+    assert.equal(_fechaSafe('2099-1-5').getHours(), 0);
+    assert.equal(_fechaSafe('2099-1-5', 12).getHours(), 12);
+    assert.equal(_fechaSafe('2026-11-04T09:30:00', 12).getDate(), 4, 'ignora la hora guardada');
+    assert.ok(isNaN(_fechaSafe('')) && isNaN(_fechaSafe('x-y-z')) && isNaN(_fechaSafe(null, 12)));
+    assert.equal(app().Fecha.iso(_fechaSafe('2026-12-31', 12)), '2026-12-31', 'sin saltar de día al pasar a ISO (local, no UTC)');
+  });
+
+  test('guarda: ningún js/ lee una fecha con new Date(x+"T00:00:00") — se usa _fechaSafe (tolera fechas sin ceros y no depende del parser)', () => {
+    const re = /new Date\([^;]*?\+\s*['"]T(?:00|12):00:00['"]\s*\)/; // T00:00:00 → _fechaSafe(x); T12:00:00 → _fechaSafe(x, 12)
+    const malos = archivosJs().filter(f => re.test(sinComentarios(fs.readFileSync(f, 'utf8')))).map(f => path.relative(RAIZ, f));
+    assert.deepEqual(malos, []);
+  });
+
+  test('guarda: cada módulo declara su origen con Libro.origen(...) — no se vuelven a copiar las funciones _og*', () => {
+    const re = /(?:const|let|var)\s+_og\w*\s*=\s*\(?\s*ref\b|function\s+_og\w*\s*\(\s*ref\b/;
+    const malos = archivosJs().filter(f => re.test(sinComentarios(fs.readFileSync(f, 'utf8')))).map(f => path.relative(RAIZ, f));
+    assert.deepEqual(malos, []);
   });
 });

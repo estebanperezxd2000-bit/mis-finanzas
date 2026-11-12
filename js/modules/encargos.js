@@ -20,7 +20,7 @@
    - iniciales() se queda en bootstrap.js porque también la usa el sistema
      de Personas. getCajitaNombre() vive en js/core/nu-calc.js.
    - _normEncargos(S) (normalización para el feed unificado de movimientos)
-     vive en js/modules/actividad_reciente.js, junto a las de los demás módulos.
+     vive en js/modules/actividad-reciente.js, junto a las de los demás módulos.
    - La integración con el Sistema de Personas (selector en "Nuevo encargo",
      hook que exige personaId, botones de perfil en lista/detalle) vive al
      final de este mismo archivo (fusionada el 2026-08-03). Usa getPersona/
@@ -43,11 +43,11 @@
    CHANGELOG.md#encargos.
    ═══════════════════════════════════════════════════════════════ */
 
-// ── Libro (core-state.js): origen de cada cambio de saldo ────────────────────────────────────────────────
+// ── Libro (js/core/cuentas-fuentes.js): origen de cada cambio de saldo ────────────────────────────────────────────────
 // _ogEnc(ref, rev): cada sumar/descontarFuente deja en el libro { modulo:'encargos', ref:<id del movimiento del encargo> }.
 // Con rev=true es una reversión (tipo 'reversion', mismo ref que lo que deshace). `opts.exacto` ya no existe: el saldo
-// nunca se recorta en 0 (ver descontarFuente en core-state.js).
-const _ogEnc = (ref, rev) => ({ origen: { modulo: 'encargos', ref, rev: rev || undefined } });
+// nunca se recorta en 0 (ver descontarFuente en js/core/cuentas-fuentes.js).
+const _ogEnc = Libro.origen('encargos');
 
 function editarEncargoActual() {
   if (!encargoActualId) return;
@@ -73,16 +73,18 @@ function guardarEditarEncargo() {
   save();
   abrirEncargoDetalle(encargoActualId);
   closeSheet('editar-encargo');
-  toast(escHtml(nombre) + ' actualizado', 'ok');
+  toast(nombre + ' actualizado', 'ok');
 }
 function renderEncargosEnCuenta(elId, tipoCuenta) {
   const el = document.getElementById(elId);
   if (!el) return;
   const encargos = S.encargos || [];
 
-  // Para Nu: construir filas por cajita específica (no agrupado)
+  // Cuenta de ahorro: construir filas por cajita específica (no agrupado)
   // Para otras cuentas: comportamiento normal
-  if (tipoCuenta === 'nu') {
+  const cuentaAhorro = getCuentaDeFuente(tipoCuenta);
+  if (esCuentaAhorro(cuentaAhorro)) {
+    const cajitasPropias = new Set(cajitasDeCuenta(cuentaAhorro.id).map(x => x.id));
     // Estructura: [{enc, cajitaId, saldoEncargo}]
     const filas = [];
     encargos.forEach(enc => {
@@ -98,7 +100,7 @@ function renderEncargosEnCuenta(elId, tipoCuenta) {
       });
       // Una fila por cajita específica
       Object.entries(mapRaw).forEach(([k, v]) => {
-        if (v > 0 && k && k.startsWith('cajita:')) {
+        if (v > 0 && k && Fuente.esCajita(k) && cajitasPropias.has(k.split(':')[1])) {
           filas.push({ enc, cajitaId: k.split(':')[1], saldoEncargo: v });
         }
       });
@@ -110,16 +112,16 @@ function renderEncargosEnCuenta(elId, tipoCuenta) {
     // Proporción del encargo = saldoEncargo / saldo_base_cajita (el saldo guardado, sin intereses futuros)
     // Valor actual de esa porción = calcC(cajita).val * proporción
     // Interés de HOY de esa porción = valor_actual_porción * tasaDiaria
-    // Esto replica exactamente lo que Nu hace: el dinero del encargo genera interés compuesto
+    // Esto replica exactamente lo que hace el banco: el dinero del encargo genera interés compuesto
     // acumulado desde que se depositó (fecha de la cajita), y el de hoy es sobre la base ya crecida.
 
-    let totalEncargosNu = 0;      // saldo nominal (lo que le debes al encargante)
+    let totalEncargosAhorro = 0;      // saldo nominal (lo que le debes al encargante)
     let totalInteresesMios = 0;   // interés de hoy sobre la porción del encargo (es tuyo)
     let totalValorActual = 0;     // valor actual de la porción (nominal + intereses acumulados = ganancia tuya)
     const filasHtml = filas.map(({enc, cajitaId, saldoEncargo}) => {
-      totalEncargosNu += saldoEncargo;
+      totalEncargosAhorro += saldoEncargo;
       const cajita = (S.cajitas||[]).find(x => x.id === cajitaId);
-      const cajitaNombre = cajita ? (cajita.nombre || 'Cajita Nu') : 'Cajita Nu';
+      const cajitaNombre = cajita ? (cajita.nombre || 'Cajita') : 'Cajita';
 
       // Calcular valor actual proporcional de la porción del encargo
       let interesMioHoy = 0;
@@ -134,7 +136,7 @@ function renderEncargosEnCuenta(elId, tipoCuenta) {
         interesMioHoy = valorActualPorcion * k.tasaDiaria;
       } else {
         // Cajita sin fecha o sin saldo: usar tasa global simple
-        const tasa = getNuTasaGlobal();
+        const tasa = getTasaCuenta(cuentaAhorro.id);
         const tasaDiaria = Math.pow(1 + tasa / 100, 1 / 365) - 1;
         interesMioHoy = saldoEncargo * tasaDiaria;
       }
@@ -172,25 +174,25 @@ function renderEncargosEnCuenta(elId, tipoCuenta) {
         </div>`;
     });
 
-    const totalAcumulado = totalValorActual - totalEncargosNu; // ganancia acumulada total tuya
+    const totalAcumulado = totalValorActual - totalEncargosAhorro; // ganancia acumulada total tuya
     el.innerHTML = html`
-      <div class="sec-title">Encargos en Nu</div>
+      <div class="sec-title">Encargos en ${cuentaAhorro.nombre}</div>
       <div class="enc-cap-caja">
         <div class="enc-cap-txt">Plata que administras de otras personas, guardada en tus cajitas — los intereses que genera son tuyos</div>
         ${filasHtml}
         <div class="enc-tot-fila">
           <div>
-            <div class="enc-nota">Total encargos en Nu</div>
+            <div class="enc-nota">Total encargos en ${cuentaAhorro.nombre}</div>
             ${totalInteresesMios >= 0.01 ? html`<div class="enc-tot-int-dia">+${fmt(totalInteresesMios)}/día que ganas tú</div>` : ''}
             ${totalAcumulado > 0.5 ? html`<div class="enc-tot-acum">+${fmt(totalAcumulado)} ganados hasta hoy</div>` : ''}
           </div>
-          <span class="enc-tot-val">${fmt(totalEncargosNu)}</span>
+          <span class="enc-tot-val">${fmt(totalEncargosAhorro)}</span>
         </div>
       </div>`;
     return;
   }
 
-  // ── Comportamiento normal para cuentas no-Nu ──
+  // ── Comportamiento normal para las demás cuentas ──
   const filas = [];
   encargos.forEach(enc => {
     const mapRaw = {};
@@ -205,23 +207,16 @@ function renderEncargosEnCuenta(elId, tipoCuenta) {
     });
     let saldoEnCuenta = 0;
     Object.entries(mapRaw).forEach(([k, v]) => {
-      const match = tipoCuenta.startsWith('custom:')
-        ? k === tipoCuenta
-        : k === tipoCuenta;
-      if (match) saldoEnCuenta += v;
+      if (k === tipoCuenta) saldoEnCuenta += v;
     });
     if (saldoEnCuenta > 0) {
       filas.push({ enc, saldo: saldoEnCuenta });
     }
   });
   if (!filas.length) { el.innerHTML = ''; return; }
-  // Color de Nequi/Efectivo: de CUENTAS_FIJAS (core-state.js), no repetido acá.
-  let color = (tipoCuenta === 'nequi' || tipoCuenta === 'efectivo') ? getCuentaFija(tipoCuenta).color : 'var(--blue)';
-  if (tipoCuenta.startsWith('custom:')) {
-    const cId = tipoCuenta.split(':')[1];
-    const cc = getCuentaCustom(cId);
-    if (cc && cc.color) color = cc.color;
-  }
+  // Color de la cuenta: el que eligió el usuario (azul si la cuenta ya no existe).
+  const cuentaTipo = getCuentaDeFuente(tipoCuenta);
+  const color = cuentaTipo ? colorCuenta(cuentaTipo) : 'var(--blue)';
   el.innerHTML = html`
     <div class="sec-title">Encargos en esta cuenta</div>
     <div class="enc-cap-caja">
@@ -283,7 +278,22 @@ function encargoLibre(enc) {
   return Math.max(0, encargoSaldo(enc) - encargoComprometido(enc));
 }
 
+// Sonda de la huella (js/core/huella.js): saldo, comprometido, libre y reparto por cuenta de cada encargo. Un encargo es su
+// propia bolsa (enc.movimientos), fuera de S.movimientos y del libro: un cambio de almacenamiento no puede alterar nada de esto.
+registrarSonda('encargos', st => {
+  const entidades = {};
+  (st.encargos || []).forEach(enc => {
+    const porCuenta = {};
+    _getEncargoSaldoPorCuenta(enc).forEach(c => { porCuenta[c.cuenta] = c.saldo; });
+    entidades[enc.id] = { saldo: encargoSaldo(enc), comprometido: encargoComprometido(enc), libre: encargoLibre(enc), sinCuenta: _getEncargoSaldoSinCuenta(enc), porCuenta };
+  });
+  return { entidades };
+});
+
 function renderEncargosList() {
+  _pintarEncargosList();
+}
+function _pintarEncargosList() {
   const el = document.getElementById('encargosList');
   const encargos = S.encargos||[];
   // El estado vacío ya trae «Crear encargo»: el botón de pie solo aparece con encargos.
@@ -303,10 +313,16 @@ function renderEncargosList() {
     const comprometido = encargoComprometido(enc);
     const libre = encargoLibre(enc);
     const ini = iniciales(enc.nombre);
+    const per = enc.personaId ? getPersona(enc.personaId) : null;
+    // Avatar con el color de la persona y clic al perfil: todo en el HTML de la fila (antes se parchaba el DOM después de pintar).
+    const colorPer = per && /^#[0-9a-fA-F]{6}$/.test(per.color || '') ? per.color : '#60b0f0';
+    const avatar = per
+      ? html`<div class="avatar enc-av-det enc-av-perfil" title="Ver perfil" ${raw(Events.attr('personas:abrirPerfil', per.id))} style="color:${colorPer};background:${colorPer}1a;border-color:${colorPer}33;">${ini}</div>`
+      : html`<div class="avatar enc-av-det">${ini}</div>`;
     return html`<div class="card card-sm enc-card-click" data-encargo-id="${enc.id}" ${raw(Events.attr('encargos:abrirDetalle', enc.id))}>
       <div class="row">
         <div class="enc-pers-cab">
-          <div class="avatar enc-av-det">${ini}</div>
+          ${avatar}
           <div>
             <div class="row-name">${enc.nombre}</div>
             <div class="row-sub">${(enc.movimientos||[]).length} movimiento${(enc.movimientos||[]).length!==1?'s':''} · ${enc.nota||'Encargo'}</div>
@@ -323,6 +339,13 @@ function renderEncargosList() {
 }
 
 function abrirEncargoDetalle(id) {
+  _pintarEncargoDetalle(id);
+  const enc = getEncargo(id);
+  if (!enc) return;
+  _encDetallePartes(enc);      // partes del encargo + preview de monto
+  _encDetallePersona(enc);     // color de la persona + chip «Ver perfil» (sección Personas, más abajo)
+}
+function _pintarEncargoDetalle(id) {
   encargoActualId = id;
   const enc = getEncargo(id);
   if (!enc) return;
@@ -364,17 +387,20 @@ function abrirEncargoDetalle(id) {
     });
     const hayMultiple = Object.keys(mapRaw).filter(k => (mapRaw[k]||0) > 0).length > 0;
     if (hayMultiple && saldo > 0) {
-      const tasaNU = getNuTasaGlobal();
-      const tasaDiaria = Math.pow(1 + tasaNU / 100, 1 / 365) - 1;
+      // La tasa depende de la cuenta de ahorro a la que pertenece cada cajita.
+      const tasaDiariaDe = k => {
+        const caj = (S.cajitas || []).find(x => x.id === k.split(':')[1]);
+        return Math.pow(1 + getTasaCuenta(caj && caj.cuentaId) / 100, 1 / 365) - 1;
+      };
       const filas = Object.entries(mapRaw)
         .filter(([k,v]) => v > 0)
         .sort((a,b) => b[1]-a[1])
         .map(([k,v]) => {
           const lbl = k === '__sin__' ? 'Sin especificar' : fuenteLabel(k);
           const pct = saldo > 0 ? Math.round(v/saldo*100) : 0;
-          // Si está en una cajita de Nu, calcular interés diario que genera (es mío)
-          const esCajita = k && k.startsWith('cajita:');
-          const interesMio = esCajita ? v * tasaDiaria : 0;
+          // Si está en una cajita de ahorro, calcular interés diario que genera (es mío)
+          const esCajita = k && Fuente.esCajita(k);
+          const interesMio = esCajita ? v * tasaDiariaDe(k) : 0;
           return html`<div class="enc-int-cab">
             <div>
               <span class="enc-int-lbl">${lbl}</span>
@@ -424,7 +450,7 @@ function abrirEncargoDetalle(id) {
     });
   }
   if (!todosMovs.length) {
-    histEl.innerHTML = `<div class="empty-state enc-vacio-pad"><div class="empty-state-sub">Sin movimientos aún. Registra entradas y salidas.</div></div>`;
+    histEl.innerHTML = emptyInline('Sin movimientos aún. Registra entradas y salidas.', { centro: true });
   } else {
     // Helper: construye atributos data-mov-* para abrir el sheet de detalle (saldo = saldo del encargo)
     // Ya escapa a mano (escHtml) porque arma una lista de atributos, no un solo valor —
@@ -536,7 +562,7 @@ function renderEncargoParts(enc) {
     const hoyStr = hoy();
     let fechaInfo = '';
     if (p.fecha) {
-      const dias = Math.round((new Date(p.fecha + 'T00:00:00') - new Date(hoyStr + 'T00:00:00')) / 86400000);
+      const dias = Fecha.diasEntre(hoyStr, p.fecha);
       if (dias < 0) fechaInfo = `<span class="enc-venc-rojo">venció hace ${Math.abs(dias)}d</span>`;
       else if (dias === 0) fechaInfo = `<span class="enc-venc-rojo">hoy</span>`;
       else if (dias === 1) fechaInfo = `<span class="enc-venc-amber">mañana</span>`;
@@ -594,7 +620,7 @@ function abrirNuevaParte() {
   document.getElementById('parte-fecha').value = '';
   _actualizarPartePreview(enc);
   openSheet('parte-encargo');
-  setTimeout(() => { const d = document.getElementById('parte-desc'); if(d) d.focus(); }, 200);
+  focusSheetField('parte-desc');
 }
 
 function editarParte(encId, parteId) {
@@ -666,7 +692,7 @@ async function usarParte(encId, parteId) {
 async function eliminarParte(encId, parteId) {
   const enc = getEncargo(encId);
   if (!enc) return;
-  const ok = await dialogo('Eliminar parte', '¿Eliminar esta parte del registro?', 'Eliminar', true);
+  const ok = await confirmarEliminar({ titulo: 'Eliminar parte', objeto: 'esta parte del registro', irreversible: false });
   if (!ok) return;
   enc.partes = (enc.partes || []).filter(p => p.id !== parteId);
   save();
@@ -674,12 +700,9 @@ async function eliminarParte(encId, parteId) {
   toast('Parte eliminada', 'ok');
 }
 
-// Hook: agregar renderEncargoParts al final de abrirEncargoDetalle
-const _origAbrirDetalle = abrirEncargoDetalle;
-abrirEncargoDetalle = function(id) {
-  _origAbrirDetalle(id);
-  const enc = getEncargo(id);
-  if (enc) renderEncargoParts(enc);
+// Partes del encargo: las pinta abrirEncargoDetalle() al terminar de armar el detalle.
+function _encDetallePartes(enc) {
+  renderEncargoParts(enc);
   // Listener para preview en tiempo real del monto
   const montoInput = document.getElementById('parte-monto');
   if (montoInput && !montoInput._parteListenerAdded) {
@@ -689,7 +712,7 @@ abrirEncargoDetalle = function(id) {
     });
     montoInput._parteListenerAdded = true;
   }
-};
+}
 
 function volverEncargosLista() {
   encargoActualId = null;
@@ -699,7 +722,11 @@ function volverEncargosLista() {
 }
 
 function crearEncargo() {
-  const nombre = document.getElementById('enc_nombre').value.trim();
+  // personaId es obligatorio: no debe existir un encargo sin persona vinculada (enc_nombre se llena al elegirla).
+  const pId = _encPicker().valor;
+  if (!pId) { toast('Selecciona una persona', 'err'); return; }
+  const persona = getPersona(pId);
+  const nombre = persona ? persona.nombre : document.getElementById('enc_nombre').value.trim();
   if (!nombre) { toast('Ingresa el nombre de la persona', 'err'); return; }
   const saldoIni = parseMoney(document.getElementById('enc_saldo').value)||0;
   const cuentaIni = document.getElementById('enc_cuenta_ini').value || '';
@@ -707,6 +734,7 @@ function crearEncargo() {
   if (!S.encargos) S.encargos = [];
   S.encargos.push({
     id: uid(),
+    personaId: pId,
     nombre,
     nota,
     saldoInicial: saldoIni,
@@ -719,6 +747,7 @@ function crearEncargo() {
   document.getElementById('enc_nota').value = '';
   document.getElementById('enc_cuenta_ini').value = '';
   document.getElementById('enc_cuenta_wrap').style.display = 'none';
+  _encPicker().limpiar();
   save(); renderEncargosList();
   closeSheet('nuevo-encargo');
   if(window.logCambio) logCambio('Creaste un encargo',nombre,'','editar');
@@ -733,7 +762,7 @@ function crearEncargo() {
 // entre varias cuentas suyas en vez de una sola. Ver crearSplitWidget('movencDifMi') abajo.
 let _difMiSplitMode = false;
 
-diffRegistrarInstancia('movenc', {
+const _dif_movenc = diffRegistrarInstancia('movenc', {
   ids: {
     wrap: 'movenc-dif-wrap', body: 'movenc-dif-body', icon: 'movenc-dif-toggle-icon',
     real: 'movenc_dif_real', partesList: 'movenc-dif-beneficiarios',
@@ -750,14 +779,12 @@ diffRegistrarInstancia('movenc', {
   onResumen: () => _difMiSplitPreview()
 });
 
-crearSplitWidget('movencDifMi', {
+const _sp_movencDifMi = crearSplitWidget('movencDifMi', {
   simpleId: 'movenc_dif_mi_simple', splitId: 'movenc_dif_mi_split', toggleId: 'movenc_dif_mi_toggle', rowsId: 'movencDifMiRows',
   getModo: () => _difMiSplitMode, setModo: v => { _difMiSplitMode = v; },
-  getFuentesFn: sel => buildFuentesOptsHtml({ selectedVal: sel, incluirTC: false, placeholder: 'Elegir cuenta' }),
+  getFuentesFn: sel => opcionesCuenta({ selectedVal: sel, placeholder: 'Elegir cuenta' }),
   onPreview: () => _difMiSplitPreview()
 });
-function _difMiSplitToggle() { splitToggle('movencDifMi'); }
-function _difMiAgregarRow() { splitAgregarRow('movencDifMi'); }
 
 function _difMiSplitPreview() {
   const el = document.getElementById('movenc_dif_mi_preview');
@@ -777,16 +804,6 @@ function _difMiSplitPreview() {
 }
 
 // Wrappers con los nombres viejos — el HTML del sheet sigue llamándolos igual, cero cambios de markup
-function _difToggle() { diffToggle('movenc'); }
-function _difAddBenef() { diffAddParte('movenc'); }
-function _difRemoveBenef(i) { diffRemoveParte('movenc', i); }
-function _difSetNombre(i, v) { diffSetNombre('movenc', i, v); }
-function _difSetMonto(i, v) { diffSetMonto('movenc', i, v); }
-function _difTogglePagoYo(i) { diffTogglePagoYo('movenc', i); }
-function _difSetCuentaSalida(i, v) { diffSetCuentaSalida('movenc', i, v); }
-function _difSetCuentaEntrada(i, v) { diffSetCuentaEntrada('movenc', i, v); }
-function _difResumen() { diffResumen('movenc'); }
-function _validarIntercambiosBenefs() { return diffValidarIntercambios('movenc'); }
 
 /* ─── "Yo puse la plata" — intercambio simple sin diferencial ─────
    Para cuando lo que dijiste = lo real, pero la plata no salió de la
@@ -818,22 +835,18 @@ function _movEncMiaToggle() {
 let _miaSaleSplitMode  = false;
 let _miaEntraSplitMode = false;
 
-crearSplitWidget('miaSale', {
+const _sp_miaSale = crearSplitWidget('miaSale', {
   simpleId: 'movenc_mia_sale_simple', splitId: 'movenc_mia_sale_split', toggleId: 'movenc_mia_sale_toggle', rowsId: 'miaSaleRows',
   getModo: () => _miaSaleSplitMode, setModo: v => { _miaSaleSplitMode = v; },
   getFuentesFn: sel => _diffFuentesOptsHtml(sel, true),
   onPreview: () => _movEncMiaPreview()
 });
-crearSplitWidget('miaEntra', {
+const _sp_miaEntra = crearSplitWidget('miaEntra', {
   simpleId: 'movenc_mia_entra_simple', splitId: 'movenc_mia_entra_split', toggleId: 'movenc_mia_entra_toggle', rowsId: 'miaEntraRows',
   getModo: () => _miaEntraSplitMode, setModo: v => { _miaEntraSplitMode = v; },
   getFuentesFn: sel => _diffFuentesOptsHtml(sel, false),
   onPreview: () => _movEncMiaPreview()
 });
-function _miaSaleSplitToggle()  { splitToggle('miaSale'); }
-function _miaSaleAgregarRow()   { splitAgregarRow('miaSale'); }
-function _miaEntraSplitToggle() { splitToggle('miaEntra'); }
-function _miaEntraAgregarRow()  { splitAgregarRow('miaEntra'); }
 
 // Monto que realmente puso el usuario de su bolsillo (2026-09-30): si el bloque
 // "El valor real era diferente" está abierto y el real es válido (0 < real < monto),
@@ -899,10 +912,8 @@ function _validarMovEncMia() {
     return 'Elige de qué cuenta tuya salió la plata';
   }
   for (const r of sale) {
-    const saldo = getSaldoFuente(r.fuente);
-    if (r.monto > saldo + 0.5) {
-      return `No tienes ${fmt(r.monto)} en ${escHtml(fuenteLabel(r.fuente))}. Disponible: ${fmt(saldo)}.`;
-    }
+    const val = Plata.validarSalida(r.fuente, r.monto);
+    if (!val.ok) return val.motivo;
   }
 
   // Recupero: sin filas = "sin especificar" (igual que el modo simple con la opción vacía)
@@ -1027,7 +1038,7 @@ function _crearSplitSobrante(instId, key, ids) {
   crearSplitWidget(key, {
     simpleId: ids.simple, splitId: ids.split, toggleId: ids.toggle, rowsId: ids.rows,
     getModo: () => modo, setModo: v => { modo = v; },
-    getFuentesFn: sel => buildFuentesOptsHtml({ selectedVal: sel, incluirTC: false, placeholder: 'Elegir cuenta' }),
+    getFuentesFn: sel => opcionesCuenta({ selectedVal: sel, placeholder: 'Elegir cuenta' }),
     onPreview: () => ctl.preview()
   });
   return ctl;
@@ -1040,7 +1051,7 @@ const _usarParteMi = _crearSplitSobrante('usarParte', 'usarParteMi', {
 function _usarParteMiSplitToggle() { _usarParteMi.toggle(); }
 function _usarParteMiAgregarRow() { _usarParteMi.agregar(); }
 
-diffRegistrarInstancia('usarParte', {
+const _dif_usarParte = diffRegistrarInstancia('usarParte', {
   ids: {
     wrap: 'usar-parte-dif-wrap', body: 'usar-parte-dif-body', icon: 'usar-parte-dif-icon',
     real: 'usar_parte_dif_real', partesList: 'usar-parte-dif-benefs',
@@ -1062,38 +1073,26 @@ diffRegistrarInstancia('usarParte', {
 });
 
 // Wrappers con los nombres viejos — el HTML del sheet sigue llamándolos igual
-function _usarParteDifToggle() { diffToggle('usarParte'); }
-function _usarParteAddBenef() { diffAddParte('usarParte'); }
-function _usarParteRemoveBenef(i) { diffRemoveParte('usarParte', i); }
-function _usarParteSetNombre(i, v) { diffSetNombre('usarParte', i, v); }
-function _usarParteSetMonto(i, v) { diffSetMonto('usarParte', i, v); }
-function _usarParteDifResumen() { diffResumen('usarParte'); }
 
 /* ─── Fuente (origen) en "Ya la usé" ──────────────────────────── */
 let _usarParteSplitMode = false;
 let _usarParteMargenPendiente = null;
 
-crearSplitWidget('usarParte', {
+const _sp_usarParte = crearSplitWidget('usarParte', {
   simpleId:'usarParteModoSimple', splitId:'usarParteModoDividido', toggleId:'usarParteSplitToggle', rowsId:'usarParteSplitRows',
   getModo:()=>_usarParteSplitMode, setModo:v=>{_usarParteSplitMode=v;},
-  getFuentesFn:_getUsarParteFuentesOptions,
+  fuentes:_usarParteFuentes,
   onPreview:_usarParteFuentePreview
 });
 
-function _usarParteSplitToggle(){ splitToggle('usarParte'); }
 
-function _getUsarParteFuentesOptions(selectedVal) {
+// Solo las cuentas donde el encargo tiene plata guardada.
+function _usarParteFuentes() {
   const enc = _usarParteEncId ? getEncargo(_usarParteEncId) : null;
-  const fuentesConSaldo = enc ? _getEncargoSaldoPorCuenta(enc) : [];
-  // Solo mostrar las cuentas donde el encargo tiene plata guardada.
-  // Los items de fuentesConSaldo tienen { cuenta, label, saldo } — buildFuentesOptsHtml
-  // los normaliza via { val: f.val ?? f.cuenta }.
-  return buildFuentesOptsHtml({ selectedVal, mostrarSaldo: true, fuentesCustom: fuentesConSaldo });
+  return { mostrarSaldo: true, soloDe: enc ? _getEncargoSaldoPorCuenta(enc) : [] };
 }
 
-function _usarParteAgregarSplitRow(){ splitAgregarRow('usarParte'); }
 
-function _getUsarParteSplitData(){ return splitGetData('usarParte'); }
 
 function _usarParteFuentePreview() {
   const el = document.getElementById('usar-parte-fuente-preview');
@@ -1104,7 +1103,7 @@ function _usarParteFuentePreview() {
   if (!monto) { el.textContent = ''; return; }
 
   if (_usarParteSplitMode) {
-    const splits = _getUsarParteSplitData();
+    const splits = _sp_usarParte.data();
     const total = splits.reduce((a, s) => a + s.monto, 0);
     const restante = monto - total;
     if (splits.length === 0) { el.textContent = ''; return; }
@@ -1137,7 +1136,7 @@ async function _confirmarUsarParte() {
   // Leer origen de la plata (fuente simple o split)
   let fuentesOrigen = [];
   if (_usarParteSplitMode) {
-    fuentesOrigen = _getUsarParteSplitData();
+    fuentesOrigen = _sp_usarParte.data();
   } else {
     const sel = document.getElementById('usar_parte_fuente');
     const val = sel ? sel.value : '';
@@ -1149,7 +1148,7 @@ async function _confirmarUsarParte() {
     if (!f.fuente) continue;
     const saldoEnc = _getEncargoSaldoEnCuenta(enc, f.fuente);
     if (f.monto > saldoEnc + 0.5) {
-      toast(`El encargo solo tiene ${fmt(saldoEnc)} guardado en ${escHtml(fuenteLabel(f.fuente))}`, 'err');
+      toast(`El encargo solo tiene ${fmt(saldoEnc)} guardado en ${fuenteLabel(f.fuente)}`, 'err');
       return;
     }
   }
@@ -1286,7 +1285,7 @@ function abrirUsarParteSheet(encId, parteId) {
   // Poblar select con fuentes, preseleccionando la de mayor saldo en el encargo
   const sel = document.getElementById('usar_parte_fuente');
   if (sel) {
-    sel.innerHTML = _getUsarParteFuentesOptions('');
+    sel.innerHTML = opcionesCuenta(_usarParteFuentes());
     // Preseleccionar la cuenta con más saldo del encargo
     const cuentasConSaldo = _getEncargoSaldoPorCuenta(enc);
     if (cuentasConSaldo.length > 0) {
@@ -1373,7 +1372,7 @@ function abrirMovEncargo(tipo) {
     // Entrada: mostrar fuentes reales (sin TC — no se puede guardar plata ajena en una TC)
     const fuentes = getFuentesSinTC();
     // FIX (2026-08-15): f.val/f.label sin escapar — mismo patrón que ya se
-    // corrigió en buildFuentesOptsHtml() (core-state.js), pero esta es una
+    // corrigió en opcionesCuenta() (js/core/cuentas-fuentes.js), pero esta es una
     // segunda implementación separada que nunca pasaba por escHtml(). Nombres
     // de cuenta personalizada son texto libre del usuario. Ver CHANGELOG.md.
     sel.innerHTML = html`<option value="">Sin especificar</option>${fuentes.map(f=>html`<option value="${f.val}">${f.label}</option>`)}`;
@@ -1468,29 +1467,17 @@ function _actualizarMovEncCuentaHint(enc, cuentaVal) {
 /* ─── Split de fuente en "Retirar plata" del encargo ─────────────── */
 let _movEncSplitMode = false;
 
-crearSplitWidget('movenc', {
+const _sp_movenc = crearSplitWidget('movenc', {
   simpleId:'movenc_cuenta_simple', splitId:'movenc_cuenta_split', toggleId:'movenc_split_toggle', rowsId:'movencSplitRows',
   getModo:()=>_movEncSplitMode, setModo:v=>{_movEncSplitMode=v;},
-  getFuentesFn:_movEncGetFuentesOptions,
+  // Con distribución por cuenta: solo las cuentas del encargo con su saldo. Sin distribución: todas las fuentes (con tarjetas), sin saldo.
+  fuentes:()=>{ const enc = encargoActualId ? getEncargo(encargoActualId) : null; const l = enc ? _getEncargoSaldoPorCuenta(enc) : []; return l.length ? { mostrarSaldo: true, soloDe: l } : { tarjetas: true }; },
   onPreview:_movEncSplitPreview
 });
 
-function _movEncSplitToggle(){ splitToggle('movenc'); }
 
-function _movEncGetFuentesOptions(selectedVal) {
-  const enc = encargoActualId ? getEncargo(encargoActualId) : null;
-  const cuentasConSaldo = enc ? _getEncargoSaldoPorCuenta(enc) : [];
-  // Si el encargo no tiene distribución por cuenta, mostrar todas las fuentes sin saldo.
-  // Con distribución, mostrar solo las cuentas del encargo con su saldo.
-  if (cuentasConSaldo.length === 0) {
-    return buildFuentesOptsHtml({ selectedVal });
-  }
-  return buildFuentesOptsHtml({ selectedVal, mostrarSaldo: true, fuentesCustom: cuentasConSaldo });
-}
 
-function _movEncAgregarSplitRow(){ splitAgregarRow('movenc'); }
 
-function _movEncGetSplitData(){ return splitGetData('movenc'); }
 
 function _movEncSplitPreview() {
   const el = document.getElementById('movenc_split_preview');
@@ -1498,7 +1485,7 @@ function _movEncSplitPreview() {
     const montoTotal = parseMoney(document.getElementById('movenc_monto').value) || 0;
     if (!_movEncSplitMode) { el.textContent = ''; }
     else {
-      const splits  = _movEncGetSplitData();
+      const splits  = _sp_movenc.data();
       const asignado = splits.reduce((a, s) => a + s.monto, 0);
       const restante = montoTotal - asignado;
       if (splits.length === 0) { el.textContent = ''; }
@@ -1607,7 +1594,7 @@ function confirmarMovEncargo() {
 
   if (movEncargoTipo === 'salida' && _movEncSplitMode) {
     // ── MODO SPLIT ──────────────────────────────────────────────────
-    const splits = _movEncGetSplitData();
+    const splits = _sp_movenc.data();
     const totalSplit = splits.reduce((a, s) => a + s.monto, 0);
     if (splits.length === 0) { toast('Agrega al menos una cuenta en el split', 'err'); return; }
     if (Math.abs(totalSplit - monto) > 0.5) {
@@ -1623,11 +1610,11 @@ function confirmarMovEncargo() {
       if (!s.fuente) continue;
       const saldoEnCuenta = _getEncargoSaldoEnCuenta(enc, s.fuente);
       if (s.monto > saldoEnCuenta + 0.5) {
-        toast(`En ${escHtml(fuenteLabel(s.fuente))} solo hay ${fmt(saldoEnCuenta)} de este encargo`, 'err'); return;
+        toast(`En ${fuenteLabel(s.fuente)} solo hay ${fmt(saldoEnCuenta)} de este encargo`, 'err'); return;
       }
     }
     // Validar intercambios antes de registrar
-    const _errIntSplit = _validarIntercambiosBenefs();
+    const _errIntSplit = _dif_movenc.validarIntercambios();
     if (_errIntSplit) { toast(_errIntSplit, 'err', 5000); return; }
     const _errMiaSplit = _validarMovEncMia();
     if (_errMiaSplit) { toast(_errMiaSplit, 'err', 5000); return; }
@@ -1671,7 +1658,7 @@ function confirmarMovEncargo() {
       if (cuenta) {
         const saldoEnCuenta = _getEncargoSaldoEnCuenta(enc, cuenta);
         if (monto > saldoEnCuenta) {
-          toast(`En ${escHtml(fuenteLabel(cuenta))} solo hay ${fmt(saldoEnCuenta)} de este encargo`, 'err'); return;
+          toast(`En ${fuenteLabel(cuenta)} solo hay ${fmt(saldoEnCuenta)} de este encargo`, 'err'); return;
         }
       }
     }
@@ -1686,7 +1673,7 @@ function confirmarMovEncargo() {
       ts: Date.now()
     };
     if (movEncargoTipo === 'salida') {
-      const _errInt = _validarIntercambiosBenefs();
+      const _errInt = _dif_movenc.validarIntercambios();
       if (_errInt) { toast(_errInt, 'err', 5000); return; }
       const _errMia = _validarMovEncMia();
       if (_errMia) { toast(_errMia, 'err', 5000); return; }
@@ -1840,17 +1827,14 @@ function _movEncConfirmarPrestarFaltante() {
   // los 20mil, dejando la cuenta en negativo en silencio. Mismo criterio que
   // ya usa "Yo puse la plata" (_validarMovEncMia, más arriba en este mismo
   // archivo): getSaldoFuente() antes de escribir cualquier dato.
-  const saldoFuente = getSaldoFuente(fuentePrestamo);
-  if (faltante > saldoFuente + 0.5) {
-    toast(`No tienes ${fmt(faltante)} en ${escHtml(fuenteLabel(fuentePrestamo))} para prestar. Disponible: ${fmt(saldoFuente)}.`, 'err', 4500);
-    return;
-  }
+  const valPrestamo = Plata.validarSalida(fuentePrestamo, faltante);
+  if (!valPrestamo.ok) { toast(valPrestamo.motivo, 'err', 4500); return; }
 
   const cuenta = document.getElementById('movenc_cuenta').value;
   if (cuenta) {
     const saldoEnCuenta = _getEncargoSaldoEnCuenta(enc, cuenta);
     if (libre > saldoEnCuenta + 0.5) {
-      toast(`En ${escHtml(fuenteLabel(cuenta))} solo hay ${fmt(saldoEnCuenta)} de este encargo`, 'err'); return;
+      toast(`En ${fuenteLabel(cuenta)} solo hay ${fmt(saldoEnCuenta)} de este encargo`, 'err'); return;
     }
   }
 
@@ -1898,7 +1882,7 @@ function _movEncConfirmarPrestarFaltante() {
   refresh();
   closeSheet('mov-encargo');
   abrirEncargoDetalle(encargoActualId);
-  toast(`${fmt(libre)} retirados del encargo · ${fmt(faltante)} prestados a ${escHtml(persona.nombre)} (Me deben)`, 'ok', 4500);
+  toast(`${fmt(libre)} retirados del encargo · ${fmt(faltante)} prestados a ${persona.nombre} (Me deben)`, 'ok', 4500);
 }
 
 async function deleteMovEncargo(encId, movId) {
@@ -1915,7 +1899,7 @@ async function deleteMovEncargo(encId, movId) {
     if (!(enc.saldoInicial > 0)) return;
     // El saldo inicial es plata AJENA que ya estaba guardada en esa cuenta: nunca formó parte de `c.saldo` (el saldo propio),
     // así que borrarlo solo quita la anotación del encargo y no mueve ninguna cuenta ni el libro.
-    const ok = await dialogo('Eliminar saldo inicial', `¿Eliminar el saldo inicial de ${fmt(enc.saldoInicial)}? Solo se quita del encargo; no cambia el saldo de ninguna cuenta.`, 'Eliminar', true);
+    const ok = await confirmarEliminar({ titulo: 'Eliminar saldo inicial', objeto: `el saldo inicial de ${fmt(enc.saldoInicial)}`, detalle: 'Solo se quita del encargo; no cambia el saldo de ninguna cuenta.', irreversible: false });
     if (!ok) return;
     enc.saldoInicial = 0;
     enc.cuentaInicial = '';
@@ -1965,7 +1949,7 @@ async function deleteMovEncargo(encId, movId) {
   }
   const ok = nivel === 'viejo'
     ? await dialogo('Movimiento antiguo', `Este movimiento de ${fmt(mov.monto)} ya tiene tiempo y puede estar mezclado con operaciones más recientes de este encargo${mov.cuenta ? ' en '+fuenteLabel(mov.cuenta) : ''}. Si lo eliminas, se revertirán sus efectos en tus cuentas ahora mismo — no se recalcula el historial completo. ¿Eliminar de todas formas?`, 'Eliminar de todas formas', true)
-    : await dialogo('Eliminar movimiento', '¿Eliminar este movimiento del encargo? Se revertirán todos los efectos en tus cuentas.', 'Eliminar', true);
+    : await confirmarEliminar({ titulo: 'Eliminar movimiento', objeto: 'este movimiento del encargo', detalle: 'Se revertirán todos los efectos en tus cuentas.', irreversible: false });
   if (!ok) return;
 
   // Revertir efectos secundarios de un pago de préstamo vía encargo
@@ -2028,15 +2012,8 @@ async function deleteMovEncargo(encId, movId) {
   if (mov && mov._traspasoEncargo) {
     // Revertir el sumarFuente que se hizo en el paso 2
     if (mov._destino && mov.monto) descontarFuente(mov._destino, mov.monto, _ogEnc(movId, true));
-    // Borrar el movimiento de ingreso vinculado (puede estar en c.movimientos de una
-    // cuenta custom o en S.movimientos para cuentas estándar).
-    if (mov._destino && mov._destino.startsWith('custom:')) {
-      const customId = mov._destino.split(':')[1];
-      const cDest = getCuentaCustom(customId);
-      if (cDest && cDest.movimientos) {
-        cDest.movimientos = cDest.movimientos.filter(m => m._encMovId !== movId);
-      }
-    } else if (S.movimientos) {
+    // Borrar el movimiento de ingreso vinculado (vive en S.movimientos, como el de toda cuenta).
+    if (S.movimientos) {
       S.movimientos = S.movimientos.filter(m => m._encMovId !== movId);
     }
   }
@@ -2105,11 +2082,11 @@ async function eliminarEncargoActual() {
     return;
   }
 
-  const ok = await dialogo(
-    'Eliminar encargo',
-    `¿Eliminar el encargo de ${escHtml(enc.nombre)}? Esta acción no se puede deshacer. Los movimientos que ya pasaron (compras con TC, pagos de deudas, traspasos, etc.) quedan tal cual — eliminar el encargo no revierte nada, solo deja de llevarle el registro a esta persona.`,
-    'Eliminar', true
-  );
+  const ok = await confirmarEliminar({
+    titulo: 'Eliminar encargo',
+    objeto: `el encargo de ${enc.nombre}`,
+    detalle: 'Los movimientos que ya pasaron (compras con TC, pagos de deudas, traspasos, etc.) quedan tal cual — eliminar el encargo no revierte nada, solo deja de llevarle el registro a esta persona.'
+  });
   if (!ok) return;
 
   // A propósito NO se revierte ni se borra ningún movimiento vinculado
@@ -2200,7 +2177,7 @@ function abrirTraspasoEncargo() {
   document.getElementById('traspaso_monto').oninput = function() { _actualizarTraspasoPreview(enc); };
 
   openSheet('traspaso-encargo');
-  setTimeout(()=>document.getElementById('traspaso_monto').focus(), 200);
+  focusSheetField('traspaso_monto');
 }
 
 function _actualizarTraspasoOrigenHint(enc) {
@@ -2260,7 +2237,7 @@ function confirmarTraspasoEncargo() {
   if (cuentaOrigen) {
     const saldoEnCuenta = _getEncargoSaldoEnCuenta(enc, cuentaOrigen);
     if (monto > saldoEnCuenta) {
-      toast(`El encargo solo tiene ${fmt(saldoEnCuenta)} guardado en ${escHtml(fuenteLabel(cuentaOrigen))}`, 'err');
+      toast(`El encargo solo tiene ${fmt(saldoEnCuenta)} guardado en ${fuenteLabel(cuentaOrigen)}`, 'err');
       return;
     }
   }
@@ -2285,47 +2262,25 @@ function confirmarTraspasoEncargo() {
   sumarFuente(destino, monto, _ogEnc(encMovId));
 
   // 3. Registrar ingreso visible en el historial de la cuenta destino.
-  //    Cuentas custom: va en c.movimientos (lo que renderMovsCustom lee).
-  //    Cuentas estándar: va en S.movimientos.
-  if (destino.startsWith('custom:')) {
-    const customId = destino.split(':')[1];
-    const cDest = getCuentaCustom(customId);
-    if (cDest) {
-      if (!cDest.movimientos) cDest.movimientos = [];
-      cDest.movimientos.push({
-        id: uid(),
-        tipo: 'ingreso',
-        monto,
-        fecha,
-        nota: desc + ' (de encargo ' + enc.nombre + ')',
-        _secundario: true,
-        _origenSeccion: 'Encargos',
-        _encMovId: encMovId,
-        clase: 'ingreso',
-        _esExtraIngreso: true,   // regalo recibido = ingreso real (ver _esEntradaEspejoNoIngreso)
-        ts: Date.now()
-      });
-    }
-  } else {
-    if (!S.movimientos) S.movimientos = [];
-    S.movimientos.push({
-      id: uid(),
-      tipo: 'entrada',
-      fuente: destino,
-      monto,
-      fecha,
-      desc: desc + ' (de encargo ' + enc.nombre + ')',
-      _encMovId: encMovId,
-      clase: 'ingreso',
-      _esExtraIngreso: true   // regalo recibido = ingreso real (ver _esEntradaEspejoNoIngreso)
-    });
-  }
+  //    Va en S.movimientos, como el historial de toda cuenta.
+  if (!S.movimientos) S.movimientos = [];
+  S.movimientos.push({
+    id: uid(),
+    tipo: 'entrada',
+    fuente: destino,
+    monto,
+    fecha,
+    desc: desc + ' (de encargo ' + enc.nombre + ')',
+    _encMovId: encMovId,
+    clase: 'ingreso',
+    _esExtraIngreso: true   // regalo recibido = ingreso real (ver _esEntradaEspejoNoIngreso)
+  });
 
   save();
   refresh();
   closeSheet('traspaso-encargo');
   abrirEncargoDetalle(encargoActualId);
-  toast(`${fmt(monto)} traspasado a ${escHtml(fuenteLabel(destino))}`, 'ok', 3500);
+  toast(`${fmt(monto)} traspasado a ${fuenteLabel(destino)}`, 'ok', 3500);
 }
 
 
@@ -2414,7 +2369,7 @@ function abrirMoverEntreCuentasEncargo() {
   };
 
   openSheet('mover-enc-cuentas');
-  setTimeout(() => document.getElementById('moverenc_monto').focus(), 220);
+  focusSheetField('moverenc_monto');
 }
 
 function _actualizarMoverEncOrigenHint(enc) {
@@ -2444,22 +2399,20 @@ function _actualizarMoverEncDestinoHint() {
    UsarParte (js/core/split.js), instancia propia 'moverenc'. */
 let _moverEncSplitMode = false;
 
-crearSplitWidget('moverenc', {
+const _sp_moverenc = crearSplitWidget('moverenc', {
   simpleId:'moverenc_origen_simple', splitId:'moverenc_origen_split', toggleId:'moverenc_split_toggle', rowsId:'moverencSplitRows',
   getModo:()=>_moverEncSplitMode, setModo:v=>{_moverEncSplitMode=v;},
   getFuentesFn:_moverEncGetFuentesOptions,
   onPreview:_moverEncSplitPreview
 });
 
-function _moverEncAgregarSplitRow(){ splitAgregarRow('moverenc'); }
-function _moverEncGetSplitData(){ return splitGetData('moverenc'); }
 
 function _moverEncGetFuentesOptions(selectedVal) {
   const enc = encargoActualId ? getEncargo(encargoActualId) : null;
   if (!enc) return html`<option value="">Elige cuenta</option>`;
   const cuentasConSaldo = _getEncargoSaldoPorCuenta(enc).filter(c => FuentesFiltro.puedeRecibir(c.cuenta));
   const saldoSinCuenta = _getEncargoSaldoSinCuenta(enc);
-  // Construido a mano (no vía buildFuentesOptsHtml) a propósito: ese helper
+  // Construido a mano (no vía opcionesCuenta) a propósito: ese helper
   // usa "Sin especificar" como texto neutro de "nada elegido todavía" (value=""),
   // que acá chocaba con nuestra opción real "Sin especificar (bucket con plata
   // del encargo)" — dos opciones con el mismo nombre pero significados
@@ -2491,7 +2444,7 @@ function _actualizarMoverEncPreview(enc) {
   if (!prev) return;
 
   if (_moverEncSplitMode) {
-    const splits = _moverEncGetSplitData(); // [{fuente, monto}]
+    const splits = _sp_moverenc.data(); // [{fuente, monto}]
     if (splits.length === 0 || !destino) { prev.innerHTML = ''; return; }
     // Filas con monto pero sin cuenta elegida todavía: no cuentan para el
     // cálculo, solo se avisan aparte (evita mostrar matemática sin sentido
@@ -2565,7 +2518,7 @@ function _actualizarMoverEncPreview(enc) {
 // total. No se agrupan para borrado — igual que esa salida dividida, cada
 // parte queda como un registro independiente en el historial del encargo.
 function _confirmarMoverEncCuentasSplit(enc, destino, fecha) {
-  const splits = _moverEncGetSplitData(); // [{fuente, monto}]
+  const splits = _sp_moverenc.data(); // [{fuente, monto}]
   if (splits.length === 0) { toast('Agrega al menos una cuenta de origen', 'err'); return; }
   if (splits.some(s => !s.fuente)) { toast('Selecciona la cuenta de origen en cada fila', 'err'); return; }
   if (splits.some(s => FuentesFiltro.esTC(s.fuente))) { toast('Una tarjeta de crédito no puede ser cuenta de origen', 'err'); return; }
@@ -2587,7 +2540,7 @@ function _confirmarMoverEncCuentasSplit(enc, destino, fecha) {
     const labelOrigen = esSinEsp ? 'Sin especificar' : fuenteLabel(s.fuente);
     const saldoEnOrigen = esSinEsp ? _getEncargoSaldoSinCuenta(enc) : _getEncargoSaldoEnCuenta(enc, s.fuente);
     if (s.monto > saldoEnOrigen + 0.5) {
-      toast('El encargo solo tiene ' + fmt(saldoEnOrigen) + ' en ' + escHtml(labelOrigen), 'err');
+      toast('El encargo solo tiene ' + fmt(saldoEnOrigen) + ' en ' + labelOrigen, 'err');
       return;
     }
   }
@@ -2625,7 +2578,7 @@ function _confirmarMoverEncCuentasSplit(enc, destino, fecha) {
   save();
   closeSheet('mover-enc-cuentas');
   abrirEncargoDetalle(encargoActualId);
-  toast(fmt(totalSplit) + ' reubicados a ' + escHtml(fuenteLabel(destino)), 'ok', 3500);
+  toast(fmt(totalSplit) + ' reubicados a ' + fuenteLabel(destino), 'ok', 3500);
 }
 
 function confirmarMoverEncCuentas() {
@@ -2648,7 +2601,7 @@ function confirmarMoverEncCuentas() {
   if (origen === destino) { toast('Origen y destino no pueden ser la misma cuenta', 'err'); return; }
 
   const esOrigenSinEspecificar = origen === '__sinesp__';
-  const labelOrigen = esOrigenSinEspecificar ? 'Sin especificar' : escHtml(fuenteLabel(origen));
+  const labelOrigen = esOrigenSinEspecificar ? 'Sin especificar' : fuenteLabel(origen);
 
   // Verificar saldo del encargo en la cuenta origen (o en "Sin especificar")
   const saldoEnOrigen = esOrigenSinEspecificar
@@ -2688,7 +2641,7 @@ function confirmarMoverEncCuentas() {
   save();
   closeSheet('mover-enc-cuentas');
   abrirEncargoDetalle(encargoActualId);
-  toast(fmt(monto) + ' reubicados de ' + labelOrigen + ' a ' + escHtml(fuenteLabel(destino)), 'ok', 3500);
+  toast(fmt(monto) + ' reubicados de ' + labelOrigen + ' a ' + fuenteLabel(destino), 'ok', 3500);
 }
 
 // Listener para el botón confirmar
@@ -2749,7 +2702,7 @@ function abrirTransferenciaEncargo() {
   document.getElementById('transfenc_monto').oninput = function() { _actualizarTransfEncPreview(enc); };
 
   openSheet('transferencia-encargo');
-  setTimeout(()=>document.getElementById('transfenc_monto').focus(), 200);
+  focusSheetField('transfenc_monto');
 }
 
 function _actualizarTransfEncPreview(enc) {
@@ -2793,7 +2746,7 @@ function confirmarTransferenciaEncargo() {
   if (cuentaOrigen) {
     const saldoEnCuenta = _getEncargoSaldoEnCuenta(encOrigen, cuentaOrigen);
     if (monto > saldoEnCuenta) {
-      toast(`El encargo solo tiene ${fmt(saldoEnCuenta)} guardado en ${escHtml(fuenteLabel(cuentaOrigen))}`, 'err');
+      toast(`El encargo solo tiene ${fmt(saldoEnCuenta)} guardado en ${fuenteLabel(cuentaOrigen)}`, 'err');
       return;
     }
   }
@@ -2841,7 +2794,7 @@ function confirmarTransferenciaEncargo() {
   refresh();
   closeSheet('transferencia-encargo');
   abrirEncargoDetalle(encargoActualId);
-  toast(`${fmt(monto)} transferidos a ${escHtml(encDestino.nombre)}`, 'ok', 3500);
+  toast(`${fmt(monto)} transferidos a ${encDestino.nombre}`, 'ok', 3500);
 }
 
 // Listener para el botón confirmar
@@ -2851,17 +2804,11 @@ function confirmarTransferenciaEncargo() {
 })();
 
 // Hook into refresh
-const _origRefreshEncargos = refresh;
-refresh = function() {
-  _origRefreshEncargos();
-  if (document.getElementById('screen-encargos')?.classList.contains('active')) {
-    if (encargoActualId) {
-      abrirEncargoDetalle(encargoActualId);
-    } else {
-      renderEncargosList();
-    }
-  }
-};
+// (solo si la pantalla de Encargos está activa: lo garantiza `pantalla`, ya no un if a mano)
+Refresh.registrar('encargos-pantalla', () => {
+  if (encargoActualId) abrirEncargoDetalle(encargoActualId);
+  else renderEncargosList();
+}, { pantalla: 'encargos' });
 
 // Abre el sheet «Nuevo encargo». Lo usan el botón de pie de la lista y el botón del estado vacío
 // (data-action="encargos:nuevo"): un solo camino, el select de cuentas siempre se puebla igual.
@@ -2873,8 +2820,8 @@ function abrirNuevoEncargo() {
     // FIX (2026-08-15, reportado por el usuario vía warning de consola
     // "select tag was parsed within another select tag"): f.val/f.label sin
     // escapar acá — mismo patrón que las otras 3 ocurrencias de este bug en
-    // este archivo (líneas ~1175/1184/1186) y que buildFuentesOptsHtml() en
-    // core-state.js. Nombres de cuenta personalizada son texto libre del
+    // este archivo (líneas ~1175/1184/1186) y que opcionesCuenta() en
+    // el núcleo. Nombres de cuenta personalizada son texto libre del
     // usuario — con caracteres como <, >, & sin escapar dentro del
     // innerHTML de un <select>, el parser del navegador puede comportarse
     // de forma impredecible. Ver CHANGELOG.md.
@@ -2966,7 +2913,7 @@ const _ctcMi = _crearSplitSobrante('ctc', 'ctcMi', {
 function _ctcMiSplitToggle() { _ctcMi.toggle(); }
 function _ctcMiAgregarRow() { _ctcMi.agregar(); }
 
-diffRegistrarInstancia('ctc', {
+const _dif_ctc = diffRegistrarInstancia('ctc', {
   ids: {
     wrap: 'ctc-dif-wrap', body: 'ctc-dif-body', icon: 'ctc-dif-icon',
     real: 'ctc_dif_real', resumen: 'ctc-dif-resumen',
@@ -2987,8 +2934,6 @@ diffRegistrarInstancia('ctc', {
 });
 
 // Wrappers con los nombres viejos — el HTML del sheet sigue llamándolos igual
-function _ctcDifToggle() { diffToggle('ctc'); }
-function _ctcDifResumen() { diffResumen('ctc'); }
 
 function abrirCompraConTC() {
   const enc = getEncargo(encargoActualId);
@@ -3053,7 +2998,7 @@ function abrirCompraConTC() {
   _ctcActualizarPreview();
 
   openSheet('compra-tc-encargo');
-  setTimeout(() => { const d = document.getElementById('ctc_desc'); if(d) d.focus(); }, 200);
+  focusSheetField('ctc_desc');
 }
 
 function _ctcActualizarCuentaEncHint() {
@@ -3145,7 +3090,7 @@ function confirmarCompraConTC() {
   if (cuentaEnc) {
     const saldoEnCuenta = _getEncargoSaldoEnCuenta(enc, cuentaEnc);
     if (monto > saldoEnCuenta + 0.5) {
-      toast(`En ${escHtml(fuenteLabel(cuentaEnc))} solo hay ${fmt(saldoEnCuenta)} de este encargo`, 'err'); return;
+      toast(`En ${fuenteLabel(cuentaEnc)} solo hay ${fmt(saldoEnCuenta)} de este encargo`, 'err'); return;
     }
   }
 
@@ -3242,7 +3187,7 @@ function confirmarCompraConTC() {
   refresh();
   closeSheet('compra-tc-encargo');
   abrirEncargoDetalle(encargoActualId);
-  toast(`${fmt(monto)} del encargo a ${escHtml(fuenteLabel(destino))} · TC sube ${fmt(tcMonto)}`, 'ok', 4000);
+  toast(`${fmt(monto)} del encargo a ${fuenteLabel(destino)} · TC sube ${fmt(tcMonto)}`, 'ok', 4000);
 }
 
 // Conectar el botón confirmar al cargar
@@ -3266,20 +3211,20 @@ function confirmarCompraConTC() {
    ═══════════════════════════════════════════════════════════════ */
 [
   ['movenc_monto', 'input', _movEncSplitPreview],
-  ['movenc_monto', 'input', _difResumen],
+  ['movenc_monto', 'input', _dif_movenc.resumen],
   ['movenc_monto', 'input', _movEncMiaPreview],
   ['movenc_dif_real', 'input', _movEncMiaPreview],
   ['movenc_mia_cuenta_sale', 'change', _movEncMiaPreview],
   ['movenc_mia_cuenta_entra', 'change', _movEncMiaPreview],
   ['movenc_faltante_cuenta', 'change', _movEncFaltanteCuentaHint],
   ['ctc_monto', 'input', _ctcActualizarPreview],
-  ['ctc_monto', 'input', _ctcDifResumen],
+  ['ctc_monto', 'input', _dif_ctc.resumen],
   ['ctc_cuenta_enc', 'change', _ctcActualizarPreview],
   ['ctc_tarjeta', 'change', _ctcActualizarPreview],
   ['ctc_destino', 'change', _ctcActualizarPreview],
-  ['movenc_dif_real', 'input', _difResumen],
-  ['ctc_dif_real', 'input', _ctcDifResumen],
-  ['usar_parte_dif_real', 'input', _usarParteDifResumen],
+  ['movenc_dif_real', 'input', _dif_movenc.resumen],
+  ['ctc_dif_real', 'input', _dif_ctc.resumen],
+  ['usar_parte_dif_real', 'input', _dif_usarParte.resumen],
 ].forEach(([elId, evt, fn]) => {
   const el = document.getElementById(elId);
   if (el) el.addEventListener(evt, fn);
@@ -3318,32 +3263,32 @@ Events.registerAll('encargos', {
   salidaMenuIr:           (...args) => _salidaEncMenuIr(...args),         // data-args: ["normal"|"mio"|"otroEncargo"|"tc"]
   abrirMoverCuentas:      (...args) => abrirMoverEntreCuentasEncargo(...args),
   moverEncSplitToggle:      (...args) => _moverEncSplitToggle(...args),
-  moverEncAgregarSplitRow:  (...args) => _moverEncAgregarSplitRow(...args),
+  moverEncAgregarSplitRow:  (...args) => _sp_moverenc.addRow(...args),
   abrirNuevaParte:        (...args) => abrirNuevaParte(...args),
-  movSplitToggle:         (...args) => _movEncSplitToggle(...args),
-  movAgregarSplitRow:     (...args) => _movEncAgregarSplitRow(...args),
-  difToggle:              (...args) => _difToggle(...args),
-  difAddBenef:            (...args) => _difAddBenef(...args),
+  movSplitToggle:         (...args) => _sp_movenc.toggle(...args),
+  movAgregarSplitRow:     (...args) => _sp_movenc.addRow(...args),
+  difToggle:              (...args) => _dif_movenc.toggle(...args),
+  difAddBenef:            (...args) => _dif_movenc.addParte(...args),
   miaToggle:              (...args) => _movEncMiaToggle(...args),
-  miaSaleSplitToggle:     (...args) => _miaSaleSplitToggle(...args),
-  miaSaleAgregarRow:      (...args) => _miaSaleAgregarRow(...args),
-  miaEntraSplitToggle:    (...args) => _miaEntraSplitToggle(...args),
-  miaEntraAgregarRow:     (...args) => _miaEntraAgregarRow(...args),
-  difMiSplitToggle:       (...args) => _difMiSplitToggle(...args),
+  miaSaleSplitToggle:     (...args) => _sp_miaSale.toggle(...args),
+  miaSaleAgregarRow:      (...args) => _sp_miaSale.addRow(...args),
+  miaEntraSplitToggle:    (...args) => _sp_miaEntra.toggle(...args),
+  miaEntraAgregarRow:     (...args) => _sp_miaEntra.addRow(...args),
+  difMiSplitToggle:       (...args) => _sp_movencDifMi.toggle(...args),
   ctcMiSplitToggle:       (...args) => _ctcMiSplitToggle(...args),
   ctcMiAgregarRow:        (...args) => _ctcMiAgregarRow(...args),
   usarParteMiSplitToggle: (...args) => _usarParteMiSplitToggle(...args),
   usarParteMiAgregarRow:  (...args) => _usarParteMiAgregarRow(...args),
-  difMiAgregarRow:        (...args) => _difMiAgregarRow(...args),
+  difMiAgregarRow:        (...args) => _sp_movencDifMi.addRow(...args),
   confirmarPrestarFaltante: (...args) => _movEncConfirmarPrestarFaltante(...args),
   guardarParte:           (...args) => guardarParte(...args),
   cerrarParteSheet:       (...args) => cerrarPartSheet(...args),
-  usarParteSplitToggle:   (...args) => _usarParteSplitToggle(...args),
-  usarParteAgregarSplitRow: (...args) => _usarParteAgregarSplitRow(...args),
-  usarParteDifToggle:     (...args) => _usarParteDifToggle(...args),
-  usarParteAddBenef:      (...args) => _usarParteAddBenef(...args),
+  usarParteSplitToggle:   (...args) => _sp_usarParte.toggle(...args),
+  usarParteAgregarSplitRow: (...args) => _sp_usarParte.addRow(...args),
+  usarParteDifToggle:     (...args) => _dif_usarParte.toggle(...args),
+  usarParteAddBenef:      (...args) => _dif_usarParte.addParte(...args),
   confirmarUsarParte:     (...args) => _confirmarUsarParte(...args),
-  ctcDifToggle:           (...args) => _ctcDifToggle(...args),
+  ctcDifToggle:           (...args) => _dif_ctc.toggle(...args),
   // Con argumentos dinámicos (id de encargo / movimiento / parte):
   abrirDetalle:           (...args) => abrirEncargoDetalle(...args),       // (encId)
   abrirDesdeCuenta:       (...args) => abrirEncargoDesdeCuenta(...args),   // (encId)
@@ -3382,128 +3327,16 @@ Events.on('encargos-personas:irAEncargo', _irAEncargo);
 /* ═══════════════════════════════════════════════════════════════
    INTEGRACIÓN: Nuevo encargo usa selector de persona
    ═══════════════════════════════════════════════════════════════ */
-let _nuevoEncargoPersonaId = null;
+// Campo «¿De quién es la plata?»: PersonaPicker (js/modules/personas.js), markup estático en index.html. Arranca vacío al abrir la hoja.
+const _encPicker = () => PersonaPicker.crear({ prefijo: 'enc-persona', inputId: 'enc_nombre', titulo: '¿De quién es la plata?' });
+Ui.hoja('nuevo-encargo', function() { _encPicker().limpiar(); }, { key: 'encargos-persona' });
 
-function _initNuevoEncargoPersonaSelector() {
-  const sheet = document.getElementById('sheet-nuevo-encargo');
-  if (!sheet || sheet._personaHook) return;
-  sheet._personaHook = true;
-
-  // Reemplazar el campo de texto "enc_nombre" con un selector de persona
-  const encNombreEl = document.getElementById('enc_nombre');
-  if (!encNombreEl) return;
-  const ig = encNombreEl.closest('.ig');
-  if (!ig) return;
-
-  ig.innerHTML = html`
-    <div class="il">¿De quién es la plata?</div>
-    <div id="enc-persona-btn" data-action="encargos:seleccionarPersonaNueva"
-      class="enc-persona-btn">
-      <div id="enc-persona-avatar" class="avatar enc-persona-av" style="display:none;"></div>
-      <span id="enc-persona-label">Seleccionar persona...</span>
-      <svg aria-hidden="true" class="enc-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
-    </div>
-    <input type="hidden" id="enc_nombre" value="">`;
-}
-
-function _onSelPersonaNuevoEncargo(personaId) {
-  const p = getPersona(personaId);
-  if (!p) return;
-  _nuevoEncargoPersonaId = personaId;
-  document.getElementById('enc_nombre').value = p.nombre;
-
-  const btn = document.getElementById('enc-persona-btn');
-  const lbl = document.getElementById('enc-persona-label');
-  const av = document.getElementById('enc-persona-avatar');
-  if (btn) btn.style.borderColor = 'var(--accent)';
-  if (lbl) { lbl.textContent = p.nombre; lbl.style.color = 'var(--text)'; }
-  if (av) pintarAvatarPersona(av, p, { mostrar: true });
-}
-
-/* ── Hook en openSheet para inicializar el selector ───────────── */
-const _origOpenSheetPersonas = openSheet;
-openSheet = function(id) {
-  if (id === 'nuevo-encargo') {
-    _inyectarPersonaSheets();
-    _nuevoEncargoPersonaId = null;
-    // Inicializar el selector después de que el sheet sea visible
-    setTimeout(_initNuevoEncargoPersonaSelector, 30);
-    // Resetear UI del selector
-    setTimeout(() => {
-      const lbl = document.getElementById('enc-persona-label');
-      const av = document.getElementById('enc-persona-avatar');
-      const btn = document.getElementById('enc-persona-btn');
-      if (lbl) { lbl.textContent = 'Seleccionar persona...'; lbl.style.color = 'var(--text2)'; }
-      if (av) av.style.display = 'none';
-      if (btn) btn.style.borderColor = 'var(--border2)';
-      const encNombreEl = document.getElementById('enc_nombre');
-      if (encNombreEl) encNombreEl.value = '';
-    }, 50);
-  }
-  _origOpenSheetPersonas.apply(this, arguments);
-};
-
-/* ── Hook en crearEncargo para exigir y guardar personaId ───────── */
-const _origCrearEncargo = crearEncargo;
-crearEncargo = function() {
-  // personaId es obligatorio: no debe existir un encargo sin persona vinculada.
-  const pId = _nuevoEncargoPersonaId;
-  if (!pId) { toast('Selecciona una persona', 'err'); return; }
-  _origCrearEncargo.apply(this, arguments);
-  // Asignar personaId al último encargo creado
-  if (pId && S.encargos && S.encargos.length) {
-    const last = S.encargos[S.encargos.length - 1];
-    if (last && !last.personaId) {
-      last.personaId = pId;
-      // También asegurar nombre sincronizado
-      const p = getPersona(pId);
-      if (p) last.nombre = p.nombre;
-      save();
-      // El render dentro de _origCrearEncargo ocurrió ANTES de asignar
-      // personaId, así que el avatar quedó pintado con el color genérico.
-      // Volvemos a renderizar ya con personaId puesto para que tome el
-      // color de la persona de una vez, sin esperar a otra acción.
-      renderEncargosList();
-    }
-  }
-  _nuevoEncargoPersonaId = null;
-};
 /* ═══════════════════════════════════════════════════════════════
    BOTÓN DE PERFIL EN LISTA DE ENCARGOS Y DEUDORES
    ═══════════════════════════════════════════════════════════════ */
 
-// Agregar botón "perfil" al avatar del encargo en la lista
-const _origRenderEncargosList = renderEncargosList;
-renderEncargosList = function() {
-  _origRenderEncargosList.apply(this, arguments);
-  // Agregar mini botón perfil en cada card de encargo
-  const lista = document.getElementById('encargosList');
-  if (!lista) return;
-  (S.encargos || []).forEach(enc => {
-    if (!enc.personaId) return;
-    const card = lista.querySelector(`[data-encargo-id="${enc.id}"]`);
-    if (!card) return;
-    const av = card.querySelector('.avatar');
-    if (av && !av._perfilHook) {
-      av._perfilHook = true;
-      av.title = 'Ver perfil';
-      av.style.cursor = 'pointer';
-      av.addEventListener('click', e => {
-        e.stopPropagation();
-        abrirPerfilPersona(enc.personaId);
-      });
-      // Aplicar color de persona
-      const p = getPersona(enc.personaId);
-      if (p) pintarAvatarPersona(av, p, { alphaFondo: '1a', alphaBorde: '33', conIniciales: false });
-    }
-  });
-};
-
-// Agregar botón de perfil al header del detalle de encargo
-const _origAbrirEncargoDetallePersonas = abrirEncargoDetalle;
-abrirEncargoDetalle = function(id) {
-  _origAbrirEncargoDetallePersonas.apply(this, arguments);
-  const enc = getEncargo(id);
+// Agregar botón de perfil al header del detalle de encargo (lo llama abrirEncargoDetalle() tras pintar)
+function _encDetallePersona(enc) {
   const av = document.getElementById('encargoAvatar');
   const chipViejo = document.getElementById('enc-det-perfil-chip');
   if (!enc || !enc.personaId) {
@@ -3548,8 +3381,6 @@ abrirEncargoDetalle = function(id) {
     const chip = document.getElementById('enc-det-perfil-chip');
     chip.onclick = () => abrirPerfilPersona(p.id);
   }
-};
+}
 
-/* ── Registro de eventos ──────────────────────────────────────── */
-function _encAbrirSelectorPersonaNueva() { abrirSelPersona(_onSelPersonaNuevoEncargo); }
-Events.on('encargos:seleccionarPersonaNueva', _encAbrirSelectorPersonaNueva);
+Ui.pantalla('encargos', () => { if (typeof renderEncargosList === 'function') renderEncargosList(); }, { key: 'encargos-render' });

@@ -22,7 +22,7 @@ Registrar en qué se va la plata mes a mes, separando lo que es puntual (gasto v
 4. **Una compra en TC nunca descuenta saldo de una cuenta.** La plata "sale" de la tarjeta (aumenta su deuda), no de Nu/Nequi/Efectivo/cuenta personalizada.
 5. **Eliminar un gasto siempre revierte su efecto, nunca lo borra a secas.** Según el tipo: se devuelve el saldo a la cuenta de origen, o se revierte la compra/pago en la tarjeta correspondiente, o se desmarca el pago del gasto fijo del mes — para que se pueda volver a pagar. Un gasto nunca desaparece dejando saldos o estados a medias.
 6. **Un gasto secundario (generado desde otra sección) no se elimina desde Gastos.** Se muestra pero se bloquea su borrado acá, con un mensaje que manda al usuario a la sección de origen — de lo contrario la sección de origen queda con un registro huérfano.
-7. **El gasto fijo virtual de Spotify nunca se guarda como dato.** Se calcula al vuelo cada vez que se renderiza la lista, y solo aparece si no hay ya un gasto fijo real de Spotify, no se pagó ya este mes, y el módulo Spotify no está manejando el costo por su cuenta (para no duplicarlo).
+7. **Gastos fijos = solo lo que el usuario creó.** Ya no existe la fila «virtual» de Spotify Premium: el pago del plan lo registra el módulo Spotify como gasto variable (con la marca `_origenSeccion:'Spotify'`) y ese gasto cuenta completo en el balance del mes, esté el módulo activo o no. Si quieres verlo también como plantilla recurrente, créalo tú como gasto fijo.
 
 ## 4. Modelo de datos
 
@@ -37,6 +37,7 @@ Registrar en qué se va la plata mes a mes, separando lo que es puntual (gasto v
   cat: 'Alimentación',
   fuente: 'cajita:xxx',     // o 'nequi' | 'efectivo' | 'custom:xxx' | 'tc:xxx'
   nota: 'opcional',
+  grande: true,             // opcional: true = «compra grande» (la marcó el usuario), false = «no lo es» (decisión del usuario); ausente = sin decisión (se detecta sola), ver «Compra grande»
 
   // Solo si nació de pagar un gasto fijo:
   esPagoGastoFijo: true,
@@ -67,10 +68,53 @@ Registrar en qué se va la plata mes a mes, separando lo que es puntual (gasto v
 ### `S.gastosFijos[]` — plantillas de gasto recurrente
 
 ```js
-{ id: 'uuid', nombre: 'Arriendo', monto: 900000, cat: 'Vivienda' }
+{ id: 'uuid', nombre: 'Arriendo', monto: 900000, cat: 'Vivienda', dia: 5 }   // dia: opcional, entero 1–31
 ```
 
+`dia` (opcional) es el **día de vencimiento**: con él la app avisa y muestra el estado en la lista; sin él no inventa ningún vencimiento. Un «31» vence el último día de un mes corto (`Periodo.gastosFijosProgramados`). Se escribe en el campo «Día de vencimiento» de «Gasto fijo mensual»; vacío = sin aviso; un valor fuera de 1–31 se rechaza al guardar.
+
+**Qué hace el día:** (1) en la lista, un texto «Vence el día 5» / «Vence en 2 días» (ámbar desde 3 días, `UMBRALES.atencion.gastoFijoAvisoDias`) / «Vence hoy» / «Venció hace N días» (rojo) mientras no esté pagado ese mes; (2) en «Necesita atención» de Inicio: el aviso de cada uno y la **brecha de caja**: el **calendario de caja** de 30 días (gastos fijos que salen, ingresos fijos y CDT que entran; ver `docs/proyeccion-financiera.md`) avisa el día exacto en que tu plata disponible quedaría en negativo y qué lo causa. **Editar:** el botón «Editar» de cada fila abre el mismo sheet con los datos cargados (`abrirEditarGastoFijo`; título «Editar gasto fijo»): sirve para ponerle o cambiarle el día, el monto o la categoría sin borrarlo. Conserva el `id`, así que los pagos de meses anteriores (`pagosGastosFijos`, que guardan su propio monto) no se tocan; dejar el día vacío lo quita. No cambia ningún saldo ni la regla de que un gasto fijo solo se convierte en gasto real al pagarlo.
+
 No tiene campo de "pagado" — eso vive aparte, en `S.pagosGastosFijos`, precisamente para poder tener un estado de pago distinto cada mes sin duplicar la plantilla.
+
+### Compra grande (`gv.grande`) — un golpe real que no es un hábito
+
+Una moto o un computador son un **golpe real** al patrimonio y a la liquidez, pero **no un hábito**. Una compra grande no se oculta de nada que mida lo que **tienes**, y sí se separa de lo que mide cómo **gastas cada mes**:
+
+| Medida | ¿Cuenta la compra grande? |
+|---|---|
+| Patrimonio, liquidez (`calcLiquidez`), «meses que cubres» (runway), Salud (a, b, c), gasto real del mes (`gastosDelMes.total`), balance real | **Sí, completa** |
+| Gasto **típico** (`Periodo.gastoPromedioPrevio`), ratio gasto/ingreso (d), racha de déficit (h, balance recurrente), pendiente de la Proyección | **No** (es flujo, y una moto no se repite) |
+
+Así, comprar una moto de 15 M con 20 M de ahorro deja el runway en 5 meses (el golpe es real), pero no convierte «gastas 16 M al mes» en el ritmo de los próximos meses, ni dispara «llevas 2 meses seguidos en déficit», ni deja la Proyección en «estimación» para siempre.
+
+**Quién decide: tú mandas, y si no dices nada, la app lo detecta.** `Periodo.compraGrandeEstado(g, umbral)` devuelve `'si'`, `'auto'` o `'no'`:
+
+- `g.grande === true` → **sí**: la marcaste tú (casilla del formulario o botón de la fila).
+- `g.grande === false` → **no**: dijiste que no lo es. Se respeta siempre, aunque sea una moto, y no cambia sola.
+- sin decisión → **auto** si el gasto supera lo que normalmente gastas en **un mes entero** (`Periodo.umbralCompraGrande()`: la **mediana** del gasto mensual de los meses completos anteriores, mínimo 500.000, y al menos 2 meses de historia; con menos no se detecta sola). La mediana y no el promedio es a propósito: una moto no la mueve, y el umbral depende solo del pasado, no de cuánto tienes hoy, así que una compra no pasa de «normal» a «grande» con el tiempo. Los retiros manuales («Restar dinero») no se detectan solos: no son una compra.
+
+Por qué detectar sola y no solo sugerir: una marca que depende de acordarse falla justo cuando importa (la moto sin marcar volvía a leerse como hábito), y el formulario solo cubre lo registrado desde ahí, no las compras con tarjeta ni lo anterior. Es visible (etiqueta «Compra grande · automática») y reversible (botón «No es compra grande»).
+
+- **Antes de guardar:** al escribir el monto (desde 500.000), el formulario muestra el impacto (`calcImpactoCompra`, `inicio.js`): «Es el 75 % de tu plata disponible y el 60 % de tu patrimonio. Después cubrirías 5,0 meses de gastos (hoy: 20,0 meses)». En ámbar bajo 3 meses y en rojo bajo 1 mes, o si con eso tus deudas superarían tu plata disponible. Pagar con tarjeta pesa igual (la deuda propia resta de la liquidez neta). Si el gasto es ≥ 30 % de lo disponible o ≥ 2 meses de gasto típico (`UMBRALES.compraGrande`), la casilla se **marca sola**; si la cambias a mano, ya no se toca. Al guardar, la decisión de la casilla queda **explícita** (`true`; o `false` si no la marcaste en un gasto desde 500.000), para que la detección no te la cambie después.
+- **Después:** `toggleCompraGrande(id)` corrige un gasto ya registrado (la moto de hace dos semanas): si contaba como grande pasa a «no» y si no, a «sí»; siempre guarda una decisión explícita. Es una propiedad del propio gasto: no guarda estado aparte, todo se recalcula solo.
+- **Dónde se ve:** etiqueta en la lista; en Análisis, «Incluye $X en una compra grande (Moto) · sin ella, tu balance del mes fue +$Y» (el balance real, que decide el color, no cambia); en la Proyección, «Sin contar tu compra grande (Moto: $X), tu ritmo es +$Y al mes. Ya está descontada de tu patrimonio de hoy; la proyección no la repite»; en Salud, si dejó las reservas bajas, «Tu compra grande reciente (Moto, $X) pesa en tus reservas: antes de otro gasto grande, reconstruir tu fondo es la prioridad».
+- Los gastos fijos no se marcan (ya son recurrentes por definición). Una compra grande suele ser un **bien** (una moto vale algo): se registra aparte con «Registrar como bien», ver `S.bienes[]` abajo.
+
+### `S.bienes[]` — activos no líquidos (una moto, un computador)
+
+```js
+{ id: 'uuid', nombre: 'Moto', valor: 14000000, fecha: '2026-10-20', depreciacionAnual: 15, origenGastoId: 'uuid-del-gasto' }
+//                              ↑ lo que vale en `fecha`    ↑ % al año (opcional)  ↑ opcional: el gasto con el que se compró
+```
+
+Una moto de 15 M no «desaparece»: vale algo, aunque se deprecie. Pero **va aparte, a propósito**:
+
+- El **patrimonio financiero** (hero de Inicio, historial, Proyección, Salud) sigue siendo lo que te protege en una emergencia. Meter el bien adentro escondería el golpe de la compra justo cuando más importa verlo.
+- Un bien **nunca entra en la liquidez ni en el runway** (`calcLiquidez` no los mira): no se pueden gastar sin venderlos. Salud tampoco los mira (una prueba lo fija: con y sin bienes, el resultado de Salud es idéntico).
+- El valor es una **estimación del usuario**: la app no sabe lo que vale tu moto. `valor` es lo que vale en `fecha`; con `depreciacionAnual` (% al año, **compuesto**: 10 M al 10 % anual valen 8,1 M tras 2 años, no 8) baja desde esa fecha (`calcValorBien`). Para revaluarlo se edita el valor y la fecha. Una fecha futura no lo revaloriza, y una ilegible no produce `NaN`.
+- **Dónde:** el botón «Registrar como bien» aparece en la fila de un gasto que es una compra grande (marcada o detectada) y abre el sheet con nombre, monto y fecha del gasto ya cargados (`abrirSheetBien(idGasto)`); el bien guarda `origenGastoId` y la fila pasa a decir «Bien registrado». Borrar el bien **no** toca el gasto. En **Análisis**, una tarjeta «Bienes» (solo si hay) muestra el valor estimado, el «Patrimonio con bienes» (`calcPatrimonioConBienes` = patrimonio financiero + bienes, **solo para mostrar aparte**) y cada bien con Editar y Quitar.
+- `S.bienes` viaja a la nube y a los respaldos con el resto del estado; el import rechaza un respaldo donde `bienes` no sea un array; el cierre de períodos lo clasifica como `estado-actual`.
 
 ### `S.pagosGastosFijos{}` — registro de qué se pagó cada mes
 
@@ -117,7 +161,7 @@ Elegir "Pagar" en la plantilla → elegir cuenta de pago → validar que no est�
 - **Sigue oculto en el historial** (igual que antes del cambio): los movimientos de alcancía y los extras de préstamo (`_esGastoVarNoReal` sin ninguna de las otras banderas). Se ven en el feed general de movimientos, no acá.
 - **Filtro de mes en "todos":** el total mostrado es sobre todo el historial, no solo el mes actual; el botón de estado vacío cambia de texto según haya o no un mes específico elegido.
 - **Gasto fijo sin pagar vs. pagado este mes:** la plantilla siempre aparece en la lista de Fijos; lo que cambia es si se ve el botón "Pagar" o la etiqueta "Pagado" con su fecha — nunca desaparece de la lista por estar pagada.
-- **Spotify como fijo virtual:** solo se muestra si (a) hay un costo de Spotify configurado, (b) no existe ya un gasto fijo real con "spotify" en el nombre, (c) no se pagó ya este mes vía un gasto variable con "spotify" en la descripción, y (d) el módulo Spotify no está activo gestionando su propio costo. Si se cumplen las cuatro, se inyecta en la lista sin persistirse en `S.gastosFijos`.
+- **Sin fila virtual de Spotify:** se eliminó (ver regla 7). Era informativa, sin botón, y dependía de heurísticas por nombre.
 - **Datos viejos sin los flags nuevos** (`_esCompraTC`, `_esPagoTC`, etc.): al no tener el flag, `_esGastoVarNoReal()` los trata como gasto real normal — no rompe nada, simplemente no aplica la exclusión que no les corresponde.
 
 ## 7. Decisiones de diseño
@@ -126,10 +170,10 @@ Elegir "Pagar" en la plantilla → elegir cuenta de pago → validar que no est�
 - **¿Por qué una sola lista en vez de secciones (variables / TC / pagos de TC / fijos)?** Porque el usuario piensa el historial como un timeline por día y por orden de registro: con secciones, un gasto de hoy pagado con TC quedaba lejos del resto de lo de hoy, y un fijo pagado con TC salía repetido (en "Compras en TC" y en "Pagos de fijos"). Las etiquetas por fila y el subtotal por día conservan la distinción real/TC sin partir la lista.
 - **¿Por qué las compras y pagos de TC aparecen en el historial de Gastos si no son "gasto real" del mes?** Porque el usuario quiere ver todo lo que gastó en un solo timeline, sin importar con qué plata lo pagó. Separar totales (real vs. TC) permite mostrar ambos sin que se mezclen ni se dupliquen.
 - **¿Por qué eliminar un gasto revierte en vez de simplemente borrar el registro?** Para que el saldo de cuentas y tarjetas nunca quede desincronizado del historial visible — la alternativa (borrar y dejar que el usuario ajuste el saldo a mano) es la fuente más común de descuadres en una app de finanzas personales.
-- **¿Por qué el gasto fijo virtual de Spotify no se guarda como un gasto fijo real?** Porque su costo y su estado ya se gestionan enteramente en el módulo Spotify cuando está activo; mostrarlo también acá es solo una ayuda visual para quien no activó ese módulo, no una segunda fuente de verdad.
+- **¿Por qué ya no hay un gasto fijo «virtual» de Spotify?** Porque aparecía solo con el módulo apagado (justo cuando el usuario no quiere ver Spotify), no tenía acción, no sumaba a ningún total y para evitar duplicados adivinaba por el texto del nombre.
 - **¿Por qué el módulo quedó en un solo archivo (`gastos.js`) en vez de dividirse como Spotify o Encargos?** Porque ninguna de sus funciones depende de código definido más abajo en `index.html` al momento de cargar el script — a diferencia de Spotify/Encargos, que necesitan que Personas ya exista.
-- **¿Por qué "saldo insuficiente" no está escrito en `gastos.js`?** Porque esa comprobación es la misma para toda la app. `addGastoVar()` llama a `validarSalidaFuente(fuente, monto)` (`core-state.js`), que devuelve `{ok, mensaje}` con el mensaje ya escapado: cuenta o cajita falla si el saldo es menor que el monto; una TC falla solo si tiene cupo configurado y no alcanza. Antes cada módulo lo escribía a mano con redacción distinta y Spotify sin escapar el nombre de la cuenta. Los mensajes en línea de `confirmarPagarGastoFijo()` ("Necesario: …") se dejaron propios a propósito: son otro formato.
-- **¿Por qué el selector de "Pagar gasto fijo" no arma las `<option>` a mano?** `abrirPagarGastoFijo()` usa `FuentesFiltro.optsHtml()` (`js/core/fuentes-filtro.js`): filtra por saldo/cupo con `PRESET.SALIDA` y construye las opciones con `buildFuentesOptsHtml`, que escapa nombre y valor en un solo sitio. Es la misma pieza que usa el split de gasto variable.
+- **¿Por qué "saldo insuficiente" no está escrito en `gastos.js`?** Porque esa comprobación es la misma para toda la app. `addGastoVar()` llama a `Plata.validarSalida` / `Plata.validarSalidas` (`js/core/cuentas-fuentes.js`), que devuelve `{ok, motivo}` con el mensaje ya escapado: cuenta o cajita falla si el saldo es menor que el monto; una TC falla solo si tiene cupo configurado y no alcanza. Antes cada módulo lo escribía a mano con redacción distinta y Spotify sin escapar el nombre de la cuenta. Los mensajes en línea de `confirmarPagarGastoFijo()` ("Necesario: …") se dejaron propios a propósito: son otro formato.
+- **¿Por qué el selector de "Pagar gasto fijo" no arma las `<option>` a mano?** `abrirPagarGastoFijo()` usa `FuentesFiltro.optsHtml()` (`js/core/fuentes-filtro.js`): filtra por saldo/cupo con `PRESET.SALIDA` y construye las opciones con `opcionesCuenta`, que escapa nombre y valor en un solo sitio. Es la misma pieza que usa el split de gasto variable.
 - **¿Por qué "Registrar gasto" no abre si no hay de dónde sacar la plata?** `abrirNuevoGastoVar()` consulta `FuentesFiltro.hayUtilizable(getFuentes(), PRESET.SALIDA)`: hace falta al menos una cuenta con saldo ≥ $1,00 o una TC con cupo (una TC también puede cargar un gasto). Si no hay ninguna, muestra `FuentesFiltro.MSG_SIN_SALDO` («No tienes cuentas con saldo disponible») y no abre el sheet, porque «¿De dónde salió la plata?» es obligatorio y quedaría sin opciones. Cubre los tres accesos (botón del estado vacío, botón de la lista y acción del menú +), que pasan por esa función.
 
 ## 8. Referencia de implementación
@@ -147,7 +191,7 @@ Archivo: `js/modules/gastos.js`.
 | `addGastoVar()` | Valida y crea un gasto variable; si la fuente es TC, delega en `tcCrearCompra()`. |
 | `deleteGastoVar(id)` | Elimina un gasto revirtiendo su efecto según el tipo (ver §5). |
 | `abrirNuevoGastoVar()` | Pobla categorías y abre el sheet de gasto variable — usada por el estado vacío. |
-| `renderGastosFijos()` | Pinta la lista de plantillas de gasto fijo, incluyendo el virtual de Spotify si aplica. |
+| `renderGastosFijos()` | Pinta la lista de plantillas de gasto fijo. |
 | `addGastoFijo()` | Crea una nueva plantilla de gasto fijo. |
 | `deleteGastoFijo(id)` | Elimina una plantilla y limpia su historial de pagos. |
 | `abrirNuevoGastoFijo()` | Pobla categorías y abre el sheet de gasto fijo — usada por el estado vacío. |

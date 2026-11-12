@@ -9,13 +9,7 @@
 // carga como `type="module" async`, sin garantía de orden frente a ningún
 // <script defer>. Ver CHANGELOG.md#infraestructura--seguridad.
 import { waitFor } from './wait-for-module.js';
-// import de hookGlobal (js/core/hook-global-module.js — versión ES module
-// de js/core/hook-global.js, mismo motivo/mismo patrón que waitFor arriba):
-// reemplaza el wrap manual de window.refresh() de más abajo, que tenía dos
-// ramas casi idénticas (refresh ya existía vs. había que esperarlo con
-// waitFor) — la misma duplicación que hookGlobal() ya resuelve para
-// gastos-fijos-progress.js/mejoras.js.
-import { hookGlobal } from './hook-global-module.js';
+// El hook a refresh() ya no es un wrap de window.refresh: se registra con Refresh.registrar() (js/core/refresh.js), esperando a que exista.
 
 /* ================================================================
    PIN + BIOMETRÍA — Sistema de bloqueo con PIN de 4 dígitos y
@@ -309,7 +303,7 @@ import { hookGlobal } from './hook-global-module.js';
   // ── Confirmar una acción destructiva con el PIN ──────────────────
   // Devuelve una promesa: true si se escribió el PIN correcto; false si se canceló (botón o Escape). Con PIN incorrecto la
   // pantalla se sacude y se puede reintentar o cancelar: la acción solo sigue con true. Sin PIN activo devuelve true
-  // enseguida (todo se comporta como antes). Las acciones lo llaman vía pedirPinAntesDe() (core-state.js).
+  // enseguida (todo se comporta como antes). Las acciones lo llaman vía pedirPinAntesDe() (js/core/utilidades-ui.js).
   window._pinVerificar = function(motivo) {
     return new Promise(res => {
       if(!_getPin()) { res(true); return; }
@@ -599,16 +593,9 @@ import { hookGlobal } from './hook-global-module.js';
       : `<button class="btn btn-primary btn-sm btn-block" data-action="pin:bioSetup">Activar ${label}</button>`;
   }
 
-  // Hook en refresh para re-renderizar botones cuando se abre Config —
-  // ver js/core/hook-global-module.js. Antes esto tenía dos ramas casi
-  // idénticas según si window.refresh ya existía o había que esperarlo
-  // con waitFor(); solo la rama de espera hacía un _renderBtn() inicial
-  // apenas se enganchaba, sin esperar al próximo refresh() real. Acá se
-  // llama siempre, en las dos rutas — _renderBtn()/_renderBioBtn() son
-  // idempotentes (solo pintan según el estado actual de PIN/biometría),
-  // así que una llamada de más no cambia nada visible, y así el botón
-  // queda pintado de una desde el arranque sin importar si refresh() ya
-  // existía o no en este punto.
-  hookGlobal('refresh', _renderBtn);
+  // Hook en refresh para re-renderizar botones cuando se abre Config. _renderBtn()/_renderBioBtn() son idempotentes (solo pintan según el
+  // estado actual de PIN/biometría): se llama también una vez ya, sin esperar al próximo refresh() real.
+  // pin-bio.js es un módulo ES async y puede correr antes que js/core/refresh.js (clásico, defer): se espera a que exista Refresh.
+  waitFor(() => window.Refresh, () => window.Refresh.registrar('pin-bio-boton', _renderBtn));
   _renderBtn();
 })();
