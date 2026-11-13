@@ -1,153 +1,171 @@
-/* Estilos de pantallas medianas y escritorio para mis-finanzas-main.
-   Adaptación del diseño de mis-finanzas-pc, conservando el HTML, JavaScript,
-   lógica de cuentas, Firebase y los estilos móviles originales de main.
-   Cargar después de css/styles.css. Todo queda limitado por media queries. */
+/* Adaptación responsive inspirada en index-pc.html.
+   La interfaz móvil original y todos los IDs/eventos de negocio se conservan.
+   Este archivo solo se solicita para pantallas de >= 700 px. */
 
-/* Tabletas / ventanas pequeñas de portátil: se aprovecha el ancho sin
-   convertir prematuramente la navegación inferior en barra lateral. */
-@media (min-width:700px) and (max-width:1023px){
-  .app{width:100%;max-width:none;}
-  .header{padding:16px max(24px,calc((100vw - 820px) / 2));}
-  .header h1{font-size:20px;}
-  .scroll-area{min-width:0;padding:22px 24px 38px;}
-  .screen.active{max-width:820px;margin:0 auto;}
-  .bottom-nav{justify-content:center;gap:12px;padding:8px 16px max(10px,env(safe-area-inset-bottom));}
-  .nav-item{flex:0 1 155px;}
-  .mas-menu{max-width:430px;}
-  .sheet{max-width:560px;}
-  .grid3{gap:12px;}
-  .grid2{gap:12px;}
+/* Tabletas: aprovecha el ancho, conserva la barra de navegación inferior. */
+@media (min-width:700px) {
+  .app { max-width:none; width:100%; }
+  .scroll-area { padding:24px 28px 40px; }
+  .scroll-area > .screen.active { width:100%; max-width:1100px; margin-inline:auto; }
+  .hero { padding:25px 27px; }
+  .hero-amount { font-size:clamp(38px,4.5vw,54px); line-height:1.16; overflow-wrap:anywhere; }
+  .card { padding:19px 21px; }
+  .card-sm { padding:17px 19px; }
+  .stat { padding:18px; }
+  .stat-value { font-size:clamp(15px,1.6vw,21px); overflow-wrap:anywhere; }
+  .sec-title { margin:24px 0 11px; }
+  .grid2, .grid3 { gap:12px; margin-bottom:12px; }
+  .header { padding:16px 28px; }
+  .header h1 { font-size:20px; }
+  .bottom-nav { justify-content:center; gap:14px; }
+  .bottom-nav .nav-item { max-width:148px; }
+  .cuentas-selector-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .cuentas-selector-grid > .cuenta-card:last-child:nth-child(odd) { grid-column:auto; }
+  /* Dialogos: mejor centrados y aprovechables con ratón. */
+  .overlay:not(.mas-menu-overlay) { align-items:center; padding:22px; }
+  .overlay .sheet { max-width:min(600px,94vw); max-height:calc(94svh - var(--kb,0px) * .92); border-radius:18px; padding-inline:24px; padding-bottom:26px; border:1px solid var(--border2); box-shadow:0 24px 75px rgba(0,0,0,.45); }
+  .sheet-handle { opacity:.24; }
+  .ix-busqueda-overlay { align-items:flex-start; padding-top:9vh; }
+  .ix-busqueda-overlay > div:first-child { max-width:720px; margin-inline:auto; }
 }
 
-/* desktop.css — layout responsivo para PC (>= 1024px).
-   Se carga DESPUÉS de styles.css y solo aplica en pantallas anchas
-   (media="(min-width:1024px)" en el <link>), así que el móvil queda intacto.
+/* Base de la página Inicio: devuelve el orden exacto en móvil/tableta. */
+.pc-home-columns, .pc-home-primary, .pc-home-secondary { display:contents; }
+#screen-inicio.active { display:flex; flex-direction:column; }
+#screen-inicio .pc-home-primary > :nth-child(1) { order:1; } /* patrimonio */
+#screen-inicio .pc-home-primary > :nth-child(2) { order:2; } /* cuentas */
+#screen-inicio .pc-home-primary > :nth-child(3) { order:3; } /* neto TC */
+#screen-inicio .pc-home-primary > :nth-child(4) { order:4; } /* deuda TC */
+#screen-inicio .pc-home-secondary > :nth-child(1) { order:5; } /* gastos título */
+#screen-inicio .pc-home-secondary > :nth-child(2) { order:6; } /* gastos tarjetas */
+#screen-inicio .pc-home-secondary > :nth-child(3) { order:7; } /* gastos total */
+#screen-inicio .pc-home-primary > :nth-child(5) { order:8; } /* salud título */
+#screen-inicio .pc-home-primary > :nth-child(6) { order:9; } /* salud */
+#screen-inicio .pc-home-primary > :nth-child(7) { order:10; } /* plan deudas */
+#screen-inicio .pc-home-primary > :nth-child(8) { order:11; } /* proyección título */
+#screen-inicio .pc-home-primary > :nth-child(9) { order:12; } /* proyección */
+#screen-inicio .pc-home-secondary > :nth-child(4) { order:13; } /* atención */
 
-   Idea: la app móvil es una columna de 430px con barra inferior. En PC pasa a:
-     · barra lateral izquierda fija (reusa .bottom-nav como menú vertical)
-     · cabecera + contenido a la derecha, con ancho máximo cómodo de leer
-     · pantallas en rejilla de varias columnas (las tarjetas ya no se estiran)
-     · hojas (bottom sheets) convertidas en modales centrados
-*/
-@media (min-width:1024px){
-
-  :root{--side-w:236px;--content-max:1180px;}
-
-  /* ---------- Marco general ---------- */
-  .app{
-    max-width:none;margin:0;width:100%;height:100vh;height:100dvh;
-    display:grid;
-    grid-template-columns:var(--side-w) minmax(0,1fr);
-    grid-template-rows:auto minmax(0,1fr);
-    grid-template-areas:"side head" "side main";
+/* Escritorio y portátil: barra lateral fija, panel central y dashboard a dos columnas. */
+@media (min-width:960px) {
+  .app {
+    width:100%; max-width:none; height:100svh; min-height:0; margin:0;
+    display:grid; grid-template-columns:248px minmax(0,1fr); grid-template-rows:auto minmax(0,1fr);
   }
-  .app > .header{grid-area:head;}
-  .app > .scroll-area{grid-area:main;min-width:0;min-height:0;}
-  .app > footer{grid-area:side;min-height:0;}
-
-  /* ---------- Barra lateral ---------- */
-  .app > footer{background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;}
-  .app > footer::before{
-    content:'Mis finanzas';display:block;padding:22px 22px 18px;
-    font-size:18px;font-weight:700;letter-spacing:-.3px;color:var(--text);
+  .desktop-sidebar {
+    grid-column:1; grid-row:1 / 3; display:flex; flex-direction:column; min-height:0;
+    padding:20px 14px 16px; background:var(--bg2); border-right:1px solid var(--border);
   }
-  .bottom-nav{
-    flex:1;flex-direction:column;justify-content:flex-start;gap:4px;
-    padding:6px 12px 18px;border-top:none;background:transparent;
+  .pc-brand { display:flex; align-items:center; gap:11px; padding:0 8px 20px; }
+  .pc-brand-icon { width:38px; height:38px; display:flex; justify-content:center;align-items:center; flex-shrink:0;
+    border:1px solid rgba(200,240,96,.3);border-radius:12px;background:rgba(200,240,96,.12);color:var(--accent); }
+  .pc-brand-icon svg { width:20px; height:20px; }
+  .pc-brand strong { font-size:16px; font-weight:700; letter-spacing:-.3px; display:block; }
+  .pc-brand small { display:block; margin-top:2px; font-size:10.5px; color:var(--text3); }
+  .pc-nav { flex:1; overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin; scrollbar-color:var(--bg4) transparent; padding-right:1px; }
+  .pc-nav-heading { padding:15px 10px 8px; font:700 10px 'DM Mono',monospace; text-transform:uppercase; letter-spacing:1.2px; color:var(--text3); }
+  .desktop-nav-item.nav-item {
+    display:flex; flex:none; flex-direction:row; gap:12px; align-items:center; text-align:left;
+    width:100%; min-height:39px; padding:10px 12px; margin:1px 0; border-radius:11px;
+    font-size:13px; font-weight:500; letter-spacing:0; color:var(--text3);
   }
-  .nav-item{
-    flex:none;flex-direction:row;justify-content:flex-start;gap:14px;
-    min-height:46px;padding:0 14px;font-size:14px;font-weight:500;border-radius:12px;
-  }
-  .nav-item svg{width:20px;height:20px;flex-shrink:0;}
-  .nav-item:hover{color:var(--text);background:var(--bg3);}
-  .nav-item.active{color:var(--accent);background:rgba(200,240,96,.09);}
-  /* "Más" se queda al final de la barra, separado del resto */
-  #nav-mas-btn{margin-top:auto;border-top:1px solid var(--border);border-radius:12px;}
-
-  /* ---------- Cabecera ---------- */
-  .header{padding:18px 36px 16px;}
-  .header h1{font-size:22px;}
-  .header p{font-size:12px;}
-  .header p::first-letter{text-transform:uppercase;}
-  .ix-btn-buscar-global,.btn-add{cursor:pointer;}
-
-  /* ---------- Contenido ---------- */
-  .scroll-area{padding:26px 36px 48px;}
-  .scroll-area::-webkit-scrollbar{display:block;width:10px;}
-  .scroll-area::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:6px;border:2px solid var(--bg);}
-  .scroll-area::-webkit-scrollbar-track{background:transparent;}
-  .screen.active{max-width:var(--content-max);margin:0 auto;}
-
-  /* Pantallas: una columna centrada y cómoda de leer (~880px). Solo el Inicio
-     (panel resumen) usa rejilla de 2 columnas, porque es un tablero de métricas. */
-  .screen.active{display:block;max-width:880px;margin:0 auto;}
-  #screen-inicio.active{
-    display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
-    column-gap:20px;align-items:start;max-width:var(--content-max);
-  }
-  #screen-inicio.active > *{grid-column:span 1;min-width:0;}
-  #screen-inicio.active > .hero,
-  #screen-inicio.active > .grid2,
-  #screen-inicio.active > .grid3,
-  #screen-inicio.active > .sec-title,
-  #screen-inicio.active > .grid2 + .card,
-  #screen-inicio.active > #proyeccion-card,
-  #screen-inicio.active > #s-attn-section{grid-column:1 / -1;}
-  /* Los paneles de salud y deudas pueden mostrar gráficos dinámicos;
-     ocupan toda la fila para no quedar cortados a ancho de portátil. */
-  #screen-inicio.active > #health-score-card,
-  #screen-inicio.active > #plan-deudas-card{grid-column:1 / -1;min-width:0;}
-  .hero{padding:26px 30px;}
-  .card{padding:18px 20px;}
-  .sec-title{margin-top:10px;}
-
-  /* Las filas de 3 métricas se ponen de a dos filas lado a lado */
-  .grid3{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;}
-  .grid3 > *{grid-column:auto;}
-
-  /* ---------- Menú "Más": popover junto a la barra lateral ---------- */
-  .mas-menu{
-    left:14px;right:auto;bottom:14px;margin:0;width:340px;max-width:340px;
-    border-radius:18px;border:1px solid var(--border2);
-    box-shadow:0 24px 64px rgba(0,0,0,.7);padding:18px 16px 12px;
-    max-height:calc(100vh - 28px);overflow-y:auto;
-  }
-  .mas-menu-handle{display:none;}
-  .mas-item{cursor:pointer;border-radius:10px;padding:10px 8px;}
-  .mas-item:hover{background:var(--bg3);}
-
-  /* ---------- Hojas → modales centrados ---------- */
-  .overlay{align-items:center;padding:24px;}
-  .sheet{
-    max-width:560px;border-radius:22px;padding-bottom:28px;
-    max-height:calc(100dvh - 48px);translate:0 0;
-    border:1px solid var(--border2);box-shadow:0 30px 80px rgba(0,0,0,.65);
-  }
-  .sheet-handle{display:none;}
-  .sheet-title{margin-top:24px;}
-  .overlay.sheet-background .sheet{transform:scale(.96);opacity:.25;}
-
-  /* Búsqueda global y diálogos */
-  #busqueda-overlay{padding:6vh 24px;}
-  #busqueda-overlay > div{max-width:640px;margin-left:auto;margin-right:auto;width:100%;}
-  #dialog-box,#del-account-box{max-width:420px;}
-
-  /* Toasts: arriba a la derecha del contenido, no centrados sobre la barra lateral */
-  #toast-container{left:calc(50% + var(--side-w) / 2);}
-
-  /* Pantallas de acceso / PIN: contenidas y centradas */
-  .fb-sub{max-width:340px;}
-  .pin-keypad{max-width:300px;}
-  .pin-key{cursor:pointer;}
-  .pin-key:hover{border-color:var(--accent);}
-
-  /* Cualquier cosa clicable gana cursor de mano */
-  .mes-dot,.action-card,.mas-item,.nav-item,[data-action],[data-screen]{cursor:pointer;}
+  .desktop-nav-item.nav-item svg { width:18px; height:18px; flex-shrink:0; }
+  .desktop-nav-item.nav-item span { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+  .desktop-nav-item.nav-item:hover { background:var(--bg3); color:var(--text); }
+  .desktop-nav-item.nav-item.active { background:rgba(200,240,96,.08);color:var(--accent); }
+  .desktop-nav-item.nav-item.active svg { transform:none; }
+  .desktop-nav-item[hidden] { display:none !important; }
+  .pc-sidebar-foot { display:flex; gap:10px; align-items:center; background:var(--bg);border:1px solid var(--border);
+    border-radius:12px; padding:13px 10px; margin-top:14px; }
+  .pc-sidebar-foot svg { width:17px;height:17px;flex-shrink:0;color:var(--accent); }
+  .pc-sidebar-foot strong { display:block; font-size:11.5px; line-height:1.2; }
+  .pc-sidebar-foot small { display:block; font-size:9.5px;color:var(--text3);line-height:1.4;margin-top:4px; }
+  .header { grid-column:2; grid-row:1; min-width:0; min-height:72px; padding:15px 30px; gap:22px; }
+  .header .pc-header-heading { min-width:160px; flex-shrink:0; }
+  .header .pc-header-heading > h1 { display:none; }
+  .pc-page-title { display:block; font-size:21px; font-weight:700; line-height:1.2; letter-spacing:-.5px; }
+  .header p { font-size:11px;margin-top:4px; }
+  .header .ix-div-001 { min-width:0; gap:10px; }
+  #btn-buscar-global.ix-btn-buscar-global { width:min(340px,32vw); min-width:195px; display:flex; align-items:center; justify-content:flex-start;gap:10px;
+    padding:0 13px; height:40px;background:var(--bg2);font-size:12px; }
+  .pc-search-hint { display:block; white-space:nowrap; overflow:hidden;text-overflow:ellipsis; }
+  .pc-search-shortcut { display:block; flex-shrink:0; margin-left:auto; border:1px solid var(--border2);border-radius:5px;
+    padding:3px 6px;font:10px 'DM Mono',monospace;color:var(--text3); }
+  #btn-buscar-global > svg { order:-1;flex-shrink:0; }
+  #btn-toggle-saldos.ix-btn-buscar-global { width:40px;height:40px;flex-shrink:0;background:var(--bg2); }
+  #btn-header-add.btn-add { width:auto; height:40px; padding:0 16px; gap:9px; color:#0a0a0a;flex-shrink:0; }
+  .pc-add-label { display:inline-block; color:#0a0a0a; font-size:13px; font-weight:700; }
+  #btn-header-add > svg { order:-1; }
+  .scroll-area { grid-column:2; grid-row:2;min-width:0; min-height:0; flex:none; overflow-y:auto; padding:26px 30px 50px;
+    scrollbar-width:thin;scrollbar-color:var(--bg4) transparent; }
+  .scroll-area::-webkit-scrollbar { display:block; width:9px; }
+  .scroll-area::-webkit-scrollbar-thumb { background:var(--bg4);border-radius:8px; }
+  .scroll-area > .screen.active { max-width:1320px; }
+  .app > footer { display:none; }
+  .hero { padding:27px 29px; margin-bottom:13px; }
+  .hero-amount { font-size:clamp(35px,3.6vw,56px);margin:8px 0 6px;letter-spacing:-2.5px; }
+  .card { padding:20px; margin-bottom:12px; }
+  .stat { border-radius:11px;padding:17px 18px; }
+  .stat-value { font-size:clamp(14px,1.5vw,22px); letter-spacing:-.45px; }
+  .stat-label { margin-bottom:10px; }
+  .grid2,.grid3 { gap:12px;margin-bottom:13px; }
+  .sec-title { margin:23px 0 11px; }
+  /* A diferencia del HTML de referencia, los montos siguen siendo valores reales. */
+  #screen-inicio.active { display:block; }
+  #screen-inicio .pc-home-columns { display:grid; grid-template-columns:minmax(0,1.78fr) minmax(285px,1fr); align-items:start;gap:22px; }
+  #screen-inicio .pc-home-primary, #screen-inicio .pc-home-secondary { min-width:0;display:block; }
+  #screen-inicio .pc-home-primary > *, #screen-inicio .pc-home-secondary > * { order:initial; }
+  #screen-inicio .pc-home-secondary > .sec-title:first-child { margin-top:0; }
+  #screen-inicio .pc-home-primary .hero { margin-bottom:13px; }
+  #screen-inicio .pc-home-primary #inicio-cuentas { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  #screen-inicio .pc-home-secondary > .grid2 { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  #screen-inicio .pc-home-secondary .stat-value { font-size:clamp(13px,1.25vw,19px); }
+  #screen-inicio .pc-home-secondary .card { background:var(--bg2); }
+  #screen-inicio .pc-home-primary .sec-title:first-child { margin-top:0; }
+  #screen-inicio .ix-proyeccion-card .stat-value { font-size:clamp(12px,1.2vw,19px); }
+  .pc-quick-nav { display:block; }
+  .pc-quick-card { padding:5px 15px; border:1px solid var(--border);border-radius:14px;background:var(--bg2); }
+  .pc-quick-link.nav-item { display:flex;flex-direction:row; flex:none;min-height:45px;width:100%;gap:10px;align-items:center;
+    font-size:12.5px;color:var(--text2);padding:13px 5px;text-align:left;border-radius:0; }
+  .pc-quick-link + .pc-quick-link { border-top:1px solid var(--border); }
+  .pc-quick-link:hover { color:var(--accent); }
+  .pc-quick-link svg { width:17px;height:17px; }
+  .pc-quick-link span { flex:1; }
+  .pc-quick-link svg:last-child { width:13px;height:13px;opacity:.5; }
+  .pc-quick-link.active { background:transparent;color:var(--accent); }
+  /* Las vistas secundarias mantienen todas sus interacciones, sin ancho de móvil. */
+  #screen-cuentas .cuentas-selector-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  #screen-cuentas .cuenta-card-saldo { font-size:clamp(18px,2vw,24px); }
+  #screen-cuentas #cuentas-detalle-simple, #screen-cuentas #cuentas-detalle-nu,
+  #screen-cuentas #cuentas-detalle-cajita, #screen-cuentas #cuentas-sub-meta,
+  #screen-cuentas #cuentas-sub-cdts { max-width:1100px; }
+  #screen-analisis, #screen-config, #screen-spotify, #screen-mesada { max-width:1100px; }
+  #screen-gastos, #screen-encargos, #screen-personas, #screen-tarjetas,
+  #screen-historial, #screen-alcancia, #screen-prestamos, #screen-comprometida { max-width:1200px; }
+  #screen-prestamos .hero, #screen-cuentas .hero, #screen-tarjetas .hero { max-width:100%; }
+  #screen-spotify #spotifyList, #screen-tarjetas #tc-lista { max-width:100%; }
+  .cuentas-selector-grid { gap:14px; }
+  .cuenta-card { padding:22px; }
+  #screen-personas #lista-personas-body { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px; }
+  #screen-personas #lista-personas-body > * { min-width:0; }
 }
 
-/* Pantallas muy anchas: un poco más de aire */
-@media (min-width:1600px){
-  :root{--content-max:1400px;--side-w:260px;}
-  .screen.active{max-width:960px;}
+/* Computadores con ancho útil limitado: ajustar cabecera/columnas. */
+@media (min-width:960px) and (max-width:1210px) {
+  .app { grid-template-columns:218px minmax(0,1fr); }
+  .desktop-sidebar { padding-inline:10px; }
+  .header { padding-inline:20px; }
+  .scroll-area { padding:22px 20px 40px; }
+  #btn-buscar-global.ix-btn-buscar-global { min-width:160px; width:210px; }
+  .pc-search-shortcut { display:none; }
+  #screen-inicio .pc-home-columns { grid-template-columns:minmax(0,1.45fr) minmax(240px,1fr);gap:16px; }
+  #screen-inicio .pc-home-primary #inicio-cuentas { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  #screen-inicio .pc-home-secondary > .grid2 { grid-template-columns:1fr; }
+}
+
+/* Ajustes para tabletas más pequeñas, sin quitar su barra de navegación inferior. */
+@media (min-width:700px) and (max-width:959px) {
+  #screen-inicio.active { max-width:760px; }
+  #screen-inicio .stat-value { font-size:clamp(15px,2.2vw,22px); }
+  #screen-cuentas .cuentas-selector-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
 }

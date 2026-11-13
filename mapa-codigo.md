@@ -16,7 +16,6 @@ Lista solo declaraciones de nivel superior (funciones, y constantes/objetos glob
 | `js/core/cierre.js` | lazy — grupo `cierre` | 1 | 0 |
 | `js/core/cobros.js` | de entrada (defer) | 13 | 1 |
 | `js/core/color-picker.js` | de entrada (defer) | 1 | 0 |
-| `js/core/core-state.js` | sin <script>, sin grupo lazy y sin import (posible código muerto) | 87 | 12 |
 | `js/core/cuenta-efectos.js` | de entrada (defer) | 3 | 0 |
 | `js/core/cuentas-fuentes.js` | de entrada (defer) | 40 | 3 |
 | `js/core/dialogos.js` | de entrada (defer) | 10 | 0 |
@@ -31,14 +30,11 @@ Lista solo declaraciones de nivel superior (funciones, y constantes/objetos glob
 | `js/core/formularios-ui.js` | de entrada (defer) | 1 | 0 |
 | `js/core/fuentes-filtro.js` | de entrada (defer) | 1 | 0 |
 | `js/core/gastos-fijos-progress.js` | de entrada (defer) | 0 | 0 |
-| `js/core/hook-global-module.js` | sin <script>, sin grupo lazy y sin import (posible código muerto) | 0 | 0 |
-| `js/core/hook-global.js` | sin <script>, sin grupo lazy y sin import (posible código muerto) | 1 | 0 |
 | `js/core/html-tag.js` | de entrada (defer) | 3 | 0 |
 | `js/core/huella.js` | lazy — grupo `cierre` | 1 | 0 |
 | `js/core/ingresos.js` | de entrada (defer) | 8 | 1 |
 | `js/core/lazy-loader.js` | de entrada (defer) | 1 | 0 |
 | `js/core/mas-menu.js` | de entrada (defer) | 0 | 0 |
-| `js/core/mejoras-adicionales.js` | sin <script>, sin grupo lazy y sin import (posible código muerto) | 0 | 0 |
 | `js/core/modulos-activos.js` | de entrada (defer) | 1 | 0 |
 | `js/core/money-input.js` | de entrada (defer) | 5 | 0 |
 | `js/core/movimientos.js` | de entrada (defer) | 7 | 0 |
@@ -59,17 +55,15 @@ Lista solo declaraciones de nivel superior (funciones, y constantes/objetos glob
 | `js/core/saldos-ocultos.js` | de entrada (defer) | 0 | 0 |
 | `js/core/salud.js` | de entrada (defer) | 1 | 0 |
 | `js/core/sheet-behavior.js` | de entrada (defer) | 0 | 0 |
-| `js/core/sheet-stack.js` | sin <script>, sin grupo lazy y sin import (posible código muerto) | 13 | 0 |
 | `js/core/split.js` | de entrada (defer) | 10 | 0 |
 | `js/core/sw-registro.js` | de entrada (defer) | 1 | 0 |
 | `js/core/ui.js` | de entrada (defer) | 1 | 0 |
 | `js/core/umbrales.js` | de entrada (defer) | 1 | 0 |
 | `js/core/utilidades-ui.js` | de entrada (defer) | 8 | 2 |
-| `js/core/wait-for-module.js` | módulo ES — importado por `js/core/firebase-sync.js`, `js/core/hook-global-module.js`, `js/core/pin-bio.js` | 0 | 0 |
+| `js/core/wait-for-module.js` | módulo ES — importado por `js/core/firebase-sync.js`, `js/core/pin-bio.js` | 0 | 0 |
 | `js/core/wait-for.js` | de entrada (defer) | 1 | 0 |
 | `js/core/wrapped-gate.js` | de entrada (defer) | 9 | 2 |
 | `js/modules/actividad-reciente.js` | lazy — grupo `historial` | 0 | 0 |
-| `js/modules/actividad_reciente.js` | sin <script>, sin grupo lazy y sin import (posible código muerto) | 0 | 0 |
 | `js/modules/alcancia.js` | lazy — grupo `alcancia` | 31 | 0 |
 | `js/modules/analisis.js` | lazy — grupo `analisis` | 16 | 0 |
 | `js/modules/configuracion.js` | lazy — grupo `config` | 20 | 0 |
@@ -81,11 +75,9 @@ Lista solo declaraciones de nivel superior (funciones, y constantes/objetos glob
 | `js/modules/nu.js` | lazy — grupo `cuentas` | 62 | 0 |
 | `js/modules/personas.js` | de entrada (defer) | 23 | 1 |
 | `js/modules/plata-comprometida.js` | lazy — grupo `comprometida` | 33 | 0 |
-| `js/modules/plata_comprometida.js` | sin <script>, sin grupo lazy y sin import (posible código muerto) | 34 | 0 |
 | `js/modules/prestado.js` | lazy — grupo `prestamos` | 116 | 1 |
 | `js/modules/spotify.js` | lazy — grupo `spotify` | 42 | 2 |
 | `js/modules/tarjetas-credito.js` | lazy — grupo `tarjetas` | 31 | 2 |
-| `js/modules/tarjetas_credito.js` | sin <script>, sin grupo lazy y sin import (posible código muerto) | 31 | 2 |
 | `js/modules/wrapped.js` | lazy — grupo `wrapped` | 117 | 3 |
 
 ## 2. Qué declara cada archivo
@@ -139,16 +131,6 @@ Carga: de entrada (defer)
 Carga: de entrada (defer)
 
 **Funciones:** `marcarColorSeleccionado`
-
-### `js/core/core-state.js`
-
-Carga: sin <script>, sin grupo lazy y sin import (posible código muerto)
-
-**Funciones:** `_ajusteAlcanciaPorFecha`, `_ajusteDeudasSinCuentaPorFecha`, `_claseValida`, `_closeDialog`, `_cuentasArr`, `_ensureSpotify`, `_esEntradaEspejoNoIngreso`, `_esGastoVarNoReal`, `_fechaSafe`, `_libroPata`, `_listaFuentes`, `_movsDeudaSinCuenta`, `_patrimonioDependenciasListas`, `_saldoCPAjeno`, `_saldoEncargosEnCuenta`, `ajustarSaldoCuenta`, `aplicarMigraciones`, `avisarMovimientoBloqueado`, `botonEliminarFila`, `buildFuentesOptsHtml`, `calcDeudaAjenaDeTarjeta`, `calcDeudaTcPropia`, `calcDeudaTcPropiaDeTarjeta`, `calcLiquidez`, `calcPatrimonioDesglose`, `calcPatrimonioTotal`, `calcPatrimonioVisible`, `calcSaldoInicialPendiente`, `claseEfectivaMovimiento`, `confirmarBorrarMovimientoViejo`, `crearMovimientoApertura`, `cuentasCustom`, `debounceSave`, `descontarFuente`, `diaCreacionMov`, `dialogo`, `emptyState`, `entradasIngresoReal`, `escHtml`, `filaMovimiento`, `fmt`, `fmtInput`, `fmtNoCents`, `fmtSaldoSelector`, `fuenteBadgeClass`, `fuenteLabel`, `gastosMes`, `getCatsFijo`, `getCatsVar`, `getCuenta`, `getCuentaCustom`, `getCuentaDeFuente`, `getCuentaFija`, `getFuentes`, `getFuentesSinTC`, `getIngresosFijosMes`, `getSaldoFuente`, `hoy`, `ingresosRealesDelMes`, `Libro`, `load`, `medirAnchoTexto`, `medirPatrimonioParaHistorial`, `mesActual`, `mesKey`, `mostrarSi`, `movimientosSinClase`, `nivelAntiguedadMovimiento`, `parseMoney`, `parsePct`, `patrimonioFormulaTexto`, `pedirPinAntesDe`, `pintarAvatarPersona`, `poblarCatSelect`, `poblarFuente`, `purgarAperturaDelHistorial`, `purgarEfectoEnHistorial`, `quitarDeHistorial`, `recalcularMontoBaseHistorial`, `refresh`, `save`, `setMoneyInput`, `snapshotPatrimonio`, `sumarFuente`, `toast`, `uid`, `validarSalidaFuente`
-
-**Globales:** `CATS_FIJO_DEFAULT`, `CATS_VAR_DEFAULT`, `CLASES_MOV`, `CuentaPantallas`, `CUENTAS_FIJAS`, `MAX`, `MC`, `ME_DEBEN_ABRE`, `MIGRACIONES`, `S`, `SCHEMA_BASE`, `SCHEMA_VERSION_ACTUAL`
-
-**Asigna a `window`:** `_dialogResolve`, `_locallyModified`
 
 ### `js/core/cuenta-efectos.js`
 
@@ -240,18 +222,6 @@ Carga: de entrada (defer)
 
 **Funciones:** —
 
-### `js/core/hook-global-module.js`
-
-Carga: sin <script>, sin grupo lazy y sin import (posible código muerto)
-
-**Funciones:** —
-
-### `js/core/hook-global.js`
-
-Carga: sin <script>, sin grupo lazy y sin import (posible código muerto)
-
-**Funciones:** `hookGlobal`
-
 ### `js/core/html-tag.js`
 
 Carga: de entrada (defer)
@@ -281,12 +251,6 @@ Carga: de entrada (defer)
 ### `js/core/mas-menu.js`
 
 Carga: de entrada (defer)
-
-**Funciones:** —
-
-### `js/core/mejoras-adicionales.js`
-
-Carga: sin <script>, sin grupo lazy y sin import (posible código muerto)
 
 **Funciones:** —
 
@@ -414,12 +378,6 @@ Carga: de entrada (defer)
 
 **Funciones:** —
 
-### `js/core/sheet-stack.js`
-
-Carga: sin <script>, sin grupo lazy y sin import (posible código muerto)
-
-**Funciones:** `_bindInputsAS`, `_hideScreenLoading`, `_initEventListeners`, `_injectErrorSpans`, `_markError`, `_showScreenLoading`, `applyModulos`, `closeSheet`, `markDirty`, `mostrarAlertaFuente`, `openSheet`, `saveAndRefresh`, `showScreen`
-
 ### `js/core/split.js`
 
 Carga: de entrada (defer)
@@ -456,7 +414,7 @@ Carga: de entrada (defer)
 
 ### `js/core/wait-for-module.js`
 
-Carga: módulo ES — importado por `js/core/firebase-sync.js`, `js/core/hook-global-module.js`, `js/core/pin-bio.js`
+Carga: módulo ES — importado por `js/core/firebase-sync.js`, `js/core/pin-bio.js`
 
 **Funciones:** —
 
@@ -479,12 +437,6 @@ Carga: de entrada (defer)
 ### `js/modules/actividad-reciente.js`
 
 Carga: lazy — grupo `historial`
-
-**Funciones:** —
-
-### `js/modules/actividad_reciente.js`
-
-Carga: sin <script>, sin grupo lazy y sin import (posible código muerto)
 
 **Funciones:** —
 
@@ -564,12 +516,6 @@ Carga: lazy — grupo `comprometida`
 
 **Funciones:** `_cpAbrirEditar`, `_cpAbrirNuevo`, `_cpAbrirRecibir`, `_cpAgregarDestino`, `_cpCancelSheet`, `_cpConfirmarRecibir`, `_cpData`, `_cpdConfirmar`, `_cpDiasHastaStr`, `_cpdPoblarGastoSelectores`, `_cpdRepoblarFuentes`, `_cpdSetGastoOrigen`, `_cpdSetTipo`, `_cpdSetYaPague`, `_cpdSetYaSaque`, `_cpdTipoChange`, `_cpEliminar`, `_cpGuardar`, `_cpGuardarMarcados`, `_cpInit`, `_cpInitSwipe`, `_cpMarcarPagos`, `_cpPoblarCuentas`, `_cpPoblarPersonas`, `_cpPoblarTC`, `_cpQuitarDestino`, `_cpRenderDestinosTmp`, `_cpRenderLista`, `_cpRenderMarcarList`, `_cpToggleMarcar`, `_injectMasItem`, `_injectScreen`, `_injectSheet`
 
-### `js/modules/plata_comprometida.js`
-
-Carga: sin <script>, sin grupo lazy y sin import (posible código muerto)
-
-**Funciones:** `_cpAbrirEditar`, `_cpAbrirNuevo`, `_cpAbrirRecibir`, `_cpAgregarDestino`, `_cpCancelSheet`, `_cpConfirmarRecibir`, `_cpData`, `_cpdConfirmar`, `_cpDiasHastaStr`, `_cpdPoblarGastoSelectores`, `_cpdSetGastoOrigen`, `_cpdSetTipo`, `_cpdSetYaPague`, `_cpdSetYaSaque`, `_cpdTipoChange`, `_cpEliminar`, `_cpFuenteLabel`, `_cpGuardar`, `_cpGuardarMarcados`, `_cpInit`, `_cpInitSwipe`, `_cpMarcarPagos`, `_cpPoblarCuentas`, `_cpPoblarPersonas`, `_cpPoblarTC`, `_cpQuitarDestino`, `_cpRenderDestinosTmp`, `_cpRenderLista`, `_cpRenderMarcarList`, `_cpToggleMarcar`, `_injectMasItem`, `_injectScreen`, `_injectSheet`, `_ogCp`
-
 ### `js/modules/prestado.js`
 
 Carga: lazy — grupo `prestamos`
@@ -596,14 +542,6 @@ Carga: lazy — grupo `tarjetas`
 
 **Globales:** `TC_ESTADOS`, `TC_MOTIVOS_CARGO`
 
-### `js/modules/tarjetas_credito.js`
-
-Carga: sin <script>, sin grupo lazy y sin import (posible código muerto)
-
-**Funciones:** `_ogTc`, `_tcEsCargoExterno`, `_tcOpsPosteriores`, `_tcPoblarSelectCajita`, `abrirCargoEspecialTC`, `abrirCompraTC`, `abrirDetalleTCSheet`, `abrirEditarTC`, `abrirNuevaTarjeta`, `abrirPagarTC`, `confirmarCargoEspecialTC`, `confirmarCompraTC`, `confirmarPagarTC`, `eliminarCompraTC`, `eliminarPagoTC`, `eliminarTC`, `guardarTC`, `ptcActualizarPreview`, `ptcSetMonto`, `renderTCDashboard`, `renderTCScreen`, `tcBuscarCompraPorIdOMatch`, `tcCrearCompra`, `tcCrearPago`, `tcDeudaTotal`, `tcEliminarCompraInterna`, `tcEliminarPagoInterna`, `tcEstadoInfo`, `tcNormalizarTarjetas`, `tcRecalcular`, `tcSelColor`
-
-**Globales:** `TC_ESTADOS`, `TC_MOTIVOS_CARGO`
-
 ### `js/modules/wrapped.js`
 
 Carga: lazy — grupo `wrapped`
@@ -616,177 +554,7 @@ Carga: lazy — grupo `wrapped`
 
 ## 3. Nombres declarados en más de un archivo
 
-Un nombre declarado (function/const/let/var) en dos archivos es una posible colisión: la última carga pisa a la anterior. No cuenta `window.x = …`, que se usa a propósito para parchar.
-
-| Nombre | Archivos |
-|---|---|
-| `_ajusteAlcanciaPorFecha` | `js/core/core-state.js`, `js/core/patrimonio.js` |
-| `_ajusteDeudasSinCuentaPorFecha` | `js/core/core-state.js`, `js/core/patrimonio.js` |
-| `_bindInputsAS` | `js/core/eventos-base.js`, `js/core/sheet-stack.js` |
-| `_claseValida` | `js/core/core-state.js`, `js/core/ingresos.js` |
-| `_closeDialog` | `js/core/core-state.js`, `js/core/dialogos.js` |
-| `_cpAbrirEditar` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpAbrirNuevo` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpAbrirRecibir` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpAgregarDestino` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpCancelSheet` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpConfirmarRecibir` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpData` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpdConfirmar` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpDiasHastaStr` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpdPoblarGastoSelectores` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpdSetGastoOrigen` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpdSetTipo` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpdSetYaPague` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpdSetYaSaque` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpdTipoChange` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpEliminar` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpGuardar` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpGuardarMarcados` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpInit` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpInitSwipe` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpMarcarPagos` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpPoblarCuentas` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpPoblarPersonas` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpPoblarTC` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpQuitarDestino` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpRenderDestinosTmp` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpRenderLista` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpRenderMarcarList` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpToggleMarcar` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cuentasArr` | `js/core/core-state.js`, `js/core/cuentas-fuentes.js` |
-| `_ensureSpotify` | `js/core/core-state.js`, `js/core/persistencia.js` |
-| `_esEntradaEspejoNoIngreso` | `js/core/core-state.js`, `js/core/ingresos.js` |
-| `_esGastoVarNoReal` | `js/core/core-state.js`, `js/core/ingresos.js` |
-| `_fechaSafe` | `js/core/core-state.js`, `js/core/dialogos.js` |
-| `_hideScreenLoading` | `js/core/navegacion.js`, `js/core/sheet-stack.js` |
-| `_initEventListeners` | `js/core/eventos-base.js`, `js/core/sheet-stack.js` |
-| `_injectMasItem` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_injectScreen` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_injectSheet` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_libroPata` | `js/core/core-state.js`, `js/core/cuentas-fuentes.js` |
-| `_listaFuentes` | `js/core/core-state.js`, `js/core/cuentas-fuentes.js` |
-| `_movsDeudaSinCuenta` | `js/core/core-state.js`, `js/core/patrimonio.js` |
-| `_patrimonioDependenciasListas` | `js/core/core-state.js`, `js/core/patrimonio.js` |
-| `_saldoCPAjeno` | `js/core/core-state.js`, `js/core/patrimonio.js` |
-| `_saldoEncargosEnCuenta` | `js/core/core-state.js`, `js/core/patrimonio.js` |
-| `_showScreenLoading` | `js/core/navegacion.js`, `js/core/sheet-stack.js` |
-| `_tcEsCargoExterno` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `_tcOpsPosteriores` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `_tcPoblarSelectCajita` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `abrirCargoEspecialTC` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `abrirCompraTC` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `abrirDetalleTCSheet` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `abrirEditarTC` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `abrirNuevaTarjeta` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `abrirPagarTC` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `ajustarSaldoCuenta` | `js/core/core-state.js`, `js/core/cuentas-fuentes.js` |
-| `aplicarMigraciones` | `js/core/core-state.js`, `js/core/persistencia.js` |
-| `applyModulos` | `js/core/modulos-activos.js`, `js/core/sheet-stack.js` |
-| `avisarMovimientoBloqueado` | `js/core/core-state.js`, `js/core/dialogos.js` |
-| `botonEliminarFila` | `js/core/core-state.js`, `js/core/utilidades-ui.js` |
-| `calcDeudaAjenaDeTarjeta` | `js/core/core-state.js`, `js/core/patrimonio.js` |
-| `calcDeudaTcPropia` | `js/core/core-state.js`, `js/core/patrimonio.js` |
-| `calcDeudaTcPropiaDeTarjeta` | `js/core/core-state.js`, `js/core/patrimonio.js` |
-| `calcLiquidez` | `js/core/core-state.js`, `js/core/patrimonio.js` |
-| `calcPatrimonioDesglose` | `js/core/core-state.js`, `js/core/patrimonio.js` |
-| `calcPatrimonioTotal` | `js/core/core-state.js`, `js/core/patrimonio.js` |
-| `calcPatrimonioVisible` | `js/core/core-state.js`, `js/core/patrimonio.js` |
-| `calcSaldoInicialPendiente` | `js/core/core-state.js`, `js/core/patrimonio.js` |
-| `CATS_FIJO_DEFAULT` | `js/core/core-state.js`, `js/core/estado.js` |
-| `CATS_VAR_DEFAULT` | `js/core/core-state.js`, `js/core/estado.js` |
-| `claseEfectivaMovimiento` | `js/core/core-state.js`, `js/core/persistencia.js` |
-| `CLASES_MOV` | `js/core/core-state.js`, `js/core/ingresos.js` |
-| `closeSheet` | `js/core/navegacion.js`, `js/core/sheet-stack.js` |
-| `confirmarBorrarMovimientoViejo` | `js/core/core-state.js`, `js/core/dialogos.js` |
-| `confirmarCargoEspecialTC` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `confirmarCompraTC` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `confirmarPagarTC` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `crearMovimientoApertura` | `js/core/core-state.js`, `js/core/estado.js` |
-| `CuentaPantallas` | `js/core/core-state.js`, `js/core/cuentas-fuentes.js` |
-| `debounceSave` | `js/core/core-state.js`, `js/core/utilidades-ui.js` |
-| `descontarFuente` | `js/core/core-state.js`, `js/core/cuentas-fuentes.js` |
-| `diaCreacionMov` | `js/core/core-state.js`, `js/core/patrimonio.js` |
-| `dialogo` | `js/core/core-state.js`, `js/core/dialogos.js` |
-| `eliminarCompraTC` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `eliminarPagoTC` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `eliminarTC` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `emptyState` | `js/core/core-state.js`, `js/core/utilidades-ui.js` |
-| `entradasIngresoReal` | `js/core/core-state.js`, `js/core/ingresos.js` |
-| `escHtml` | `js/core/core-state.js`, `js/core/estado.js` |
-| `filaMovimiento` | `js/core/core-state.js`, `js/core/utilidades-ui.js` |
-| `fmt` | `js/core/core-state.js`, `js/core/estado.js` |
-| `fmtInput` | `js/core/core-state.js`, `js/core/persistencia.js` |
-| `fmtNoCents` | `js/core/core-state.js`, `js/core/estado.js` |
-| `fmtSaldoSelector` | `js/core/core-state.js`, `js/core/estado.js` |
-| `fuenteBadgeClass` | `js/core/core-state.js`, `js/core/cuentas-fuentes.js` |
-| `fuenteLabel` | `js/core/core-state.js`, `js/core/cuentas-fuentes.js` |
-| `gastosMes` | `js/core/core-state.js`, `js/core/ingresos.js` |
-| `getCatsFijo` | `js/core/core-state.js`, `js/core/estado.js` |
-| `getCatsVar` | `js/core/core-state.js`, `js/core/estado.js` |
-| `getCuenta` | `js/core/core-state.js`, `js/core/cuentas-fuentes.js` |
-| `getCuentaDeFuente` | `js/core/core-state.js`, `js/core/cuentas-fuentes.js` |
-| `getFuentes` | `js/core/core-state.js`, `js/core/cuentas-fuentes.js` |
-| `getFuentesSinTC` | `js/core/core-state.js`, `js/core/cuentas-fuentes.js` |
-| `getIngresosFijosMes` | `js/core/core-state.js`, `js/core/ingresos.js` |
-| `getSaldoFuente` | `js/core/core-state.js`, `js/core/cuentas-fuentes.js` |
-| `guardarTC` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `hoy` | `js/core/core-state.js`, `js/core/estado.js` |
-| `ingresosRealesDelMes` | `js/core/core-state.js`, `js/core/ingresos.js` |
-| `Libro` | `js/core/core-state.js`, `js/core/cuentas-fuentes.js` |
-| `load` | `js/core/core-state.js`, `js/core/persistencia.js` |
-| `MAX` | `js/core/core-state.js`, `js/core/estado.js` |
-| `MC` | `js/core/core-state.js`, `js/core/estado.js` |
-| `ME_DEBEN_ABRE` | `js/core/core-state.js`, `js/core/patrimonio.js` |
-| `medirAnchoTexto` | `js/core/core-state.js`, `js/core/estado.js` |
-| `medirPatrimonioParaHistorial` | `js/core/core-state.js`, `js/core/patrimonio.js` |
-| `mesActual` | `js/core/core-state.js`, `js/core/ingresos.js` |
-| `mesKey` | `js/core/core-state.js`, `js/core/estado.js` |
-| `MIGRACIONES` | `js/core/core-state.js`, `js/core/persistencia.js` |
-| `mostrarAlertaFuente` | `js/core/formularios-ui.js`, `js/core/sheet-stack.js` |
-| `mostrarSi` | `js/core/core-state.js`, `js/core/utilidades-ui.js` |
-| `movimientosSinClase` | `js/core/core-state.js`, `js/core/persistencia.js` |
-| `nivelAntiguedadMovimiento` | `js/core/core-state.js`, `js/core/dialogos.js` |
-| `openSheet` | `js/core/navegacion.js`, `js/core/sheet-stack.js` |
-| `parseMoney` | `js/core/core-state.js`, `js/core/persistencia.js` |
-| `parsePct` | `js/core/core-state.js`, `js/core/persistencia.js` |
-| `patrimonioFormulaTexto` | `js/core/core-state.js`, `js/core/patrimonio.js` |
-| `pedirPinAntesDe` | `js/core/core-state.js`, `js/core/utilidades-ui.js` |
-| `pintarAvatarPersona` | `js/core/core-state.js`, `js/core/estado.js` |
-| `poblarCatSelect` | `js/core/core-state.js`, `js/core/estado.js` |
-| `poblarFuente` | `js/core/core-state.js`, `js/core/cuentas-fuentes.js` |
-| `ptcActualizarPreview` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `ptcSetMonto` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `purgarAperturaDelHistorial` | `js/core/core-state.js`, `js/core/patrimonio.js` |
-| `purgarEfectoEnHistorial` | `js/core/core-state.js`, `js/core/patrimonio.js` |
-| `quitarDeHistorial` | `js/core/core-state.js`, `js/core/patrimonio.js` |
-| `recalcularMontoBaseHistorial` | `js/core/core-state.js`, `js/core/patrimonio.js` |
-| `refresh` | `js/core/core-state.js`, `js/core/refresh.js` |
-| `renderTCDashboard` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `renderTCScreen` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `S` | `js/core/core-state.js`, `js/core/estado.js` |
-| `save` | `js/core/core-state.js`, `js/core/persistencia.js` |
-| `saveAndRefresh` | `js/core/refresh.js`, `js/core/sheet-stack.js` |
-| `SCHEMA_BASE` | `js/core/core-state.js`, `js/core/persistencia.js` |
-| `SCHEMA_VERSION_ACTUAL` | `js/core/core-state.js`, `js/core/persistencia.js` |
-| `setMoneyInput` | `js/core/core-state.js`, `js/core/persistencia.js` |
-| `showScreen` | `js/core/navegacion.js`, `js/core/sheet-stack.js` |
-| `snapshotPatrimonio` | `js/core/core-state.js`, `js/core/patrimonio.js` |
-| `sumarFuente` | `js/core/core-state.js`, `js/core/cuentas-fuentes.js` |
-| `TC_ESTADOS` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `TC_MOTIVOS_CARGO` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `tcBuscarCompraPorIdOMatch` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `tcCrearCompra` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `tcCrearPago` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `tcDeudaTotal` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `tcEliminarCompraInterna` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `tcEliminarPagoInterna` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `tcEstadoInfo` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `tcNormalizarTarjetas` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `tcRecalcular` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `tcSelColor` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `toast` | `js/core/core-state.js`, `js/core/dialogos.js` |
-| `uid` | `js/core/core-state.js`, `js/core/estado.js` |
+Ninguno.
 
 ## 4. Índice inverso (nombre → archivo)
 
@@ -826,8 +594,8 @@ Un nombre declarado (function/const/let/var) en dos archivos es una posible coli
 | `_actualizarTraspasoPreview` | `js/modules/encargos.js` |
 | `_ahorroActual` | `js/modules/nu.js` |
 | `_ahorroActualId` | `js/modules/nu.js` |
-| `_ajusteAlcanciaPorFecha` | `js/core/core-state.js`, `js/core/patrimonio.js` |
-| `_ajusteDeudasSinCuentaPorFecha` | `js/core/core-state.js`, `js/core/patrimonio.js` |
+| `_ajusteAlcanciaPorFecha` | `js/core/patrimonio.js` |
+| `_ajusteDeudasSinCuentaPorFecha` | `js/core/patrimonio.js` |
 | `_alcanciaEjecutarEliminarDeposito` | `js/modules/alcancia.js` |
 | `_alcanciaInit` | `js/modules/alcancia.js` |
 | `_alcanciaQuitarPorCobroDeuda` | `js/modules/alcancia.js` (window._alcanciaQuitarPorCobroDeuda = …) |
@@ -860,7 +628,7 @@ Un nombre declarado (function/const/let/var) en dos archivos es una posible coli
 | `_autoGrupoIdMov` | `js/modules/prestado.js` |
 | `_balancePromedioReciente` | `js/modules/inicio.js` |
 | `_bienPoblar` | `js/modules/gastos.js` |
-| `_bindInputsAS` | `js/core/eventos-base.js`, `js/core/sheet-stack.js` |
+| `_bindInputsAS` | `js/core/eventos-base.js` |
 | `_borrarSpHistorial` | `js/modules/spotify.js` |
 | `_buildFuentesOpts` | `js/core/cuentas-fuentes.js` |
 | `_cajitaDetDelete` | `js/modules/nu.js` |
@@ -870,8 +638,8 @@ Un nombre declarado (function/const/let/var) en dos archivos es una posible coli
 | `_cdtModoSheet` | `js/modules/nu.js` |
 | `_checkGastoAlto` | `js/modules/inicio.js` |
 | `_clasePorCuenta` | `js/core/cuentas-fuentes.js` |
-| `_claseValida` | `js/core/core-state.js`, `js/core/ingresos.js` |
-| `_closeDialog` | `js/core/core-state.js`, `js/core/dialogos.js` |
+| `_claseValida` | `js/core/ingresos.js` |
+| `_closeDialog` | `js/core/dialogos.js` |
 | `_cobroEntrar` | `js/core/cobros.js` |
 | `_cobroSacar` | `js/core/cobros.js` |
 | `_colorDeuda` | `js/modules/prestado.js` |
@@ -880,37 +648,36 @@ Un nombre declarado (function/const/let/var) en dos archivos es una posible coli
 | `_confirmarMovimientoConGuard` | `js/modules/prestado.js` |
 | `_confirmarMovimientoInterno` | `js/modules/prestado.js` |
 | `_confirmarUsarParte` | `js/modules/encargos.js` |
-| `_cpAbrirEditar` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpAbrirNuevo` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpAbrirRecibir` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpAgregarDestino` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpCancelSheet` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpConfirmarRecibir` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpData` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpdConfirmar` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpDiasHastaStr` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpdPoblarGastoSelectores` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
+| `_cpAbrirEditar` | `js/modules/plata-comprometida.js` |
+| `_cpAbrirNuevo` | `js/modules/plata-comprometida.js` |
+| `_cpAbrirRecibir` | `js/modules/plata-comprometida.js` |
+| `_cpAgregarDestino` | `js/modules/plata-comprometida.js` |
+| `_cpCancelSheet` | `js/modules/plata-comprometida.js` |
+| `_cpConfirmarRecibir` | `js/modules/plata-comprometida.js` |
+| `_cpData` | `js/modules/plata-comprometida.js` |
+| `_cpdConfirmar` | `js/modules/plata-comprometida.js` |
+| `_cpDiasHastaStr` | `js/modules/plata-comprometida.js` |
+| `_cpdPoblarGastoSelectores` | `js/modules/plata-comprometida.js` |
 | `_cpdRepoblarFuentes` | `js/modules/plata-comprometida.js` |
-| `_cpdSetGastoOrigen` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpdSetTipo` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpdSetYaPague` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpdSetYaSaque` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpdTipoChange` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpEliminar` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpFuenteLabel` | `js/modules/plata_comprometida.js` |
-| `_cpGuardar` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpGuardarMarcados` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpInit` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpInitSwipe` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpMarcarPagos` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpPoblarCuentas` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpPoblarPersonas` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpPoblarTC` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpQuitarDestino` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpRenderDestinosTmp` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpRenderLista` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpRenderMarcarList` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_cpToggleMarcar` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
+| `_cpdSetGastoOrigen` | `js/modules/plata-comprometida.js` |
+| `_cpdSetTipo` | `js/modules/plata-comprometida.js` |
+| `_cpdSetYaPague` | `js/modules/plata-comprometida.js` |
+| `_cpdSetYaSaque` | `js/modules/plata-comprometida.js` |
+| `_cpdTipoChange` | `js/modules/plata-comprometida.js` |
+| `_cpEliminar` | `js/modules/plata-comprometida.js` |
+| `_cpGuardar` | `js/modules/plata-comprometida.js` |
+| `_cpGuardarMarcados` | `js/modules/plata-comprometida.js` |
+| `_cpInit` | `js/modules/plata-comprometida.js` |
+| `_cpInitSwipe` | `js/modules/plata-comprometida.js` |
+| `_cpMarcarPagos` | `js/modules/plata-comprometida.js` |
+| `_cpPoblarCuentas` | `js/modules/plata-comprometida.js` |
+| `_cpPoblarPersonas` | `js/modules/plata-comprometida.js` |
+| `_cpPoblarTC` | `js/modules/plata-comprometida.js` |
+| `_cpQuitarDestino` | `js/modules/plata-comprometida.js` |
+| `_cpRenderDestinosTmp` | `js/modules/plata-comprometida.js` |
+| `_cpRenderLista` | `js/modules/plata-comprometida.js` |
+| `_cpRenderMarcarList` | `js/modules/plata-comprometida.js` |
+| `_cpToggleMarcar` | `js/modules/plata-comprometida.js` |
 | `_crearEncargoPicker` | `js/modules/mesada.js` |
 | `_crearGrupoDeudor` | `js/modules/prestado.js` |
 | `_crearPersonaGlobal` | `js/modules/personas.js` |
@@ -923,7 +690,7 @@ Un nombre declarado (function/const/let/var) en dos archivos es una posible coli
 | `_ctxReglas` | `js/modules/inicio.js` |
 | `_cuentaOpsPosteriores` | `js/core/movimientos.js` |
 | `_cuentaOrdenHtml` | `js/modules/cuentas.js` |
-| `_cuentasArr` | `js/core/core-state.js`, `js/core/cuentas-fuentes.js` |
+| `_cuentasArr` | `js/core/cuentas-fuentes.js` |
 | `_cuentaSelectorHtml` | `js/modules/cuentas.js` |
 | `_cuentasSelector` | `js/modules/cuentas.js` |
 | `_deBase64` | `js/core/payload-codec.js` |
@@ -933,7 +700,7 @@ Un nombre declarado (function/const/let/var) en dos archivos es una posible coli
 | `_deudaOpsPosteriores` | `js/modules/prestado.js` |
 | `_deudasPropias` | `js/modules/inicio.js` |
 | `_deudaTieneCuentaAfectada` | `js/modules/prestado.js` |
-| `_dialogResolve` | `js/core/core-state.js` (window._dialogResolve = …), `js/core/dialogos.js` (window._dialogResolve = …) |
+| `_dialogResolve` | `js/core/dialogos.js` (window._dialogResolve = …) |
 | `_diasDesde` | `js/modules/alcancia.js` |
 | `_diasDeUso` | `js/modules/inicio.js` |
 | `_diasEntreFechas` | `js/core/nu-calc.js` |
@@ -952,17 +719,17 @@ Un nombre declarado (function/const/let/var) en dos archivos es una posible coli
 | `_encSplitKey` | `js/modules/encargos.js` |
 | `_enReversion` | `js/modules/prestado.js` |
 | `_ensureMesadas` | `js/core/calc-helpers.js` |
-| `_ensureSpotify` | `js/core/core-state.js`, `js/core/persistencia.js` |
+| `_ensureSpotify` | `js/core/persistencia.js` |
 | `_errFilaSinCuenta` | `js/modules/prestado.js` |
 | `_errMonto` | `js/modules/prestado.js` |
 | `_errSumaCuentas` | `js/modules/prestado.js` |
-| `_esEntradaEspejoNoIngreso` | `js/core/core-state.js`, `js/core/ingresos.js` |
-| `_esGastoVarNoReal` | `js/core/core-state.js`, `js/core/ingresos.js` |
+| `_esEntradaEspejoNoIngreso` | `js/core/ingresos.js` |
+| `_esGastoVarNoReal` | `js/core/ingresos.js` |
 | `_espejoLista` | `js/core/cuenta-efectos.js` |
 | `_estadoPush` | `js/core/notificaciones-push.js` |
 | `_eventosCaja` | `js/modules/inicio.js` |
 | `_fechaCorta` | `js/modules/inicio.js` |
-| `_fechaSafe` | `js/core/core-state.js`, `js/core/dialogos.js` |
+| `_fechaSafe` | `js/core/dialogos.js` |
 | `_fechasCambioEncargoEnCajita` | `js/core/nu-calc.js` |
 | `_fmtMeses` | `js/modules/inicio.js` |
 | `_fmtTiempo` | `js/modules/alcancia.js` |
@@ -981,19 +748,18 @@ Un nombre declarado (function/const/let/var) en dos archivos es una posible coli
 | `_getSaldoOfuscado` | `js/modules/alcancia.js` |
 | `_gruposAbiertos` | `js/modules/prestado.js` |
 | `_guardarEditarPersonaGlobal` | `js/modules/personas.js` |
-| `_hideScreenLoading` | `js/core/navegacion.js`, `js/core/sheet-stack.js` |
+| `_hideScreenLoading` | `js/core/navegacion.js` |
 | `_historialTasas` | `js/core/nu-calc.js` |
 | `_htmlEscapeValue` | `js/core/html-tag.js` |
 | `_htmlHistorialPorGrupos` | `js/modules/prestado.js` |
 | `_htmlMesDot` | `js/modules/mesada.js` |
 | `_initA` | `js/modules/alcancia.js` |
-| `_initEventListeners` | `js/core/eventos-base.js`, `js/core/sheet-stack.js` |
+| `_initEventListeners` | `js/core/eventos-base.js` |
 | `_initGrupoSelector` | `js/modules/prestado.js` |
 | `_initMovGrupoSelector` | `js/modules/prestado.js` |
-| `_injectErrorSpans` | `js/core/sheet-stack.js` |
-| `_injectMasItem` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_injectScreen` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
-| `_injectSheet` | `js/modules/plata-comprometida.js`, `js/modules/plata_comprometida.js` |
+| `_injectMasItem` | `js/modules/plata-comprometida.js` |
+| `_injectScreen` | `js/modules/plata-comprometida.js` |
+| `_injectSheet` | `js/modules/plata-comprometida.js` |
 | `_intentarInyectarPersonaSheets` | `js/core/personas-init.js` |
 | `_interpretarLecturaChequeoNu` | `js/modules/nu.js` |
 | `_inyectarAlcanciaSheets` | `js/modules/alcancia.js` |
@@ -1004,11 +770,10 @@ Un nombre declarado (function/const/let/var) en dos archivos es una posible coli
 | `_irAEncargo` | `js/modules/encargos.js` |
 | `_irAMiDeuda` | `js/modules/prestado.js` |
 | `_irASpotify` | `js/modules/personas.js` |
-| `_libroPata` | `js/core/core-state.js`, `js/core/cuentas-fuentes.js` |
-| `_listaFuentes` | `js/core/core-state.js`, `js/core/cuentas-fuentes.js` |
-| `_locallyModified` | `js/core/core-state.js` (window._locallyModified = …), `js/core/utilidades-ui.js` (window._locallyModified = …) |
+| `_libroPata` | `js/core/cuentas-fuentes.js` |
+| `_listaFuentes` | `js/core/cuentas-fuentes.js` |
+| `_locallyModified` | `js/core/utilidades-ui.js` (window._locallyModified = …) |
 | `_luminancia` | `js/core/cuentas-fuentes.js` |
-| `_markError` | `js/core/sheet-stack.js` |
 | `_mdEl` | `js/modules/prestado.js` |
 | `_mdEsPerdon` | `js/modules/prestado.js` |
 | `_mdExtra` | `js/modules/prestado.js` |
@@ -1058,7 +823,7 @@ Un nombre declarado (function/const/let/var) en dos archivos es una posible coli
 | `_movEsPerdon` | `js/modules/prestado.js` |
 | `_movExiste` | `js/core/movimientos.js` |
 | `_movsAplicarFiltro` | `js/modules/cuentas.js` |
-| `_movsDeudaSinCuenta` | `js/core/core-state.js`, `js/core/patrimonio.js` |
+| `_movsDeudaSinCuenta` | `js/core/patrimonio.js` |
 | `_movsLimpiarFechas` | `js/modules/cuentas.js` |
 | `_movsOnFecha` | `js/modules/cuentas.js` |
 | `_movsOnSearch` | `js/modules/cuentas.js` |
@@ -1078,13 +843,11 @@ Un nombre declarado (function/const/let/var) en dos archivos es una posible coli
 | `_nuMovRenderCajitas` | `js/modules/nu.js` |
 | `_nuMovToggleApertura` | `js/modules/nu.js` |
 | `_obtenerTokenPush` | `js/core/notificaciones-push.js` |
-| `_ogCp` | `js/modules/plata_comprometida.js` |
-| `_ogTc` | `js/modules/tarjetas_credito.js` |
 | `_onMovMontoInput` | `js/modules/prestado.js` |
 | `_onSelPersonaMeDeben` | `js/modules/prestado.js` |
 | `_onSelPersonaYoDebo` | `js/modules/prestado.js` |
 | `_optGanancia` | `js/modules/prestado.js` |
-| `_patrimonioDependenciasListas` | `js/core/core-state.js`, `js/core/patrimonio.js` |
+| `_patrimonioDependenciasListas` | `js/core/patrimonio.js` |
 | `_pintarAdministrarCuenta` | `js/modules/cuentas.js` |
 | `_pintarAtencion` | `js/modules/inicio.js` |
 | `_pintarEncabezadoDeuda` | `js/modules/prestado.js` |
@@ -1137,10 +900,10 @@ Un nombre declarado (function/const/let/var) en dos archivos es una posible coli
 | `_revertirMovMiDeuda` | `js/modules/prestado.js` |
 | `_revertirMovMiDeudaImpl` | `js/modules/prestado.js` |
 | `_ritmosPorTercio` | `js/modules/inicio.js` |
-| `_saldoCPAjeno` | `js/core/core-state.js`, `js/core/patrimonio.js` |
+| `_saldoCPAjeno` | `js/core/patrimonio.js` |
 | `_saldoEncargosEnCajita` | `js/core/nu-calc.js` |
 | `_saldoEncargosEnCajitaEnFecha` | `js/core/nu-calc.js` |
-| `_saldoEncargosEnCuenta` | `js/core/core-state.js`, `js/core/patrimonio.js` |
+| `_saldoEncargosEnCuenta` | `js/core/patrimonio.js` |
 | `_saldoRegistrado` | `js/modules/alcancia.js` |
 | `_salidaEncMenuIr` | `js/modules/encargos.js` |
 | `_segmentosTasa` | `js/core/nu-calc.js` |
@@ -1152,7 +915,7 @@ Un nombre declarado (function/const/let/var) en dos archivos es una posible coli
 | `_setBtnTransferir` | `js/modules/cuentas.js` |
 | `_setSaldoOfuscado` | `js/modules/alcancia.js` |
 | `_showCuentasPanel` | `js/modules/cuentas.js` |
-| `_showScreenLoading` | `js/core/navegacion.js`, `js/core/sheet-stack.js` |
+| `_showScreenLoading` | `js/core/navegacion.js` |
 | `_situacion` | `js/modules/inicio.js` |
 | `_spEditPicker` | `js/modules/spotify.js` |
 | `_spEnsureTC` | `js/modules/spotify.js` |
@@ -1166,9 +929,9 @@ Un nombre declarado (function/const/let/var) en dos archivos es una posible coli
 | `_syncSpExtraWrap` | `js/modules/spotify.js` |
 | `_tasaCDT` | `js/core/nu-calc.js` |
 | `_tasaVigenteEnFecha` | `js/core/nu-calc.js` |
-| `_tcEsCargoExterno` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `_tcOpsPosteriores` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `_tcPoblarSelectCajita` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
+| `_tcEsCargoExterno` | `js/modules/tarjetas-credito.js` |
+| `_tcOpsPosteriores` | `js/modules/tarjetas-credito.js` |
+| `_tcPoblarSelectCajita` | `js/modules/tarjetas-credito.js` |
 | `_textoRunway` | `js/modules/inicio.js` |
 | `_tituloCuentaHtml` | `js/modules/cuentas.js` |
 | `_toastTexto` | `js/core/dialogos.js` |
@@ -1321,24 +1084,24 @@ Un nombre declarado (function/const/let/var) en dos archivos es una posible coli
 | `abonoSplitResumen` | `js/modules/prestado.js` |
 | `abrirAgregarDinero` | `js/modules/cuentas.js` |
 | `abrirArchivadas` | `js/modules/cuentas.js` |
-| `abrirCargoEspecialTC` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
+| `abrirCargoEspecialTC` | `js/modules/tarjetas-credito.js` |
 | `abrirChequeoNu` | `js/modules/nu.js` |
 | `abrirCobrarCDT` | `js/modules/nu.js` |
 | `abrirCobroIngresoFijo` | `js/modules/analisis.js` |
 | `abrirCompraConTC` | `js/modules/encargos.js` |
-| `abrirCompraTC` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
+| `abrirCompraTC` | `js/modules/tarjetas-credito.js` |
 | `abrirCrearCDT` | `js/modules/nu.js` |
 | `abrirCuenta` | `js/modules/cuentas.js` |
 | `abrirDetalleCajita` | `js/modules/nu.js` |
 | `abrirDetalleMesada` | `js/modules/mesada.js` |
 | `abrirDetalleMov` | `js/core/movimientos.js` |
-| `abrirDetalleTCSheet` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
+| `abrirDetalleTCSheet` | `js/modules/tarjetas-credito.js` |
 | `abrirDeudor` | `js/modules/prestado.js` |
 | `abrirEditarApertura` | `js/modules/cuentas.js` |
 | `abrirEditarBien` | `js/modules/gastos.js` |
 | `abrirEditarGastoFijo` | `js/modules/gastos.js` |
 | `abrirEditarPersonaGlobal` | `js/modules/personas.js` |
-| `abrirEditarTC` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
+| `abrirEditarTC` | `js/modules/tarjetas-credito.js` |
 | `abrirElegirFuenteSpotify` | `js/modules/spotify.js` |
 | `abrirEncargoDesdeCuenta` | `js/modules/encargos.js` |
 | `abrirEncargoDetalle` | `js/modules/encargos.js` |
@@ -1349,7 +1112,7 @@ Un nombre declarado (function/const/let/var) en dos archivos es una posible coli
 | `abrirMovMiDeuda` | `js/modules/prestado.js` |
 | `abrirNuevaCuenta` | `js/modules/cuentas.js` |
 | `abrirNuevaParte` | `js/modules/encargos.js` |
-| `abrirNuevaTarjeta` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
+| `abrirNuevaTarjeta` | `js/modules/tarjetas-credito.js` |
 | `abrirNuevoEncargo` | `js/modules/encargos.js` |
 | `abrirNuevoGastoFijo` | `js/modules/gastos.js` |
 | `abrirNuevoGastoVar` | `js/modules/gastos.js` |
@@ -1357,7 +1120,7 @@ Un nombre declarado (function/const/let/var) en dos archivos es una posible coli
 | `abrirOnboarding` | `js/modules/cuentas.js` |
 | `abrirPagarGastoFijo` | `js/modules/gastos.js` |
 | `abrirPagarSpotify` | `js/modules/spotify.js` |
-| `abrirPagarTC` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
+| `abrirPagarTC` | `js/modules/tarjetas-credito.js` |
 | `abrirPerfilPersona` | `js/modules/personas.js` |
 | `abrirPresupuestos` | `js/modules/analisis.js` |
 | `abrirRegistrarApertura` | `js/modules/cuentas.js` |
@@ -1402,7 +1165,7 @@ Un nombre declarado (function/const/let/var) en dos archivos es una posible coli
 | `ahorroTotal` | `js/core/nu-calc.js` |
 | `ahorroTotalGeneral` | `js/core/nu-calc.js` |
 | `ahorroValorEsperadoCajita` | `js/core/nu-calc.js` |
-| `ajustarSaldoCuenta` | `js/core/core-state.js`, `js/core/cuentas-fuentes.js` |
+| `ajustarSaldoCuenta` | `js/core/cuentas-fuentes.js` |
 | `alcanciaAgregarOrigen` | `js/modules/alcancia.js` (window.alcanciaAgregarOrigen = …) |
 | `alcanciaConfirmarDeposito` | `js/modules/alcancia.js` (window.alcanciaConfirmarDeposito = …) |
 | `alcanciaConfirmarDestapar` | `js/modules/alcancia.js` (window.alcanciaConfirmarDestapar = …) |
@@ -1412,16 +1175,15 @@ Un nombre declarado (function/const/let/var) en dos archivos es una posible coli
 | `alcanciaToggleMontoDeposito` | `js/modules/alcancia.js` (window.alcanciaToggleMontoDeposito = …) |
 | `alternarAhorroNC` | `js/modules/cuentas.js` |
 | `alternarOrdenCuentas` | `js/modules/cuentas.js` |
-| `aplicarMigraciones` | `js/core/core-state.js`, `js/core/persistencia.js` |
-| `applyModulos` | `js/core/modulos-activos.js`, `js/core/sheet-stack.js` |
+| `aplicarMigraciones` | `js/core/persistencia.js` |
+| `applyModulos` | `js/core/modulos-activos.js` |
 | `archivarCuenta` | `js/modules/cuentas.js` |
 | `asegurarEfectivo` | `js/core/cuentas-fuentes.js` |
-| `avisarMovimientoBloqueado` | `js/core/core-state.js`, `js/core/dialogos.js` |
+| `avisarMovimientoBloqueado` | `js/core/dialogos.js` |
 | `avisarNoSePuede` | `js/core/dialogos.js` |
 | `borrarMovEspejo` | `js/core/cuenta-efectos.js` |
 | `borrarTodo` | `js/modules/configuracion.js` |
-| `botonEliminarFila` | `js/core/core-state.js`, `js/core/utilidades-ui.js` |
-| `buildFuentesOptsHtml` | `js/core/core-state.js` |
+| `botonEliminarFila` | `js/core/utilidades-ui.js` |
 | `cajitaChequeable` | `js/core/nu-calc.js` |
 | `cajitaGeneraIntereses` | `js/core/nu-calc.js` |
 | `cajitasChequeables` | `js/core/nu-calc.js` |
@@ -1430,36 +1192,36 @@ Un nombre declarado (function/const/let/var) en dos archivos es una posible coli
 | `calcC` | `js/core/nu-calc.js` |
 | `calcCalendarioCaja` | `js/modules/inicio.js` |
 | `calcCDT` | `js/core/nu-calc.js` |
-| `calcDeudaAjenaDeTarjeta` | `js/core/core-state.js`, `js/core/patrimonio.js` |
-| `calcDeudaTcPropia` | `js/core/core-state.js`, `js/core/patrimonio.js` |
-| `calcDeudaTcPropiaDeTarjeta` | `js/core/core-state.js`, `js/core/patrimonio.js` |
+| `calcDeudaAjenaDeTarjeta` | `js/core/patrimonio.js` |
+| `calcDeudaTcPropia` | `js/core/patrimonio.js` |
+| `calcDeudaTcPropiaDeTarjeta` | `js/core/patrimonio.js` |
 | `calcEstadoHero` | `js/modules/inicio.js` |
 | `calcEstadoSituacion` | `js/modules/inicio.js` |
 | `calcHealthScore` | `js/modules/inicio.js` |
 | `calcImpactoCompra` | `js/modules/inicio.js` |
-| `calcLiquidez` | `js/core/core-state.js`, `js/core/patrimonio.js` |
+| `calcLiquidez` | `js/core/patrimonio.js` |
 | `calcMetaProgreso` | `js/modules/nu.js` |
 | `calcPatrimonioConBienes` | `js/core/patrimonio.js` |
-| `calcPatrimonioDesglose` | `js/core/core-state.js`, `js/core/patrimonio.js` |
-| `calcPatrimonioTotal` | `js/core/core-state.js`, `js/core/patrimonio.js` |
-| `calcPatrimonioVisible` | `js/core/core-state.js`, `js/core/patrimonio.js` |
+| `calcPatrimonioDesglose` | `js/core/patrimonio.js` |
+| `calcPatrimonioTotal` | `js/core/patrimonio.js` |
+| `calcPatrimonioVisible` | `js/core/patrimonio.js` |
 | `calcRendimientoCDTMes` | `js/core/nu-calc.js` |
 | `calcRendimientoCDTsMes` | `js/core/nu-calc.js` |
-| `calcSaldoInicialPendiente` | `js/core/core-state.js`, `js/core/patrimonio.js` |
+| `calcSaldoInicialPendiente` | `js/core/patrimonio.js` |
 | `calcSinBase` | `js/modules/inicio.js` |
 | `calcularSerieTasaImplicita` | `js/modules/nu.js` |
 | `calcValorBien` | `js/core/patrimonio.js` |
 | `cambiarAnio` | `js/modules/mesada.js` |
 | `cambiarTabPrestamos` | `js/modules/prestado.js` |
-| `CATS_FIJO_DEFAULT` | `js/core/core-state.js`, `js/core/estado.js` |
-| `CATS_VAR_DEFAULT` | `js/core/core-state.js`, `js/core/estado.js` |
+| `CATS_FIJO_DEFAULT` | `js/core/estado.js` |
+| `CATS_VAR_DEFAULT` | `js/core/estado.js` |
 | `cdtVencido` | `js/core/nu-calc.js` |
 | `cerrarPartSheet` | `js/modules/encargos.js` |
 | `Cierre` | `js/core/cierre.js` |
-| `claseEfectivaMovimiento` | `js/core/core-state.js`, `js/core/persistencia.js` |
-| `CLASES_MOV` | `js/core/core-state.js`, `js/core/ingresos.js` |
+| `claseEfectivaMovimiento` | `js/core/persistencia.js` |
+| `CLASES_MOV` | `js/core/ingresos.js` |
 | `clickMesDot` | `js/modules/mesada.js` |
-| `closeSheet` | `js/core/navegacion.js`, `js/core/sheet-stack.js` |
+| `closeSheet` | `js/core/navegacion.js` |
 | `closeSwipeSheet` | `js/modules/alcancia.js` |
 | `COBRO_MES_RE` | `js/core/cobros.js` |
 | `cobroAvisoMes` | `js/core/cobros.js` |
@@ -1475,13 +1237,13 @@ Un nombre declarado (function/const/let/var) en dos archivos es una posible coli
 | `conEstadoAislado` | `js/core/persistencia.js` |
 | `confirmarAgregarDinero` | `js/modules/cuentas.js` |
 | `confirmarAgregarDineroMenu` | `js/modules/cuentas.js` |
-| `confirmarBorrarMovimientoViejo` | `js/core/core-state.js`, `js/core/dialogos.js` |
+| `confirmarBorrarMovimientoViejo` | `js/core/dialogos.js` |
 | `confirmarCambioTasaNu` | `js/modules/nu.js` |
-| `confirmarCargoEspecialTC` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
+| `confirmarCargoEspecialTC` | `js/modules/tarjetas-credito.js` |
 | `confirmarCobrarCDT` | `js/modules/nu.js` |
 | `confirmarCobroIngresoFijo` | `js/modules/analisis.js` |
 | `confirmarCompraConTC` | `js/modules/encargos.js` |
-| `confirmarCompraTC` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
+| `confirmarCompraTC` | `js/modules/tarjetas-credito.js` |
 | `confirmarCrearCDT` | `js/modules/nu.js` |
 | `confirmarEditarApertura` | `js/modules/cuentas.js` |
 | `confirmarEliminar` | `js/core/dialogos.js` |
@@ -1493,7 +1255,7 @@ Un nombre declarado (function/const/let/var) en dos archivos es una posible coli
 | `confirmarNuMovimiento` | `js/modules/nu.js` |
 | `confirmarPagarGastoFijo` | `js/modules/gastos.js` |
 | `confirmarPagarSpotify` | `js/modules/spotify.js` |
-| `confirmarPagarTC` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
+| `confirmarPagarTC` | `js/modules/tarjetas-credito.js` |
 | `confirmarPendienteMesada` | `js/modules/mesada.js` |
 | `confirmarPrestamoTC` | `js/modules/prestado.js` |
 | `confirmarRestarDinero` | `js/modules/cuentas.js` |
@@ -1506,30 +1268,28 @@ Un nombre declarado (function/const/let/var) en dos archivos es una posible coli
 | `corregirChequeoNu` | `js/modules/nu.js` |
 | `crearCuenta` | `js/modules/cuentas.js` |
 | `crearEncargo` | `js/modules/encargos.js` |
-| `crearMovimientoApertura` | `js/core/core-state.js`, `js/core/estado.js` |
+| `crearMovimientoApertura` | `js/core/estado.js` |
 | `crearSplitWidget` | `js/core/split.js` |
 | `cuentaDeCajita` | `js/core/cuentas-fuentes.js` |
-| `CuentaPantallas` | `js/core/core-state.js`, `js/core/cuentas-fuentes.js` |
-| `CUENTAS_FIJAS` | `js/core/core-state.js` |
+| `CuentaPantallas` | `js/core/cuentas-fuentes.js` |
 | `cuentasActivas` | `js/core/cuentas-fuentes.js` |
 | `cuentasAhorro` | `js/core/cuentas-fuentes.js` |
 | `cuentasConSaldo` | `js/core/cuentas-fuentes.js` |
-| `cuentasCustom` | `js/core/core-state.js` |
 | `cuentaSePuedeEliminar` | `js/modules/cuentas.js` |
 | `cuentasTodas` | `js/core/cuentas-fuentes.js` |
-| `debounceSave` | `js/core/core-state.js`, `js/core/utilidades-ui.js` |
+| `debounceSave` | `js/core/utilidades-ui.js` |
 | `deleteCajita` | `js/modules/nu.js` |
 | `deleteGastoFijo` | `js/modules/gastos.js` |
 | `deleteGastoVar` | `js/modules/gastos.js` |
 | `deleteMovEncargo` | `js/modules/encargos.js` |
 | `deleteSpHistorial` | `js/modules/spotify.js` |
 | `deleteSpotify` | `js/modules/spotify.js` |
-| `descontarFuente` | `js/core/core-state.js`, `js/core/cuentas-fuentes.js` |
+| `descontarFuente` | `js/core/cuentas-fuentes.js` |
 | `deshacerAbonoPendienteSp` | `js/modules/spotify.js` |
 | `deshacerPendienteMesada` | `js/modules/mesada.js` |
 | `Deudas` | `js/core/calc-helpers.js` |
-| `diaCreacionMov` | `js/core/core-state.js`, `js/core/patrimonio.js` |
-| `dialogo` | `js/core/core-state.js`, `js/core/dialogos.js` |
+| `diaCreacionMov` | `js/core/patrimonio.js` |
+| `dialogo` | `js/core/dialogos.js` |
 | `diffAddParte` | `js/core/diferencial.js` |
 | `diffAplicar` | `js/core/diferencial.js` |
 | `diffCalcular` | `js/core/diferencial.js` |
@@ -1563,7 +1323,7 @@ Un nombre declarado (function/const/let/var) en dos archivos es una posible coli
 | `eliminarBien` | `js/modules/gastos.js` |
 | `eliminarCat` | `js/modules/configuracion.js` |
 | `eliminarCobroIngresoFijo` | `js/modules/analisis.js` |
-| `eliminarCompraTC` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
+| `eliminarCompraTC` | `js/modules/tarjetas-credito.js` |
 | `eliminarCuenta` | `js/modules/cuentas.js` |
 | `eliminarDeudorActual` | `js/modules/prestado.js` |
 | `eliminarEncargoActual` | `js/modules/encargos.js` |
@@ -1573,17 +1333,17 @@ Un nombre declarado (function/const/let/var) en dos archivos es una posible coli
 | `eliminarMovDeudor` | `js/modules/prestado.js` |
 | `eliminarMovimiento` | `js/core/movimientos.js` |
 | `eliminarMovMiDeuda` | `js/modules/prestado.js` |
-| `eliminarPagoTC` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
+| `eliminarPagoTC` | `js/modules/tarjetas-credito.js` |
 | `eliminarParte` | `js/modules/encargos.js` |
-| `eliminarTC` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
+| `eliminarTC` | `js/modules/tarjetas-credito.js` |
 | `eliminarWrapped` | `js/modules/configuracion.js` |
 | `emptyInline` | `js/core/utilidades-ui.js` |
-| `emptyState` | `js/core/core-state.js`, `js/core/utilidades-ui.js` |
+| `emptyState` | `js/core/utilidades-ui.js` |
 | `encargoComprometido` | `js/modules/encargos.js` |
 | `encargoLibre` | `js/modules/encargos.js` |
 | `encargoSaldo` | `js/modules/encargos.js` |
-| `entradasIngresoReal` | `js/core/core-state.js`, `js/core/ingresos.js` |
-| `escHtml` | `js/core/core-state.js`, `js/core/estado.js` |
+| `entradasIngresoReal` | `js/core/ingresos.js` |
+| `escHtml` | `js/core/estado.js` |
 | `escHtml2` | `js/modules/wrapped.js` |
 | `esCuentaAhorro` | `js/core/cuentas-fuentes.js` |
 | `esCuentaFija` | `js/core/cuentas-fuentes.js` |
@@ -1601,36 +1361,34 @@ Un nombre declarado (function/const/let/var) en dos archivos es una posible coli
 | `extSetQuien` | `js/modules/prestado.js` |
 | `extSetTipo` | `js/modules/prestado.js` |
 | `Fecha` | `js/core/fecha.js` |
-| `filaMovimiento` | `js/core/core-state.js`, `js/core/utilidades-ui.js` |
-| `fmt` | `js/core/core-state.js`, `js/core/estado.js` |
-| `fmtInput` | `js/core/core-state.js`, `js/core/persistencia.js` |
-| `fmtNoCents` | `js/core/core-state.js`, `js/core/estado.js` |
-| `fmtSaldoSelector` | `js/core/core-state.js`, `js/core/estado.js` |
+| `filaMovimiento` | `js/core/utilidades-ui.js` |
+| `fmt` | `js/core/estado.js` |
+| `fmtInput` | `js/core/persistencia.js` |
+| `fmtNoCents` | `js/core/estado.js` |
+| `fmtSaldoSelector` | `js/core/estado.js` |
 | `Formulario` | `js/core/formulario.js` |
 | `Fuente` | `js/core/cuentas-fuentes.js` |
 | `FUENTE_CUENTA_PREFIJO` | `js/core/cuentas-fuentes.js` |
-| `fuenteBadgeClass` | `js/core/core-state.js`, `js/core/cuentas-fuentes.js` |
+| `fuenteBadgeClass` | `js/core/cuentas-fuentes.js` |
 | `fuenteDeCuenta` | `js/core/cuentas-fuentes.js` |
 | `fuenteHtml` | `js/core/cuentas-fuentes.js` |
-| `fuenteLabel` | `js/core/core-state.js`, `js/core/cuentas-fuentes.js` |
+| `fuenteLabel` | `js/core/cuentas-fuentes.js` |
 | `FuentesFiltro` | `js/core/fuentes-filtro.js` |
 | `fuenteTexto` | `js/core/cuentas-fuentes.js` |
-| `gastosMes` | `js/core/core-state.js`, `js/core/ingresos.js` |
+| `gastosMes` | `js/core/ingresos.js` |
 | `getAperturaMov` | `js/modules/cuentas.js` |
 | `getCajitaNombre` | `js/core/nu-calc.js` |
-| `getCatsFijo` | `js/core/core-state.js`, `js/core/estado.js` |
-| `getCatsVar` | `js/core/core-state.js`, `js/core/estado.js` |
-| `getCuenta` | `js/core/core-state.js`, `js/core/cuentas-fuentes.js` |
-| `getCuentaCustom` | `js/core/core-state.js` |
-| `getCuentaDeFuente` | `js/core/core-state.js`, `js/core/cuentas-fuentes.js` |
-| `getCuentaFija` | `js/core/core-state.js` |
+| `getCatsFijo` | `js/core/estado.js` |
+| `getCatsVar` | `js/core/estado.js` |
+| `getCuenta` | `js/core/cuentas-fuentes.js` |
+| `getCuentaDeFuente` | `js/core/cuentas-fuentes.js` |
 | `getDeudorSaldo` | `js/core/calc-helpers.js` |
 | `getEncargo` | `js/modules/encargos.js` |
-| `getFuentes` | `js/core/core-state.js`, `js/core/cuentas-fuentes.js` |
-| `getFuentesSinTC` | `js/core/core-state.js`, `js/core/cuentas-fuentes.js` |
+| `getFuentes` | `js/core/cuentas-fuentes.js` |
+| `getFuentesSinTC` | `js/core/cuentas-fuentes.js` |
 | `getGrupoSaldo` | `js/modules/prestado.js` |
 | `getIconoData` | `js/modules/cuentas.js` |
-| `getIngresosFijosMes` | `js/core/core-state.js`, `js/core/ingresos.js` |
+| `getIngresosFijosMes` | `js/core/ingresos.js` |
 | `getMesadaData` | `js/core/calc-helpers.js` |
 | `getMiDeudaSaldo` | `js/core/calc-helpers.js` |
 | `getMovimientosCuenta` | `js/modules/cuentas.js` |
@@ -1638,7 +1396,7 @@ Un nombre declarado (function/const/let/var) en dos archivos es una posible coli
 | `getPersonaColor` | `js/modules/personas.js` |
 | `getPersonaDatos` | `js/modules/personas.js` |
 | `getPersonaNombre` | `js/modules/personas.js` |
-| `getSaldoFuente` | `js/core/core-state.js`, `js/core/cuentas-fuentes.js` |
+| `getSaldoFuente` | `js/core/cuentas-fuentes.js` |
 | `getSpFuente` | `js/modules/spotify.js` |
 | `getSpFuenteSaldo` | `js/modules/spotify.js` |
 | `getTasaCuenta` | `js/core/nu-calc.js` |
@@ -1653,10 +1411,9 @@ Un nombre declarado (function/const/let/var) en dos archivos es una posible coli
 | `guardarIngresoFijo` | `js/modules/analisis.js` |
 | `guardarMetaCajita` | `js/modules/nu.js` |
 | `guardarParte` | `js/modules/encargos.js` |
-| `guardarTC` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
+| `guardarTC` | `js/modules/tarjetas-credito.js` |
 | `hexToRgb` | `js/modules/cuentas.js` |
-| `hookGlobal` | `js/core/hook-global.js` |
-| `hoy` | `js/core/core-state.js`, `js/core/estado.js` |
+| `hoy` | `js/core/estado.js` |
 | `html` | `js/core/html-tag.js` |
 | `Huella` | `js/core/huella.js` |
 | `ICONO_VACIO_CUENTAS` | `js/core/utilidades-ui.js` |
@@ -1666,26 +1423,25 @@ Un nombre declarado (function/const/let/var) en dos archivos es una posible coli
 | `ingresoFijoEsperadoEn` | `js/core/cobros.js` |
 | `ingresoFijoEstadoMes` | `js/core/cobros.js` |
 | `ingresoFijoPorId` | `js/core/cobros.js` |
-| `ingresosRealesDelMes` | `js/core/core-state.js`, `js/core/ingresos.js` |
+| `ingresosRealesDelMes` | `js/core/ingresos.js` |
 | `iniciales` | `js/core/bootstrap.js` |
 | `initMovSheet` | `js/modules/prestado.js` |
 | `leerArchivoImport` | `js/modules/configuracion.js` |
 | `liberarCDTManual` | `js/modules/nu.js` |
-| `Libro` | `js/core/core-state.js`, `js/core/cuentas-fuentes.js` |
-| `load` | `js/core/core-state.js`, `js/core/persistencia.js` |
+| `Libro` | `js/core/cuentas-fuentes.js` |
+| `load` | `js/core/persistencia.js` |
 | `Loader` | `js/core/lazy-loader.js` |
 | `marcarColorSeleccionado` | `js/core/color-picker.js` |
 | `marcarMesadaComoPendiente` | `js/modules/mesada.js` |
 | `marcarPagoSpotify` | `js/modules/spotify.js` |
-| `markDirty` | `js/core/sheet-stack.js` |
 | `materializarIntereses` | `js/modules/nu.js` |
-| `MAX` | `js/core/core-state.js`, `js/core/estado.js` |
-| `MC` | `js/core/core-state.js`, `js/core/estado.js` |
-| `ME_DEBEN_ABRE` | `js/core/core-state.js`, `js/core/patrimonio.js` |
-| `medirAnchoTexto` | `js/core/core-state.js`, `js/core/estado.js` |
-| `medirPatrimonioParaHistorial` | `js/core/core-state.js`, `js/core/patrimonio.js` |
+| `MAX` | `js/core/estado.js` |
+| `MC` | `js/core/estado.js` |
+| `ME_DEBEN_ABRE` | `js/core/patrimonio.js` |
+| `medirAnchoTexto` | `js/core/estado.js` |
+| `medirPatrimonioParaHistorial` | `js/core/patrimonio.js` |
 | `mejorTasaAhorro` | `js/core/nu-calc.js` |
-| `mesActual` | `js/core/core-state.js`, `js/core/ingresos.js` |
+| `mesActual` | `js/core/ingresos.js` |
 | `MESADA_PADRES` | `js/modules/mesada.js` |
 | `mesadaAbonarPendiente` | `js/modules/mesada.js` |
 | `mesadaAbonosDe` | `js/modules/mesada.js` |
@@ -1707,52 +1463,52 @@ Un nombre declarado (function/const/let/var) en dos archivos es una posible coli
 | `mesadaResumenAnio` | `js/modules/mesada.js` |
 | `mesadaRevertirAbono` | `js/modules/mesada.js` |
 | `mesadaTieneCuentaAfectada` | `js/modules/mesada.js` |
-| `mesKey` | `js/core/core-state.js`, `js/core/estado.js` |
-| `MIGRACIONES` | `js/core/core-state.js`, `js/core/persistencia.js` |
-| `mostrarAlertaFuente` | `js/core/formularios-ui.js`, `js/core/sheet-stack.js` |
+| `mesKey` | `js/core/estado.js` |
+| `MIGRACIONES` | `js/core/persistencia.js` |
+| `mostrarAlertaFuente` | `js/core/formularios-ui.js` |
 | `mostrarAvisoNuevaVersion` | `js/core/sw-registro.js` |
-| `mostrarSi` | `js/core/core-state.js`, `js/core/utilidades-ui.js` |
+| `mostrarSi` | `js/core/utilidades-ui.js` |
 | `moverCuenta` | `js/modules/cuentas.js` |
 | `moverCuentaUI` | `js/modules/cuentas.js` |
-| `movimientosSinClase` | `js/core/core-state.js`, `js/core/persistencia.js` |
-| `nivelAntiguedadMovimiento` | `js/core/core-state.js`, `js/core/dialogos.js` |
+| `movimientosSinClase` | `js/core/persistencia.js` |
+| `nivelAntiguedadMovimiento` | `js/core/dialogos.js` |
 | `nombreCuenta` | `js/core/cuentas-fuentes.js` |
 | `ocultarInvitacionCuentas` | `js/modules/cuentas.js` |
 | `onChangeMov_enc_cuenta` | `js/modules/prestado.js` |
 | `onChangeMov_enc_sel` | `js/modules/prestado.js` |
 | `opcionesCuenta` | `js/core/cuentas-fuentes.js` |
-| `openSheet` | `js/core/navegacion.js`, `js/core/sheet-stack.js` |
+| `openSheet` | `js/core/navegacion.js` |
 | `openSheet_adMenu` | `js/modules/cuentas.js` |
 | `openSheet_pagarSpotify` | `js/modules/spotify.js` |
 | `ordenarCuentas` | `js/modules/cuentas.js` |
 | `parseMiles` | `js/core/money-input.js` |
-| `parseMoney` | `js/core/core-state.js`, `js/core/persistencia.js` |
-| `parsePct` | `js/core/core-state.js`, `js/core/persistencia.js` |
-| `patrimonioFormulaTexto` | `js/core/core-state.js`, `js/core/patrimonio.js` |
-| `pedirPinAntesDe` | `js/core/core-state.js`, `js/core/utilidades-ui.js` |
+| `parseMoney` | `js/core/persistencia.js` |
+| `parsePct` | `js/core/persistencia.js` |
+| `patrimonioFormulaTexto` | `js/core/patrimonio.js` |
+| `pedirPinAntesDe` | `js/core/utilidades-ui.js` |
 | `Periodo` | `js/core/periodo.js` |
 | `PERSONA_COLORES` | `js/modules/personas.js` |
 | `PERSONA_COLORES_MD` | `js/modules/prestado.js` |
 | `PersonaPicker` | `js/modules/personas.js` |
 | `pgfActualizarSaldo` | `js/modules/gastos.js` |
-| `pintarAvatarPersona` | `js/core/core-state.js`, `js/core/estado.js` |
+| `pintarAvatarPersona` | `js/core/estado.js` |
 | `PlanDeudas` | `js/core/plan-deudas.js` |
 | `planDeudasDatos` | `js/modules/inicio.js` |
 | `Plata` | `js/core/cuentas-fuentes.js` |
-| `poblarCatSelect` | `js/core/core-state.js`, `js/core/estado.js` |
+| `poblarCatSelect` | `js/core/estado.js` |
 | `poblarChequeoNu` | `js/modules/nu.js` |
-| `poblarFuente` | `js/core/core-state.js`, `js/core/cuentas-fuentes.js` |
-| `ptcActualizarPreview` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `ptcSetMonto` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `purgarAperturaDelHistorial` | `js/core/core-state.js`, `js/core/patrimonio.js` |
-| `purgarEfectoEnHistorial` | `js/core/core-state.js`, `js/core/patrimonio.js` |
-| `quitarDeHistorial` | `js/core/core-state.js`, `js/core/patrimonio.js` |
+| `poblarFuente` | `js/core/cuentas-fuentes.js` |
+| `ptcActualizarPreview` | `js/modules/tarjetas-credito.js` |
+| `ptcSetMonto` | `js/modules/tarjetas-credito.js` |
+| `purgarAperturaDelHistorial` | `js/core/patrimonio.js` |
+| `purgarEfectoEnHistorial` | `js/core/patrimonio.js` |
+| `quitarDeHistorial` | `js/core/patrimonio.js` |
 | `quitarMetaCajita` | `js/modules/nu.js` |
 | `raw` | `js/core/html-tag.js` |
 | `reactivarCuenta` | `js/modules/cuentas.js` |
-| `recalcularMontoBaseHistorial` | `js/core/core-state.js`, `js/core/patrimonio.js` |
+| `recalcularMontoBaseHistorial` | `js/core/patrimonio.js` |
 | `Refresh` | `js/core/refresh.js` |
-| `refresh` | `js/core/core-state.js`, `js/core/refresh.js` |
+| `refresh` | `js/core/refresh.js` |
 | `registrarEntradaConApertura` | `js/modules/cuentas.js` |
 | `registrarMovEspejo` | `js/core/cuenta-efectos.js` |
 | `registrarSalida` | `js/modules/cuentas.js` |
@@ -1799,31 +1555,31 @@ Un nombre declarado (function/const/let/var) en dos archivos es una posible coli
 | `renderSpotify` | `js/modules/spotify.js` |
 | `renderSpStats` | `js/modules/spotify.js` |
 | `renderTamanoDatos` | `js/modules/configuracion.js` |
-| `renderTCDashboard` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `renderTCScreen` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
+| `renderTCDashboard` | `js/modules/tarjetas-credito.js` |
+| `renderTCScreen` | `js/modules/tarjetas-credito.js` |
 | `renderWrapped` | `js/modules/wrapped.js` (window.renderWrapped = …) |
 | `rendimientoCajitaPorMes` | `js/core/nu-calc.js` |
 | `Reordenable` | `js/core/reordenable.js` |
 | `resolverPendienteSpHistorial` | `js/modules/spotify.js` |
 | `restaurarRespaldo` | `js/modules/configuracion.js` |
 | `Reversibles` | `js/core/utilidades-ui.js` |
-| `S` | `js/core/core-state.js`, `js/core/estado.js` |
+| `S` | `js/core/estado.js` |
 | `saldoCuentas` | `js/core/cuentas-fuentes.js` |
 | `Salud` | `js/core/salud.js` |
 | `SALUD_MAX_CONSEJOS` | `js/modules/inicio.js` |
-| `save` | `js/core/core-state.js`, `js/core/persistencia.js` |
-| `saveAndRefresh` | `js/core/refresh.js`, `js/core/sheet-stack.js` |
-| `SCHEMA_BASE` | `js/core/core-state.js`, `js/core/persistencia.js` |
-| `SCHEMA_VERSION_ACTUAL` | `js/core/core-state.js`, `js/core/persistencia.js` |
+| `save` | `js/core/persistencia.js` |
+| `saveAndRefresh` | `js/core/refresh.js` |
+| `SCHEMA_BASE` | `js/core/persistencia.js` |
+| `SCHEMA_VERSION_ACTUAL` | `js/core/persistencia.js` |
 | `selColorNC` | `js/modules/cuentas.js` |
 | `selIconoNC` | `js/modules/cuentas.js` |
 | `selSpMeses` | `js/modules/spotify.js` |
 | `selTipoNC` | `js/modules/cuentas.js` |
 | `setMesFiltro` | `js/modules/gastos.js` |
-| `setMoneyInput` | `js/core/core-state.js`, `js/core/persistencia.js` |
-| `showScreen` | `js/core/navegacion.js`, `js/core/sheet-stack.js` |
+| `setMoneyInput` | `js/core/persistencia.js` |
+| `showScreen` | `js/core/navegacion.js` |
 | `SIN_DATO` | `js/core/utilidades-ui.js` |
-| `snapshotPatrimonio` | `js/core/core-state.js`, `js/core/patrimonio.js` |
+| `snapshotPatrimonio` | `js/core/patrimonio.js` |
 | `SP_EMPATE_PERIODOS` | `js/modules/spotify.js` |
 | `SP_PERIODO_DIAS` | `js/modules/spotify.js` |
 | `spAsignarPeriodos` | `js/modules/spotify.js` |
@@ -1846,28 +1602,28 @@ Un nombre declarado (function/const/let/var) en dos archivos es una posible coli
 | `spResumenCicloActual` | `js/modules/spotify.js` |
 | `spSumarDias` | `js/modules/spotify.js` |
 | `spTramosDeCobro` | `js/modules/spotify.js` |
-| `sumarFuente` | `js/core/core-state.js`, `js/core/cuentas-fuentes.js` |
+| `sumarFuente` | `js/core/cuentas-fuentes.js` |
 | `switchGastoTab` | `js/modules/gastos.js` |
 | `tasaATexto` | `js/core/nu-calc.js` |
 | `tasaDesdeTexto` | `js/core/nu-calc.js` |
 | `tasaSanear` | `js/core/nu-calc.js` |
-| `TC_ESTADOS` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `TC_MOTIVOS_CARGO` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `tcBuscarCompraPorIdOMatch` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `tcCrearCompra` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `tcCrearPago` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
+| `TC_ESTADOS` | `js/modules/tarjetas-credito.js` |
+| `TC_MOTIVOS_CARGO` | `js/modules/tarjetas-credito.js` |
+| `tcBuscarCompraPorIdOMatch` | `js/modules/tarjetas-credito.js` |
+| `tcCrearCompra` | `js/modules/tarjetas-credito.js` |
+| `tcCrearPago` | `js/modules/tarjetas-credito.js` |
 | `tcCupoDisponible` | `js/core/calc-helpers.js` |
 | `tcCupoUsadoPct` | `js/core/calc-helpers.js` |
 | `tcDeudaCalculada` | `js/modules/tarjetas-credito.js` |
-| `tcDeudaTotal` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `tcEliminarCompraInterna` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `tcEliminarPagoInterna` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `tcEstadoInfo` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `tcNormalizarTarjetas` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `tcRecalcular` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
-| `tcSelColor` | `js/modules/tarjetas-credito.js`, `js/modules/tarjetas_credito.js` |
+| `tcDeudaTotal` | `js/modules/tarjetas-credito.js` |
+| `tcEliminarCompraInterna` | `js/modules/tarjetas-credito.js` |
+| `tcEliminarPagoInterna` | `js/modules/tarjetas-credito.js` |
+| `tcEstadoInfo` | `js/modules/tarjetas-credito.js` |
+| `tcNormalizarTarjetas` | `js/modules/tarjetas-credito.js` |
+| `tcRecalcular` | `js/modules/tarjetas-credito.js` |
+| `tcSelColor` | `js/modules/tarjetas-credito.js` |
 | `TIPOS_CUENTA` | `js/core/cuentas-fuentes.js` |
-| `toast` | `js/core/core-state.js`, `js/core/dialogos.js` |
+| `toast` | `js/core/dialogos.js` |
 | `toggleAdApertura` | `js/modules/cuentas.js` |
 | `toggleCompraGrande` | `js/modules/gastos.js` |
 | `toggleDesdeEncargo` | `js/modules/prestado.js` |
@@ -1882,11 +1638,10 @@ Un nombre declarado (function/const/let/var) en dos archivos es una posible coli
 | `totalPrestadoPendiente` | `js/core/calc-helpers.js` |
 | `TR_MIN_EFECTIVO` | `js/modules/cuentas.js` |
 | `Ui` | `js/core/ui.js` |
-| `uid` | `js/core/core-state.js`, `js/core/estado.js` |
+| `uid` | `js/core/estado.js` |
 | `UMBRALES` | `js/core/umbrales.js` |
 | `usarParte` | `js/modules/encargos.js` |
 | `validarCamposCDT` | `js/modules/nu.js` |
-| `validarSalidaFuente` | `js/core/core-state.js` |
 | `validarTransferencia` | `js/modules/cuentas.js` |
 | `verificarTasaAhorro` | `js/modules/nu.js` |
 | `verificarVencimientosCDT` | `js/modules/nu.js` |

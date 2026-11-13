@@ -1,12 +1,24 @@
-# Versión responsive para PC
+# Diseño adaptable a computador
 
-Se integró el diseño de escritorio del archivo `mis-finanzas-pc.zip` en el proyecto actualizado de `mis-finanzas-main.zip`, **sin reemplazar sus archivos JavaScript ni sus módulos funcionales**.
+## Qué se hizo
 
-- **Hasta 699 px:** se conserva el diseño original para celulares.
-- **De 700 a 1023 px:** la aplicación aprovecha el ancho de tabletas y ventanas pequeñas, con navegación inferior.
-- **Desde 1024 px:** menú vertical a la izquierda, cabecera y contenido amplio a la derecha, y ventanas de edición centradas.
-- **Desde 1600 px:** aumenta el espacio disponible para tableros anchos.
+Se tomó **index-pc.html como referencia visual** para adaptar la aplicación real `mis-finanzas-main`, sin reemplazar la lógica de Firebase ni usar los saldos de demostración del ejemplo.
 
-El diseño está en `css/desktop.css`, enlazado después de `css/styles.css` en `index.html`. El archivo `sw.js` debe actualizarse con `node scripts/sellar-sw.js` para que el CSS nuevo también funcione sin conexión y se invalide la caché de versiones antiguas. No se necesitan dependencias nuevas para publicar la app.
+- **Escritorio (desde 960 px):** menú lateral con todas las secciones, encabezado con buscador y botón de agregar, e Inicio con estadísticas y paneles en dos columnas.
+- **Tabletas (700 a 959 px):** paneles amplios y barra de navegación inferior.
+- **Celulares (menos de 700 px):** se mantiene la estructura, navegación y orden del Inicio original.
+- Las ventanas para registrar movimientos y acciones financieras se muestran centradas en pantallas grandes.
 
-Para probar, sirve la carpeta por HTTP/HTTPS (por ejemplo, con `python -m http.server 8000`), abre `index.html` en el navegador y cambia el ancho de la ventana o usa las herramientas de desarrollo. Para validar los tests del proyecto: `npm install && npm test` (los tests requieren Node.js; el despliegue no).
+## Archivos modificados
+
+- `index.html`: barra lateral, encabezado y distribución de Inicio, sin cambiar los IDs existentes.
+- `css/desktop.css`: reglas responsive nuevas.
+- `js/core/navegacion.js`: estados activos de la barra lateral y título por sección.
+- `js/core/modulos-activos.js`: respeta si Spotify y Mesada están activos al mostrar el menú lateral.
+- `sw.js`: actualizado con la nueva huella y la hoja de estilos para la caché sin conexión.
+
+## Cómo usarlo
+
+Abre la misma aplicación de siempre desde tu hosting. No reemplaces `index.html` por `index-pc.html`: el archivo `index-pc.html` era solo una referencia visual y sus datos eran de ejemplo. Deben publicarse `index.html`, `css/desktop.css`, `sw.js` y los demás archivos de la carpeta.
+
+La aplicación sigue necesitando su inicio de sesión y su conexión de Firebase habitual para cargar tus datos reales. El diseño no modifica saldos ni movimientos.

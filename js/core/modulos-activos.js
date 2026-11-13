@@ -7,6 +7,10 @@ function applyModulos(){
   // Spotify nav tab
   const navSp=document.getElementById('nav-spotify');
   if(navSp)navSp.style.display=mod.spotify?'':'none';
+  document.querySelectorAll('.desktop-nav-item[data-modulo]').forEach(btn => {
+    btn.hidden = !mod[btn.dataset.modulo];
+  });
+
   // Mesada screen in Más menu
   const mesScreen=document.getElementById('screen-mesada');
   if(mesScreen && !mod.mesada) mesScreen.classList.remove('active');

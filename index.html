@@ -296,6 +296,28 @@
       .pin-bio-label{font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;letter-spacing:.3px;}
       @keyframes bioScan{0%,100%{opacity:1;}50%{opacity:.4;}}
     </style>
+    <style>
+      /* Elementos de PC ocultos por defecto, incluidos los primeros milisegundos del arranque. */
+      .desktop-sidebar,.pc-page-title,.pc-search-hint,.pc-search-shortcut,.pc-add-label,.pc-quick-nav{display:none;}
+      .pc-home-columns,.pc-home-primary,.pc-home-secondary{display:contents;}
+      /* En móvil se mantiene el orden que tenía la pantalla Inicio original. */
+      @media (max-width:699px){
+        #screen-inicio.active{display:flex;flex-direction:column;}
+        #screen-inicio .pc-home-primary>:nth-child(1){order:1;}
+        #screen-inicio .pc-home-primary>:nth-child(2){order:2;}
+        #screen-inicio .pc-home-primary>:nth-child(3){order:3;}
+        #screen-inicio .pc-home-primary>:nth-child(4){order:4;}
+        #screen-inicio .pc-home-secondary>:nth-child(1){order:5;}
+        #screen-inicio .pc-home-secondary>:nth-child(2){order:6;}
+        #screen-inicio .pc-home-secondary>:nth-child(3){order:7;}
+        #screen-inicio .pc-home-primary>:nth-child(5){order:8;}
+        #screen-inicio .pc-home-primary>:nth-child(6){order:9;}
+        #screen-inicio .pc-home-primary>:nth-child(7){order:10;}
+        #screen-inicio .pc-home-primary>:nth-child(8){order:11;}
+        #screen-inicio .pc-home-primary>:nth-child(9){order:12;}
+        #screen-inicio .pc-home-secondary>:nth-child(4){order:13;}
+      }
+    </style>
     <link rel="icon" type="image/svg+xml" sizes="any"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f0f0f'/%3E%3Ccircle cx='32' cy='32' r='20' fill='none' stroke='%23c8f060' stroke-width='3'/%3E%3Ctext x='32' y='38' font-family='sans-serif' font-size='22' font-weight='700' fill='%23c8f060' text-anchor='middle'%3E%24%3C/text%3E%3C/svg%3E">
     <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
@@ -364,7 +386,6 @@
          detalle completo de qué quedó ahí y por qué. -->
     <link rel="stylesheet" media="print" data-async-css href="css/styles.css">
     <noscript><link rel="stylesheet" href="css/styles.css"></noscript>
-    <!-- Diseño adaptable para tabletas y PC; la app móvil conserva su apariencia. -->
     <link rel="stylesheet" href="css/desktop.css" media="(min-width: 700px)">
     <!-- Reemplaza el onload="this.media='all'" inline que tenían estos 3 <link>
          (Font Awesome, Google Fonts, y ahora css/styles.css) — la CSP bloquea
@@ -563,6 +584,13 @@
     </div>
 
     <div class="app">
+    <!-- Navegación para pantallas grandes (usa el mismo showScreen de la app móvil). -->
+    <aside class="desktop-sidebar" aria-label="Menú lateral de Mis Finanzas">
+      <div class="pc-brand"><div class="pc-brand-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20M12 15h5"/></svg></div><div><strong>Mis finanzas</strong><small>Control financiero</small></div></div>
+      <nav class="pc-nav" aria-label="Secciones de la aplicación"><div class="pc-nav-heading">Principal</div><button type="button" class="nav-item desktop-nav-item active" data-screen="inicio" aria-label="Ir a Inicio"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M9 21v-8h6v8"/></svg><span>Inicio</span></button><button type="button" class="nav-item desktop-nav-item" data-screen="cuentas" aria-label="Ir a Cuentas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20M12 15h5"/></svg><span>Cuentas</span></button><button type="button" class="nav-item desktop-nav-item" data-screen="gastos" aria-label="Ir a Gastos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg><span>Gastos</span></button><button type="button" class="nav-item desktop-nav-item" data-screen="prestamos" aria-label="Ir a Prestado"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3"/><circle cx="16" cy="9" r="2.5"/><path d="M1 20c0-3.3 3.6-6 8-6s8 2.7 8 6M19 14c2.5.5 4 2 4 4"/></svg><span>Prestado</span></button><div class="pc-nav-heading">Más</div><button type="button" class="nav-item desktop-nav-item" data-screen="spotify" data-modulo="spotify" aria-label="Ir a Spotify"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg><span>Spotify</span></button><button type="button" class="nav-item desktop-nav-item" data-screen="mesada" data-modulo="mesada" aria-label="Ir a Mesada de papás"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/></svg><span>Mesada de papás</span></button><button type="button" class="nav-item desktop-nav-item" data-screen="analisis" aria-label="Ir a Análisis financiero"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 20h18M6 16v-5M11 16V7M16 16v-8M21 16v-3"/></svg><span>Análisis financiero</span></button><button type="button" class="nav-item desktop-nav-item" data-screen="tarjetas" aria-label="Ir a Tarjetas de crédito"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/></svg><span>Tarjetas de crédito</span></button><button type="button" class="nav-item desktop-nav-item" data-screen="encargos" aria-label="Ir a Encargos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 8-9-5-9 5v8l9 5 9-5zM3 8l9 5 9-5M12 13v8"/></svg><span>Encargos</span></button><button type="button" class="nav-item desktop-nav-item" data-screen="comprometida" aria-label="Ir a Plata comprometida"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>Plata comprometida</span></button><button type="button" class="nav-item desktop-nav-item" data-screen="alcancia" aria-label="Ir a Alcancía"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><span>Alcancía</span></button><button type="button" class="nav-item desktop-nav-item" data-screen="personas" aria-label="Ir a Personas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3"/><circle cx="16" cy="9" r="2.5"/><path d="M1 20c0-3.3 3.6-6 8-6s8 2.7 8 6M19 14c2.5.5 4 2 4 4"/></svg><span>Personas</span></button><button type="button" class="nav-item desktop-nav-item" data-screen="historial" aria-label="Ir a Actividad reciente"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg><span>Actividad reciente</span></button><button type="button" class="nav-item desktop-nav-item" data-screen="wrapped" aria-label="Ir a Wrapped"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 2 3 7 7 .6-5.3 4.7 1.6 7.2L12 17.8l-6.3 3.7 1.6-7.2L2 9.6 9 9z"/></svg><span>Wrapped</span></button><button type="button" class="nav-item desktop-nav-item" data-screen="config" aria-label="Ir a Configuración"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M4.9 4.9 7 7m10 10 2.1 2.1M2 12h3m14 0h3M4.9 19.1 7 17M17 7l2.1-2.1"/></svg><span>Configuración</span></button></nav>
+      <div class="pc-sidebar-foot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><div><strong>Tu información</strong><small>Consulta tu estado en Configuración</small></div></div>
+    </aside>
+
       <!-- TOAST CONTAINER -->
       <div id="toast-container"></div>
       <!-- DIALOG PROPIO -->
@@ -602,10 +630,10 @@
         </div>
       </div>
       <header class="header">
-        <div><h1>Mis finanzas</h1><p id="hDate"></p></div>
+        <div class="pc-header-heading"><h1>Mis finanzas</h1><h2 class="pc-page-title" id="pc-page-title">Inicio</h2><p id="hDate"></p></div>
         <div class="ix-div-001">
           <button class="ix-btn-buscar-global" type="button" id="btn-buscar-global"
-            aria-label="Buscar">
+            aria-label="Buscar"><span class="pc-search-hint">Buscar transacciones, personas, cuentas…</span><kbd class="pc-search-shortcut">Ctrl K</kbd>
             <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none"
               stroke="currentColor" stroke-width="2.5"
               stroke-linecap="round"><circle cx="11" cy="11" r="8" /><line
@@ -620,7 +648,7 @@
                 cx="12" cy="12" r="3" /></svg>
           </button>
           <button type="button" class="btn-add" id="btn-header-add"
-            aria-label="Agregar">
+            aria-label="Agregar"><span class="pc-add-label">Agregar</span>
             <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none"
               stroke="#0a0a0a" stroke-width="2.5" stroke-linecap="round"><line
                 x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19"
@@ -650,66 +678,18 @@
 
         <!-- INICIO -->
         <div class="screen active" id="screen-inicio">
-          <div class="hero">
-            <!-- Rediseño (docs/auditoria-tecnica.md, "Reservar espacio para
-                 #hero-alcancia-indicator (CLS)"): el bloque con padding/borde
-                 de abajo reservaba ~28-30px SIEMPRE, incluso sin saldo en
-                 Alcancía — visualmente era un hueco vacío molesto. Se
-                 reemplazó por un ícono chico (14px) inline junto al label
-                 "Patrimonio total"/"Patrimonio visible", que YA existe y ya
-                 cambia de texto según este mismo estado (ver el núcleo).
-                 Al no agregar una fila nueva ni cambiar el alto de esta fila
-                 (el ícono entra en la misma línea, mismo alto que el texto),
-                 alternar su visibility no mueve nada de lo que hay debajo —
-                 cero espacio reservado y cero CLS, sin el trade-off de antes.
-                 El texto "se revela al destapar" quedó como `title` (tooltip)
-                 en vez de texto siempre visible. -->
-            <div class="ix-div-010">
-              <div class="hero-label" id="hero-patrimonio-label">Patrimonio
-                total</div>
-              <span class="ix-hero-alcancia-badge" id="hero-alcancia-badge"
-                title="Hay plata guardada en Alcancía oculta — se revela al destapar">
-                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="12"
-                  viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                  stroke-width="2.5" stroke-linecap="round"
-                  stroke-linejoin="round"><rect x="3" y="11" width="18"
-                    height="11" rx="2" ry="2" /><path
-                    d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
-              </span>
-            </div>
-            <div class="hero-amount c-green" id="heroTotal">$0</div>
-            <div class="ix-hero-estado" id="hero-estado"></div>
-            <div class="row ix-mt8">
-              <div class="ix-fs11-ctext3" id="hero-formula">Cuentas</div>
-              <div class="ix-hero-change-indicator" id="hero-change-indicator"></div>
-            </div>
-          </div>
-          <!-- Una sola cuadrícula: Disponible / Prestado / CDTs son fijos y renderCuentasInicio() (js/core/refresh.js) agrega después un
+
+<!-- Una sola cuadrícula: Disponible / Prestado / CDTs son fijos y renderCuentasInicio() (js/core/refresh.js) agrega después un
                recuadro por cada cuenta activa desde S.cuentas, así todos se reparten en filas sin huecos. -->
-          <div class="grid3" id="inicio-cuentas">
-            <div class="stat"><div class="stat-label">Disponible</div><div
-                class="stat-value c-green" id="s-disp">$0</div></div>
-            <div class="stat"><div class="stat-label">Prestado</div><div
-                class="stat-value c-amber" id="s-prest">$0</div></div>
-            <div class="stat" id="s-cdt-tile"><div class="stat-label">CDTs</div><div
-                class="stat-value c-purple" id="s-cdt">$0</div></div>
-          </div>
-          <div class="ix-s-disp-neto-tc" id="s-disp-neto-tc">
-          </div>
-          <div id="tc-deuda-card" style="display:none;"></div>
-          <div class="sec-title">Gastos del mes</div>
-          <div class="grid2 ix-mb9">
-            <div class="stat"><div class="stat-label">Fijos</div><div
-                class="stat-value c-red" id="s-gf">$0</div></div>
-            <div class="stat"><div class="stat-label">Variables</div><div
-                class="stat-value c-red" id="s-gv">$0</div></div>
-          </div>
-          <div class="card card-sm"><div class="row"><span class="ix-fs12-ctext2">Total gastado este
-                mes</span><span class="row-amount c-red"
-                id="s-gtotal">$0</span></div></div>
-          <!-- SALUD FINANCIERA -->
-          <div class="sec-title">Salud financiera</div>
-          <!-- min-height + skeleton: health-score-card arranca vacío y se llena
+
+
+
+
+
+
+<!-- SALUD FINANCIERA -->
+
+<!-- min-height + skeleton: health-score-card arranca vacío y se llena
                recién cuando Loader.ensureAll() termina de precargar los módulos
                lazy que alimentan el cálculo (Préstamos/Tarjetas/Mesada/Spotify) —
                sin esto, el salto de 0 a su alto real es la causa confirmada del
@@ -733,23 +713,12 @@
                hay contenido real, el alto lo define el contenido mismo, para
                no dejar espacio vacío de sobra cuando el resultado es corto
                (ej. el mensaje de "sin datos"). -->
-          <div id="health-score-card" class="card ix-p16-mb9" style="min-height:148px;">
-            <div class="ix-div-020">
-              <div class="ix-div-021"></div>
-              <div class="ix-fx1">
-                <div class="ix-div-023"></div>
-                <div class="ix-div-024"></div>
-                <div class="ix-div-025"></div>
-              </div>
-            </div>
-          </div>
 
-          <!-- PLAN DE DEUDAS (renderPlanDeudas, inicio.js): vacío si no hay deudas propias -->
-          <div id="plan-deudas-card"></div>
+<!-- PLAN DE DEUDAS (renderPlanDeudas, inicio.js): vacío si no hay deudas propias -->
 
-          <!-- PROYECCIÓN -->
-          <div class="sec-title">Proyección financiera</div>
-          <!-- Mismo criterio que health-score-card (ver comentario arriba);
+<!-- PROYECCIÓN -->
+
+<!-- Mismo criterio que health-score-card (ver comentario arriba);
                renderProyeccion() también sobreescribe todo el innerHTML en
                sus dos ramas. 126px ≈ padding real de .card-sm (13px arriba +
                13px abajo, confirmado en styles.css — no 16px como .card) +
@@ -757,23 +726,66 @@
                10px arriba/abajo de cada card, ~50px) + footer "Basado en N
                días..." (~20px). No incluye el aviso opcional de deuda TC
                propia (~20px extra) que solo aparece si hay deuda de TC. -->
-          <div id="proyeccion-card" class="card card-sm ix-proyeccion-card">
-            <div class="ix-div-027"></div>
-            <div class="ix-div-028">
-              <div class="ix-div-029"></div>
-              <div class="ix-div-029"></div>
-              <div class="ix-div-029"></div>
-            </div>
-          </div>
 
-          <!-- ATENCIÓN HOY -->
-          <div id="s-attn-section" style="display:none;">
-            <div class="sec-title">Necesita atención</div>
-            <div id="s-attn-list"></div>
-          </div>
-        </div>
+<!-- ATENCIÓN HOY -->
 
-        <!-- PANTALLA TARJETAS DE CRÉDITO -->
+<div class="pc-home-columns"><div class="pc-home-primary"><div class="hero">
+<!-- Rediseño (docs/auditoria-tecnica.md, "Reservar espacio para
+                 #hero-alcancia-indicator (CLS)"): el bloque con padding/borde
+                 de abajo reservaba ~28-30px SIEMPRE, incluso sin saldo en
+                 Alcancía — visualmente era un hueco vacío molesto. Se
+                 reemplazó por un ícono chico (14px) inline junto al label
+                 "Patrimonio total"/"Patrimonio visible", que YA existe y ya
+                 cambia de texto según este mismo estado (ver el núcleo).
+                 Al no agregar una fila nueva ni cambiar el alto de esta fila
+                 (el ícono entra en la misma línea, mismo alto que el texto),
+                 alternar su visibility no mueve nada de lo que hay debajo —
+                 cero espacio reservado y cero CLS, sin el trade-off de antes.
+                 El texto "se revela al destapar" quedó como `title` (tooltip)
+                 en vez de texto siempre visible. -->
+<div class="ix-div-010">
+<div class="hero-label" id="hero-patrimonio-label">Patrimonio
+                total</div>
+<span class="ix-hero-alcancia-badge" id="hero-alcancia-badge" title="Hay plata guardada en Alcancía oculta — se revela al destapar">
+<svg aria-hidden="true" fill="none" height="12" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" viewbox="0 0 24 24" width="12" xmlns="http://www.w3.org/2000/svg"><rect height="11" rx="2" ry="2" width="18" x="3" y="11"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+</span>
+</div>
+<div class="hero-amount c-green" id="heroTotal">$0</div>
+<div class="ix-hero-estado" id="hero-estado"></div>
+<div class="row ix-mt8">
+<div class="ix-fs11-ctext3" id="hero-formula">Cuentas</div>
+<div class="ix-hero-change-indicator" id="hero-change-indicator"></div>
+</div>
+</div><div class="grid3" id="inicio-cuentas">
+<div class="stat"><div class="stat-label">Disponible</div><div class="stat-value c-green" id="s-disp">$0</div></div>
+<div class="stat"><div class="stat-label">Prestado</div><div class="stat-value c-amber" id="s-prest">$0</div></div>
+<div class="stat" id="s-cdt-tile"><div class="stat-label">CDTs</div><div class="stat-value c-purple" id="s-cdt">$0</div></div>
+</div><div class="ix-s-disp-neto-tc" id="s-disp-neto-tc">
+</div><div id="tc-deuda-card" style="display:none;"></div><div class="sec-title">Salud financiera</div><div class="card ix-p16-mb9" id="health-score-card" style="min-height:148px;">
+<div class="ix-div-020">
+<div class="ix-div-021"></div>
+<div class="ix-fx1">
+<div class="ix-div-023"></div>
+<div class="ix-div-024"></div>
+<div class="ix-div-025"></div>
+</div>
+</div>
+</div><div id="plan-deudas-card"></div><div class="sec-title">Proyección financiera</div><div class="card card-sm ix-proyeccion-card" id="proyeccion-card">
+<div class="ix-div-027"></div>
+<div class="ix-div-028">
+<div class="ix-div-029"></div>
+<div class="ix-div-029"></div>
+<div class="ix-div-029"></div>
+</div>
+</div></div><div class="pc-home-secondary"><div class="sec-title">Gastos del mes</div><div class="grid2 ix-mb9">
+<div class="stat"><div class="stat-label">Fijos</div><div class="stat-value c-red" id="s-gf">$0</div></div>
+<div class="stat"><div class="stat-label">Variables</div><div class="stat-value c-red" id="s-gv">$0</div></div>
+</div><div class="card card-sm"><div class="row"><span class="ix-fs12-ctext2">Total gastado este
+                mes</span><span class="row-amount c-red" id="s-gtotal">$0</span></div></div><div id="s-attn-section" style="display:none;">
+<div class="sec-title">Necesita atención</div>
+<div id="s-attn-list"></div>
+</div><div class="pc-quick-nav"><div class="sec-title">Accesos rápidos</div><div class="pc-quick-card"><button class="nav-item pc-quick-link" data-screen="historial" type="button"><svg aria-hidden="true" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewbox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg><span>Ver actividad reciente</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button><button class="nav-item pc-quick-link" data-screen="cuentas" type="button"><svg aria-hidden="true" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewbox="0 0 24 24"><rect height="13" rx="2" width="20" x="2" y="6"></rect><path d="M2 10h20M12 15h5"></path></svg><span>Administrar mis cuentas</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button><button class="nav-item pc-quick-link" data-screen="analisis" type="button"><svg aria-hidden="true" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewbox="0 0 24 24"><path d="M3 20h18M6 16v-5M11 16V7M16 16v-8M21 16v-3"></path></svg><span>Ver análisis financiero</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button></div></div></div></div></div>
+<!-- PANTALLA TARJETAS DE CRÉDITO -->
         <div class="screen" id="screen-tarjetas">
           <div class="hero hero-red">
             <div class="hero-label ix-cred">Deuda

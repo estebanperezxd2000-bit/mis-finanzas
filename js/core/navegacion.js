@@ -58,6 +58,25 @@ function showScreen(name){
   document.getElementById('screen-'+name).classList.add('active');
   const navEl=document.getElementById('nav-'+name);
   if(navEl)navEl.classList.add('active');
+  // La navegación lateral de PC comparte el mismo estado que el menú móvil.
+  document.querySelectorAll('.desktop-nav-item[data-screen]').forEach(btn => {
+    const seleccionada = btn.dataset.screen === name;
+    btn.classList.toggle('active', seleccionada);
+    if (seleccionada) btn.setAttribute('aria-current', 'page');
+    else btn.removeAttribute('aria-current');
+  });
+  const pcTitulo = document.getElementById('pc-page-title');
+  if (pcTitulo) {
+    const titulos = {
+      inicio:'Inicio', cuentas:'Cuentas', gastos:'Gastos', prestamos:'Prestado',
+      spotify:'Spotify', mesada:'Mesada de papás', analisis:'Análisis financiero',
+      tarjetas:'Tarjetas de crédito', encargos:'Encargos', comprometida:'Plata comprometida',
+      alcancia:'Alcancía', personas:'Personas', historial:'Actividad reciente',
+      wrapped:'Wrapped', config:'Configuración'
+    };
+    pcTitulo.textContent = titulos[name] || 'Mis finanzas';
+  }
+
   document.getElementById('scrollArea').scrollTop=0;
   // Carga bajo demanda (docs/auditoria-tecnica.md #4, fase 1 de la
   // modularización — piloto: solo Alcancía por ahora, ver
