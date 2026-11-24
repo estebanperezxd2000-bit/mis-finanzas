@@ -28,7 +28,9 @@
    `touch-action:none` y las fichas `user-select:none`. Las clases que pone (reord-activo, reord-arrastrando, reord-mueve) las pinta
    css/styles.css.
    ═══════════════════════════════════════════════════════════════ */
-const Reordenable = (function () {
+import { exponerGlobales, exponerVariables } from './puente.js';
+
+export const Reordenable = (function () {
   const UMBRAL_RATON = 4;      // px de movimiento para empezar con el ratón
   const UMBRAL_CANCELA = 9;    // px que cancelan una pulsación larga (el usuario estaba desplazando la página)
   const ESPERA_TOQUE = 220;    // ms de pulsación larga con el dedo fuera del agarre
@@ -48,19 +50,19 @@ const Reordenable = (function () {
     return document.scrollingElement || document.documentElement;
   }
 
-  function activar(cont, op) {
-    if (!cont) return function () {};
+  function activar(contenedor, op) {
+    if (!contenedor) return function () {};
     const cfg = Object.assign({ activo: () => true, retardoToque: ESPERA_TOQUE }, op);
     let pend = null;   // pulsación todavía sin arrancar
     let drag = null;   // arrastre en curso
 
     /* ───────── geometría ───────── */
-    function _esRaiz(sc) { return sc === document.scrollingElement || sc === document.documentElement || sc === document.body; }
-    function _origen(sc) { return _esRaiz(sc) ? { x: 0, y: 0 } : (function () { const r = sc.getBoundingClientRect(); return { x: r.left, y: r.top }; })(); }
+    function _esRaiz(scroller) { return scroller === document.scrollingElement || scroller === document.documentElement || scroller === document.body; }
+    function _origen(scroller) { return _esRaiz(scroller) ? { x: 0, y: 0 } : (function () { const r = scroller.getBoundingClientRect(); return { x: r.left, y: r.top }; })(); }
     // Coordenadas «de contenido» (no cambian al desplazar): permiten comparar el dedo con los huecos aunque la lista se haya movido.
     function _aContenido(d, cx, cy) {
-      const o = _origen(d.sc);
-      return { x: cx - o.x + d.sc.scrollLeft, y: cy - o.y + d.sc.scrollTop };
+      const o = _origen(d.scroller);
+      return { x: cx - o.x + d.scroller.scrollLeft, y: cy - o.y + d.scroller.scrollTop };
     }
 
     /* ───────── ciclo de vida ───────── */
@@ -78,18 +80,18 @@ const Reordenable = (function () {
     }
 
     function _empezar(item, e) {
-      const items = Array.from(cont.querySelectorAll(cfg.item));
+      const items = Array.from(contenedor.querySelectorAll(cfg.item));
       const from = items.indexOf(item);
       if (from < 0) return false;
-      const sc = _scroller(cont);
-      const d = { items, from, to: from, sc, pointerId: e.pointerId, cx: e.clientX, cy: e.clientY, raf: 0, fin: false };
+      const scroller = _scroller(contenedor);
+      const d = { items, from, to: from, scroller, pointerId: e.pointerId, cx: e.clientX, cy: e.clientY, raf: 0, fin: false };
       d.slots = items.map(n => {
         const r = n.getBoundingClientRect(), p = _aContenido(d, r.left, r.top);
         return { x: p.x, y: p.y, cx: p.x + r.width / 2, cy: p.y + r.height / 2 };
       });
       d.ini = _aContenido(d, e.clientX, e.clientY);
       drag = d;
-      cont.classList.add('reord-activo');
+      contenedor.classList.add('reord-activo');
       items.forEach(n => { if (n !== item) n.classList.add('reord-mueve'); });
       item.classList.add('reord-arrastrando');
       try { item.setPointerCapture(e.pointerId); } catch (_) {}
@@ -106,8 +108,8 @@ const Reordenable = (function () {
       if (!d.items[0] || !d.items[0].isConnected) { _terminar(false, true); return; } // se repintó a mitad de arrastre
       const p = _aContenido(d, d.cx, d.cy);
       const dx = p.x - d.ini.x, dy = p.y - d.ini.y;
-      const mov = d.items[d.from];
-      mov.style.transform = 'translate(' + dx + 'px,' + dy + 'px) scale(1.04)';
+      const movimiento = d.items[d.from];
+      movimiento.style.transform = 'translate(' + dx + 'px,' + dy + 'px) scale(1.04)';
       const cx = d.slots[d.from].cx + dx, cy = d.slots[d.from].cy + dy;
       let mejor = d.to, dist = Infinity;
       d.slots.forEach((s, k) => {
@@ -136,16 +138,16 @@ const Reordenable = (function () {
     function _bucleAutoscroll() {
       const d = drag;
       if (!d || d.fin) return;
-      const sc = d.sc, raiz = _esRaiz(sc);
-      const arriba = raiz ? 0 : sc.getBoundingClientRect().top;
-      const abajo = raiz ? window.innerHeight : sc.getBoundingClientRect().bottom;
+      const scroller = d.scroller, raiz = _esRaiz(scroller);
+      const arriba = raiz ? 0 : scroller.getBoundingClientRect().top;
+      const abajo = raiz ? window.innerHeight : scroller.getBoundingClientRect().bottom;
       let v = 0;
       if (d.cy < arriba + BORDE_AUTOSCROLL) v = -MAX_VELOCIDAD * Math.min(1, (arriba + BORDE_AUTOSCROLL - d.cy) / BORDE_AUTOSCROLL);
       else if (d.cy > abajo - BORDE_AUTOSCROLL) v = MAX_VELOCIDAD * Math.min(1, (d.cy - (abajo - BORDE_AUTOSCROLL)) / BORDE_AUTOSCROLL);
       if (v) {
-        const antes = sc.scrollTop;
-        sc.scrollTop += v;
-        if (sc.scrollTop !== antes) _actualiza();
+        const antes = scroller.scrollTop;
+        scroller.scrollTop += v;
+        if (scroller.scrollTop !== antes) _actualiza();
       }
       d.raf = requestAnimationFrame(_bucleAutoscroll);
     }
@@ -158,7 +160,7 @@ const Reordenable = (function () {
       cancelAnimationFrame(d.raf);
       _limpiaListeners();
       try { d.items[d.from].releasePointerCapture(d.pointerId); } catch (_) {}
-      const mov = d.items[d.from];
+      const movimiento = d.items[d.from];
       const ids = (function () {
         const base = d.items.map(n => cfg.id(n));
         const idx = commit ? _ordenVirtual(d) : d.items.map((_, i) => i);
@@ -167,24 +169,24 @@ const Reordenable = (function () {
       const cambio = commit && d.to !== d.from;
       const limpiar = function () {
         d.items.forEach(n => { n.style.transform = ''; n.style.transition = ''; n.classList.remove('reord-mueve', 'reord-arrastrando'); });
-        cont.classList.remove('reord-activo');
+        contenedor.classList.remove('reord-activo');
         drag = null;
         if (cambio && !abortado && typeof cfg.onOrden === 'function') cfg.onOrden(ids);
       };
-      if (abortado || !mov.isConnected) { limpiar(); return; }
+      if (abortado || !movimiento.isConnected) { limpiar(); return; }
       // Encaje: la ficha viaja a su hueco; las demás ya están en el suyo (se les quita el transform al repintar).
       const meta = commit ? d.to : d.from;
       const a = d.slots[d.from], b = d.slots[meta];
       const dx = b.x - a.x, dy = b.y - a.y;
       if (!commit) d.items.forEach((n, i) => { if (i !== d.from) n.style.transform = ''; });
       if (_menosMovimiento()) { limpiar(); return; }
-      mov.style.transition = 'transform .2s cubic-bezier(.2,.8,.2,1), box-shadow .2s';
-      mov.classList.remove('reord-arrastrando');
-      mov.classList.add('reord-encaja');
-      mov.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+      movimiento.style.transition = 'transform .2s cubic-bezier(.2,.8,.2,1), box-shadow .2s';
+      movimiento.classList.remove('reord-arrastrando');
+      movimiento.classList.add('reord-encaja');
+      movimiento.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
       let hecho = false;
-      const fin = function () { if (hecho) return; hecho = true; mov.classList.remove('reord-encaja'); limpiar(); };
-      mov.addEventListener('transitionend', fin, { once: true });
+      const fin = function () { if (hecho) return; hecho = true; movimiento.classList.remove('reord-encaja'); limpiar(); };
+      movimiento.addEventListener('transitionend', fin, { once: true });
       setTimeout(fin, 260);
     }
 
@@ -232,7 +234,7 @@ const Reordenable = (function () {
       if (drag || !cfg.activo()) return;
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       const item = e.target.closest && e.target.closest(cfg.item);
-      if (!item || !cont.contains(item)) return;
+      if (!item || !contenedor.contains(item)) return;
       const enAgarre = !cfg.agarre || !!e.target.closest(cfg.agarre);
       const tactil = e.pointerType !== 'mouse';
       _anula();
@@ -270,15 +272,15 @@ const Reordenable = (function () {
     function _toqueMueve(e) { if (drag) e.preventDefault(); }
     function _menu(e) { if (cfg.activo() && (drag || pend)) e.preventDefault(); }
 
-    cont.addEventListener('pointerdown', _abajo);
-    cont.addEventListener('keydown', _teclaAgarre);
-    cont.addEventListener('touchmove', _toqueMueve, { passive: false });
-    cont.addEventListener('contextmenu', _menu);
+    contenedor.addEventListener('pointerdown', _abajo);
+    contenedor.addEventListener('keydown', _teclaAgarre);
+    contenedor.addEventListener('touchmove', _toqueMueve, { passive: false });
+    contenedor.addEventListener('contextmenu', _menu);
     return function desactivar() {
-      cont.removeEventListener('pointerdown', _abajo);
-      cont.removeEventListener('keydown', _teclaAgarre);
-      cont.removeEventListener('touchmove', _toqueMueve);
-      cont.removeEventListener('contextmenu', _menu);
+      contenedor.removeEventListener('pointerdown', _abajo);
+      contenedor.removeEventListener('keydown', _teclaAgarre);
+      contenedor.removeEventListener('touchmove', _toqueMueve);
+      contenedor.removeEventListener('contextmenu', _menu);
       if (drag) _terminar(false, true);
       _anula();
     };
@@ -286,3 +288,6 @@ const Reordenable = (function () {
 
   return { activar };
 })();
+
+// Puente global (js/core/puente.js): constantes y clases ya inicializadas, y variables que otros archivos leen por nombre.
+exponerGlobales({ Reordenable });

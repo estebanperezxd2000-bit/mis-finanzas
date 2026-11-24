@@ -25,7 +25,7 @@ function crearNube(inicial = {}) {
   const rutaDe = ref => ref.ruta;
   const doc = (db, ...partes) => ({ ruta: partes.join('/'), id: partes[partes.length - 1] });
   const snap = (ref) => { const d = docs.get(rutaDe(ref)); return { id: ref.id, exists: () => d !== undefined, data: () => d }; };
-  const fb = {
+  const firebase = {
     db: {}, doc,
     getDoc: async ref => snap(ref),
     deleteDoc: async ref => { docs.delete(rutaDe(ref)); },
@@ -47,7 +47,7 @@ function crearNube(inicial = {}) {
       return r;
     },
   };
-  return { docs, fb };
+  return { docs, firebase };
 }
 const PRINCIPAL = 'usuarios/u1/data/finanzas';
 const INDICE = 'usuarios/u1/data/respaldos-indice';
@@ -90,8 +90,8 @@ describe('respaldos — módulo (js/core/respaldos.js)', () => {
 
   test('nube — la primera vez del día copia el documento TAL CUAL (comprimido), crea el índice y no duplica', async () => {
     const payload = gz(plano({ cuentas: [{ id: 'nequi', saldo: 5 }], libro: [] }));
-    const { docs, fb } = crearNube({ [PRINCIPAL]: { payload, updatedAt: 111, rev: 7 } });
-    const r = await R.respaldarEnNube({ fb, uid: 'u1', tipo: 'diario', ahora: AHORA, decodificar });
+    const { docs, firebase } = crearNube({ [PRINCIPAL]: { payload, updatedAt: 111, rev: 7 } });
+    const r = await R.respaldarEnNube({ firebase, uid: 'u1', tipo: 'diario', ahora: AHORA, decodificar });
     assert.deepEqual({ estado: r.estado, id: r.id }, { estado: 'creado', id: 'respaldo-2026-11-09' });
     const copia = docs.get('usuarios/u1/data/respaldo-2026-11-09');
     assert.equal(copia.payload, payload, 'idéntico byte a byte: no se descomprime ni se recomprime');
@@ -100,23 +100,23 @@ describe('respaldos — módulo (js/core/respaldos.js)', () => {
     assert.equal(idx.length, 1);
     assert.deepEqual({ id: idx[0].id, tipo: idx[0].tipo, fecha: idx[0].fecha, de: idx[0].de, rev: idx[0].rev, bytes: idx[0].bytes }, { id: 'respaldo-2026-11-09', tipo: 'diario', fecha: '2026-11-09', de: 111, rev: 7, bytes: payload.length });
     assert.equal(docs.get(PRINCIPAL).payload, payload, 'el documento principal no se toca');
-    const otra = await R.respaldarEnNube({ fb, uid: 'u1', tipo: 'diario', ahora: AHORA + 3600000, decodificar });
+    const otra = await R.respaldarEnNube({ firebase, uid: 'u1', tipo: 'diario', ahora: AHORA + 3600000, decodificar });
     assert.equal(otra.estado, 'ya-existia');
     assert.equal(docs.get(INDICE).items.length, 1);
   });
 
   test('nube — un documento vacío ({}), sin payload o inexistente no se respalda', async () => {
     for (const principal of [undefined, { payload: '{}', updatedAt: 1 }, { payload: gz('{}'), updatedAt: 1 }, { updatedAt: 1 }]) {
-      const { docs, fb } = crearNube(principal ? { [PRINCIPAL]: principal } : {});
-      const r = await R.respaldarEnNube({ fb, uid: 'u1', tipo: 'diario', ahora: AHORA, decodificar });
+      const { docs, firebase } = crearNube(principal ? { [PRINCIPAL]: principal } : {});
+      const r = await R.respaldarEnNube({ firebase, uid: 'u1', tipo: 'diario', ahora: AHORA, decodificar });
       assert.equal(r.estado, 'sin-datos');
       assert.equal([...docs.keys()].filter(k => k.includes('respaldo')).length, 0);
     }
   });
 
   test('nube — 31 días seguidos: el día 31 borra el más viejo y el índice queda con 30', async () => {
-    const { docs, fb } = crearNube({ [PRINCIPAL]: { payload: plano({ cuentas: [1] }), updatedAt: 1, rev: 1 } });
-    for (let i = 0; i < 31; i++) await R.respaldarEnNube({ fb, uid: 'u1', tipo: 'diario', ahora: AHORA + i * DIA, decodificar });
+    const { docs, firebase } = crearNube({ [PRINCIPAL]: { payload: plano({ cuentas: [1] }), updatedAt: 1, rev: 1 } });
+    for (let i = 0; i < 31; i++) await R.respaldarEnNube({ firebase, uid: 'u1', tipo: 'diario', ahora: AHORA + i * DIA, decodificar });
     const items = docs.get(INDICE).items;
     assert.equal(items.length, 30);
     const ids = [...docs.keys()].filter(k => k.includes('/data/respaldo-'));
@@ -126,9 +126,9 @@ describe('respaldos — módulo (js/core/respaldos.js)', () => {
   });
 
   test('nube — los «previos» no se mezclan con los diarios y se limitan a 5', async () => {
-    const { docs, fb } = crearNube({ [PRINCIPAL]: { payload: plano({ cuentas: [1] }), updatedAt: 1, rev: 1 } });
-    await R.respaldarEnNube({ fb, uid: 'u1', tipo: 'diario', ahora: AHORA, decodificar });
-    for (let i = 0; i < 7; i++) await R.respaldarEnNube({ fb, uid: 'u1', tipo: 'previo', ahora: AHORA + i * 1000, decodificar });
+    const { docs, firebase } = crearNube({ [PRINCIPAL]: { payload: plano({ cuentas: [1] }), updatedAt: 1, rev: 1 } });
+    await R.respaldarEnNube({ firebase, uid: 'u1', tipo: 'diario', ahora: AHORA, decodificar });
+    for (let i = 0; i < 7; i++) await R.respaldarEnNube({ firebase, uid: 'u1', tipo: 'previo', ahora: AHORA + i * 1000, decodificar });
     const items = docs.get(INDICE).items;
     assert.equal(items.filter(i => i.tipo === 'previo').length, 5);
     assert.equal(items.filter(i => i.tipo === 'diario').length, 1, 'el diario sigue ahí');
@@ -164,30 +164,30 @@ describe('respaldos — módulo (js/core/respaldos.js)', () => {
     const almacen = R.almacenMemoria();
     await R.respaldarEnEquipo({ almacen, plano: est, tipo: 'diario', ahora: AHORA, codificar });
     const fila = { id: 'respaldo-2026-11-09', fuentes: ['nube', 'equipo'] };
-    const { fb } = crearNube({ 'usuarios/u1/data/respaldo-2026-11-09': { payload: gz(plano({ cuentas: [{ id: 'a', saldo: 2 }] })) } });
-    assert.equal(JSON.parse(await R.leerRespaldo({ fb, uid: 'u1', almacen, fila, decodificar })).cuentas[0].saldo, 2, 'la nube primero');
-    const sinDoc = crearNube().fb;
-    assert.equal(JSON.parse(await R.leerRespaldo({ fb: sinDoc, uid: 'u1', almacen, fila, decodificar })).cuentas[0].saldo, 1, 'la nube no lo tiene: equipo');
-    const roto = { ...fb, getDoc: async () => { throw new Error('sin red'); } };
-    assert.equal(JSON.parse(await R.leerRespaldo({ fb: roto, uid: 'u1', almacen, fila, decodificar })).cuentas[0].saldo, 1, 'la nube falla: equipo');
-    await assert.rejects(R.leerRespaldo({ fb: roto, uid: 'u1', almacen: R.almacenMemoria(), fila, decodificar }), /sin red/);
+    const { firebase } = crearNube({ 'usuarios/u1/data/respaldo-2026-11-09': { payload: gz(plano({ cuentas: [{ id: 'a', saldo: 2 }] })) } });
+    assert.equal(JSON.parse(await R.leerRespaldo({ firebase, uid: 'u1', almacen, fila, decodificar })).cuentas[0].saldo, 2, 'la nube primero');
+    const sinDoc = crearNube().firebase;
+    assert.equal(JSON.parse(await R.leerRespaldo({ firebase: sinDoc, uid: 'u1', almacen, fila, decodificar })).cuentas[0].saldo, 1, 'la nube no lo tiene: equipo');
+    const roto = { ...firebase, getDoc: async () => { throw new Error('sin red'); } };
+    assert.equal(JSON.parse(await R.leerRespaldo({ firebase: roto, uid: 'u1', almacen, fila, decodificar })).cuentas[0].saldo, 1, 'la nube falla: equipo');
+    await assert.rejects(R.leerRespaldo({ firebase: roto, uid: 'u1', almacen: R.almacenMemoria(), fila, decodificar }), /sin red/);
   });
 
   test('borrarRespaldosNube: borra el índice, los respaldos y los huérfanos; no toca el documento principal ni otros', async () => {
-    const { docs, fb } = crearNube({
+    const { docs, firebase } = crearNube({
       [PRINCIPAL]: { payload: '{"a":1}' }, 'usuarios/u1/data/notificaciones': { fcmTokens: ['t'] },
       [INDICE]: { items: [{ id: 'respaldo-2026-11-09' }] }, 'usuarios/u1/data/respaldo-2026-11-09': { payload: 'x' },
       'usuarios/u1/data/respaldo-previo-2026-11-09-101010': { payload: 'y' }, // huérfano: no está en el índice
     });
-    const r = await R.borrarRespaldosNube({ fb, uid: 'u1' });
+    const r = await R.borrarRespaldosNube({ firebase, uid: 'u1' });
     assert.equal(r.errores, 0); assert.equal(r.borrados, 3);
     assert.deepEqual([...docs.keys()].sort(), ['usuarios/u1/data/finanzas', 'usuarios/u1/data/notificaciones']);
   });
 
   test('borrarRespaldosNube nunca lanza aunque Firestore rechace todo', async () => {
     const rechaza = async () => { throw Object.assign(new Error('denegado'), { code: 'permission-denied' }); };
-    const { fb } = crearNube();
-    const r = await R.borrarRespaldosNube({ fb: { ...fb, getDoc: rechaza, getDocs: rechaza, deleteDoc: rechaza }, uid: 'u1' });
+    const { firebase } = crearNube();
+    const r = await R.borrarRespaldosNube({ firebase: { ...firebase, getDoc: rechaza, getDocs: rechaza, deleteDoc: rechaza }, uid: 'u1' });
     assert.ok(r.errores >= 1);
   });
 });
@@ -198,14 +198,15 @@ describe('respaldos — integración con el guardado (firebase-sync.js)', () => 
   const escribir = (nombre, codigo) => { const p = path.join(TMP, nombre); fs.writeFileSync(p, codigo); return p; };
   const CODEC = escribir('codec.js', leer('payload-codec.js').replace(/^export\s+/gm, ''));
   const RESPALDOS = escribir('respaldos.js', leer('respaldos.js').replace(/^export\s+/gm, ''));
+  const FUSION = escribir('fusion.js', leer('fusion.js').replace(/^export\s+/gm, '') + '\n' + leer('validar-estado.js').replace(/^export\s+/gm, ''));
   const SYNC = escribir('sync.js', 'const waitFor = () => {};\n' + leer('firebase-sync.js').replace(/^import .*$/gm, ''));
-  const guardar = app => { const p = app._fbSaveToCloud(); app._fbFlushSave(); return p; };
+  const guardar = app => { const p = app._firebaseSaveToCloud(); app._firebaseFlushSave(); return p; };
   let R;
   before(async () => { R = await import(pathToFileURL(path.join(CORE, 'respaldos.js')).href); });
 
   // Una app cargada con la nube simulada. `nubeInicial`: lo que ya hay en usuarios/u1/data/finanzas.
   async function entorno(nubeInicial, { denegarRespaldos = false } = {}) {
-    const app = loadApp([CODEC, RESPALDOS, SYNC], { permissive: true });
+    const app = loadApp([CODEC, RESPALDOS, FUSION, SYNC], { permissive: true });
     app.document = createFakeDom().document;
     Object.assign(app, { CompressionStream, DecompressionStream, Blob, Response, btoa, atob, TextEncoder, Uint8Array });
     const nube = crearNube(nubeInicial ? { [PRINCIPAL]: nubeInicial } : {});
@@ -215,10 +216,10 @@ describe('respaldos — integración con el guardado (firebase-sync.js)', () => 
     app.load = () => {}; app.refresh = () => {}; app.applyModulos = () => {};
     app.window = app.window || app; app.window.dispatchEvent = () => {};
     const listeners = {};
-    const base = nube.fb.runTransaction;
+    const base = nube.firebase.runTransaction;
     let intentosRespaldo = 0;
-    app._fb = {
-      ...nube.fb,
+    app._firebase = {
+      ...nube.firebase,
       onSnapshot: (ref, opts, next, error) => { listeners.next = next; listeners.error = error; return () => {}; },
       // Simula reglas que NO dejan tocar los respaldos: cualquier transacción que escriba/lea fuera del documento principal falla.
       runTransaction: !denegarRespaldos ? base : async (db, fn) => {
@@ -227,13 +228,13 @@ describe('respaldos — integración con el guardado (firebase-sync.js)', () => 
         return base(db, fn);
       },
     };
-    app._fbUser = { uid: 'u1' };
+    app._firebaseUser = { uid: 'u1' };
     app.S = { cuentas: [{ id: 'nequi', saldo: 1 }], libro: [] };
     app._almacenRespaldosPrueba = R.almacenMemoria();
-    app._fbLoadData();
+    app._firebaseLoadData();
     listeners.next({ exists: () => nube.docs.has(PRINCIPAL), data: () => nube.docs.get(PRINCIPAL), metadata: { fromCache: false, hasPendingWrites: false } });
     await hasta(() => app._dataLoaded);
-    return { app, nube, store, avisos, intentos: () => intentosRespaldo };
+    return { app, nube, store, avisos, listeners, intentos: () => intentosRespaldo };
   }
   const doc0 = (saldo, rev = 3) => ({ payload: gz(plano({ cuentas: [{ id: 'nequi', saldo }], libro: [] })), updatedAt: Date.now() - 600000, rev });
   const respaldosNube = n => [...n.docs.keys()].filter(k => k.includes('/data/respaldo-'));
@@ -295,7 +296,7 @@ describe('respaldos — integración con el guardado (firebase-sync.js)', () => 
     assert.equal(e.intentos(), 1);
     assert.equal(e.store.mf_respaldoError, 'permisos');
     assert.equal(e.avisos.filter(a => /respaldo/i.test(a.m)).length, 1);
-    assert.equal(e.app._fbRespaldos.estado().bloqueado, true);
+    assert.equal(e.app._firebaseRespaldos.estado().bloqueado, true);
     e.app.S.cuentas[0].saldo = 51; await guardar(e.app);
     e.app.S.cuentas[0].saldo = 52; await guardar(e.app);
     assert.equal(e.intentos(), 1, 'no insiste: cero peticiones fallidas extra');
@@ -307,7 +308,7 @@ describe('respaldos — integración con el guardado (firebase-sync.js)', () => 
     const e = await entorno(doc0(1));
     e.app.S.cuentas[0].saldo = 50; await guardar(e.app); // diario del día
     e.app.S.cuentas[0].saldo = 999;                      // «el archivo importado»
-    const p = e.app._fbSaveToCloud({ forzar: true }); e.app._fbFlushSave();
+    const p = e.app._firebaseSaveToCloud({ forzar: true }); e.app._firebaseFlushSave();
     assert.equal((await p).ok, true);
     const items = e.nube.docs.get(INDICE).items;
     const previo = items.find(i => i.tipo === 'previo');
@@ -321,9 +322,9 @@ describe('respaldos — integración con el guardado (firebase-sync.js)', () => 
     const e = await entorno(doc0(1));
     e.app.S.cuentas[0].saldo = 50; await guardar(e.app);
     assert.equal(respaldosNube(e.nube).length, 1);
-    await e.app._fbEscribirDoc(plano({}), Date.now(), true, { sinRespaldo: true });
+    await e.app._firebaseEscribirDoc(plano({}), Date.now(), true, { sinRespaldo: true });
     assert.equal(e.nube.docs.get(INDICE).items.filter(i => i.tipo === 'previo').length, 0, 'sin previo');
-    const r = await e.app._fbRespaldos.borrarTodos();
+    const r = await e.app._firebaseRespaldos.borrarTodos();
     assert.equal(r.errores, 0);
     assert.equal(respaldosNube(e.nube).length, 0);
     assert.equal(e.nube.docs.has(INDICE), false);
@@ -335,14 +336,84 @@ describe('respaldos — integración con el guardado (firebase-sync.js)', () => 
   test('API para Configuración: listar junta nube y equipo; leer devuelve el JSON plano', async () => {
     const e = await entorno(doc0(1));
     e.app.S.cuentas[0].saldo = 50; await guardar(e.app);
-    const { filas, errorNube } = await e.app._fbRespaldos.listar();
+    const { filas, errorNube } = await e.app._firebaseRespaldos.listar();
     assert.equal(errorNube, null);
     assert.equal(filas.length, 1);
     assert.deepEqual([...filas[0].fuentes], ['nube', 'equipo']); // copia al arreglo de este contexto (el de la app viene de otro `vm`)
     assert.equal(filas[0].tipo, 'diario');
-    assert.equal(JSON.parse(await e.app._fbRespaldos.leer(filas[0])).cuentas[0].saldo, 1);
-    assert.ok(e.app._fbRespaldos.estado().ultimo, 'recuerda cuándo se creó el último');
+    assert.equal(JSON.parse(await e.app._firebaseRespaldos.leer(filas[0])).cuentas[0].saldo, 1);
+    assert.ok(e.app._firebaseRespaldos.estado().ultimo, 'recuerda cuándo se creó el último');
   });
+  // ── Copia de lo local cuando otro dispositivo guardó antes (conflicto) ──
+  // Estos tests cubren el camino SIN fusión (lo local se descarta y queda como copia): la fusión se apaga a propósito; con fusión
+  // (lo normal) los cambios se combinan y están en tests/sesion-y-despliegue.test.js y tests/fusion.test.js.
+  const sinFusion = e => { e.app.fusionarEstados = () => { throw new Error('fusión no disponible'); }; };
+  const conflictoPorGuardado = async (e, opciones = {}) => {
+    sinFusion(e);
+    e.nube.docs.set(PRINCIPAL, doc0(500, 4));        // el otro dispositivo guardó la revisión 4
+    e.app.S.cuentas[0].saldo = 99;                   // cambio local sobre la revisión 3
+    const r = await guardar(e.app);
+    assert.equal(r.reason, 'conflict');
+    await new Promise(res => setTimeout(res, 20));
+    return r;
+  };
+
+  test('conflicto: lo local descartado queda como copia tipo «conflicto» en el almacén del equipo (comprimida, restaurable) y el aviso lo dice', async () => {
+    const e = await entorno(doc0(1, 3));
+    await conflictoPorGuardado(e);
+    const filas = await e.app._almacenRespaldosPrueba.listar();
+    const c = filas.filter(f => f.tipo === 'conflicto');
+    assert.equal(c.length, 1);
+    assert.match(c[0].id, /^respaldo-conflicto-/);
+    const completa = await e.app._almacenRespaldosPrueba.leer(c[0].id);
+    assert.ok(completa.payload.startsWith('gz1:'), 'va comprimida');
+    assert.equal(JSON.parse(await decodificar(completa.payload)).cuentas[0].saldo, 99, 'lo local que se iba a perder');
+    assert.equal(e.store.mf_conflicto, undefined, 'no hace falta el último recurso');
+    assert.ok(e.avisos.some(a => /Respaldos \(dentro de Configuración\)/.test(a.m)), 'el aviso dice dónde quedó la copia');
+  });
+
+  test('conflicto: sin almacén del equipo, la copia va a localStorage COMPRIMIDA y se puede leer', async () => {
+    const e = await entorno(doc0(1, 3));
+    e.app._almacenRespaldosPrueba = null;
+    await conflictoPorGuardado(e);
+    const guardada = JSON.parse(e.store.mf_conflicto);
+    assert.ok(guardada.payload.startsWith('gz1:'));
+    assert.equal(JSON.parse((await e.app._firebaseConflictoGuardado()).payload).cuentas[0].saldo, 99);
+    assert.ok(e.avisos.some(a => /temporal/.test(a.m)));
+  });
+
+  test('conflicto: si NO se puede guardar la copia en ningún lado, el aviso lo dice claro (antes se tragaba el error y ni avisaba)', async () => {
+    const e = await entorno(doc0(1, 3));
+    e.app._almacenRespaldosPrueba = null;
+    e.app.localStorage.setItem = () => { throw new Error('QuotaExceededError'); };
+    await conflictoPorGuardado(e);
+    assert.ok(e.avisos.some(a => /no se pudo guardar copia/i.test(a.m)), JSON.stringify(e.avisos));
+  });
+
+  test('conflicto en tiempo real (otro dispositivo guarda mientras editas): copia en el equipo y aviso, sin frenar la carga de lo nuevo', async () => {
+    const e = await entorno(doc0(1, 3));
+    sinFusion(e);
+    e.app.S.cuentas[0].saldo = 77;                    // edición local sin guardar
+    e.nube.docs.set(PRINCIPAL, doc0(500, 4));
+    e.listeners.next({ exists: () => true, data: () => e.nube.docs.get(PRINCIPAL), metadata: { fromCache: false, hasPendingWrites: false } });
+    await hasta(() => e.avisos.some(a => /Respaldos/.test(a.m)));
+    assert.equal(e.app.S.cuentas[0].saldo, 500, 'se cargó la versión de la nube');
+    const c = (await e.app._almacenRespaldosPrueba.listar()).filter(f => f.tipo === 'conflicto');
+    assert.equal(c.length, 1);
+    assert.equal(JSON.parse(await decodificar((await e.app._almacenRespaldosPrueba.leer(c[0].id)).payload)).cuentas[0].saldo, 77);
+    assert.ok(e.avisos.some(a => /Otro dispositivo guardó mientras editabas aquí.*Respaldos/.test(a.m)));
+  });
+
+  test('conflicto: se conservan solo las 5 copias más recientes y no se tocan los respaldos diarios', () => {
+    const items = [];
+    for (let i = 0; i < 7; i++) items.push({ id: 'c' + i, tipo: 'conflicto', creadoEn: 100 + i });
+    items.push({ id: 'd', tipo: 'diario', creadoEn: 1 });
+    const { conservar, borrar } = R.podar(items, R.LIMITES, true);
+    assert.equal(conservar.filter(i => i.tipo === 'conflicto').length, 5);
+    assert.deepEqual(borrar.map(i => i.id).sort(), ['c0', 'c1']);
+    assert.ok(conservar.some(i => i.id === 'd'));
+  });
+
 });
 
 // ── Pantalla: Configuración → Datos → Respaldos automáticos (js/modules/configuracion.js) ─────────────────────────────
@@ -358,9 +429,9 @@ describe('respaldos — pantalla de Configuración', () => {
     ctx.pedirPinAntesDe = async motivo => { pins.push(motivo); return true; };
     ctx.refresh = () => {};
     ctx.location = { reload() { ctx.__recargo = true; } };
-    ctx.window = ctx.window || ctx; ctx.window._fbRespaldos = { estado: () => estado, listar: async () => ({ filas, errorNube }), leer: async fila => leerPlano(fila) };
-    ctx.window._fbSaveToCloud = async opts => { guardados.push(opts); return { ok: true }; };
-    ctx._fbRespaldos = ctx.window._fbRespaldos; ctx._fbSaveToCloud = ctx.window._fbSaveToCloud;
+    ctx.window = ctx.window || ctx; ctx.window._firebaseRespaldos = { estado: () => estado, listar: async () => ({ filas, errorNube }), leer: async fila => leerPlano(fila) };
+    ctx.window._firebaseSaveToCloud = async opts => { guardados.push(opts); return { ok: true }; };
+    ctx._firebaseRespaldos = ctx.window._firebaseRespaldos; ctx._firebaseSaveToCloud = ctx.window._firebaseSaveToCloud;
     return { ctx, dom, toasts, dialogos, pins, guardados };
   }
   const fila = (id, extra = {}) => ({ id, tipo: 'diario', fecha: '2026-11-09', creadoEn: AHORA, bytes: 12345, fuentes: ['nube', 'equipo'], ...extra });
@@ -397,8 +468,8 @@ describe('respaldos — pantalla de Configuración', () => {
   test('el botón alterna «Ver respaldos» ⇄ «Ocultar respaldos»: el segundo clic oculta la lista y no vuelve a cargarla', async () => {
     let cargas = 0;
     const p = pantalla({ filas: [fila('respaldo-2026-11-09')] });
-    const orig = p.ctx.window._fbRespaldos.listar;
-    p.ctx.window._fbRespaldos.listar = async () => { cargas++; return orig(); };
+    const orig = p.ctx.window._firebaseRespaldos.listar;
+    p.ctx.window._firebaseRespaldos.listar = async () => { cargas++; return orig(); };
     p.ctx.renderRespaldos();
     const doc = p.dom.document;
     const btn = () => doc.getElementById('cfg-resp-ver-btn');

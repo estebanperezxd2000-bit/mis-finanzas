@@ -5,6 +5,11 @@
 // y de showScreen/refresh (llamados en runtime, con guard typeof donde
 // corresponde). Ver auditoria-tecnica.md #2/#4.
 
+import { exponerGlobales, exponerVariables } from './puente.js';
+import { showScreen } from './navegacion.js';
+import { refresh } from './refresh.js';
+import { Ui } from './ui.js';
+
 // ── 1. MÁS MENU ─────────────────────────────────────────────────────────────
 (function(){
   const masBtn = document.getElementById('nav-mas-btn');
@@ -60,6 +65,11 @@
     if(masMesada && cfgMesada) {
       masMesada.style.display = cfgMesada.checked ? 'flex' : 'none';
     }
+    // Mismo estado en el menú lateral de PC (js/core/eventos-base.js los navega).
+    const lateralSpotify = document.getElementById('lateral-spotify');
+    if(lateralSpotify && cfgSpotify) lateralSpotify.hidden = !cfgSpotify.checked;
+    const lateralMesada = document.getElementById('lateral-mesada');
+    if(lateralMesada && cfgMesada) lateralMesada.hidden = !cfgMesada.checked;
   }, { key: 'mas-menu-modulos' });
   // Initial update
   setTimeout(window.applyModulos, 100);

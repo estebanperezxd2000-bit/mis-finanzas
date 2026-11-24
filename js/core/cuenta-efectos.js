@@ -10,10 +10,10 @@
    mano las tres ramas según el tipo de cuenta (prestado.js lo hacía en 22
    sitios). Ahora hay un solo código:
 
-     registrarMovEspejo({cuenta, flujo, monto, fecha, desc, origen, extra})
+     registrarMovimientoEspejo({cuenta, flujo, monto, fecha, desc, origen, extra})
         → crea el espejo y devuelve su id (o null si no se pudo escribir:
           cuenta vacía, tipo desconocido o cuenta que ya no existe).
-     borrarMovEspejo(cuenta, id)
+     borrarMovimientoEspejo(cuenta, id)
         → lo quita; devuelve true si lo encontró y lo quitó.
 
    Estas funciones NO tocan saldos: el efecto sobre el saldo sigue siendo
@@ -31,14 +31,21 @@
    excluye del ingreso sin depender del texto ni del prefijo de _origenSeccion. Las
    banderas de "sí es ingreso" de `extra` tienen prioridad sobre `_esEspejo`.
 
-   Carga de entrada (<script defer>), después del núcleo: usa uid(),
+   Carga de entrada (js/main.js), después del núcleo: usa uid(),
    getCuentaDeFuente() y S. Por ser núcleo, lo pueden usar módulos lazy
    (prestado, mesada, alcancia, encargos) sin depender del orden de carga.
    ═══════════════════════════════════════════════════════════════ */
 
+import { exponerGlobales, exponerVariables } from './puente.js';
+import { Fuente, esFuenteCuenta, getCuentaDeFuente } from './cuentas-fuentes.js';
+import { S, uid } from './estado.js';
+import { _claseValida } from './ingresos.js';
+// Puente global (js/core/puente.js): las funciones se hoistean, así que quedan en window desde el principio.
+exponerGlobales({ _espejoLista, registrarMovimientoEspejo, borrarMovimientoEspejo });
+
 // Resuelve dónde vive el espejo de esa cuenta (siempre S.movimientos) y el 'tipo' que corresponde al flujo.
 // crear=true crea la lista si no existe. Devuelve null si la cuenta no es rastreable (vacía, tipo desconocido o ya no existe).
-function _espejoLista(cuenta, flujo, crear) {
+export function _espejoLista(cuenta, flujo, crear) {
   if (!cuenta || typeof cuenta !== 'string') return null;
   const entra = flujo !== 'salida';
   const existe = (esFuenteCuenta(cuenta) && !!getCuentaDeFuente(cuenta))
@@ -48,36 +55,36 @@ function _espejoLista(cuenta, flujo, crear) {
   return { lista: S.movimientos, tipo: entra ? 'entrada' : 'salida', campoTexto: 'desc', conFuente: true };
 }
 
-function registrarMovEspejo(o) {
+export function registrarMovimientoEspejo(o) {
   if (!o || !o.cuenta || !o.monto) return null;
-  const dest = _espejoLista(o.cuenta, o.flujo, true);
-  if (!dest) return null;
+  const destino = _espejoLista(o.cuenta, o.flujo, true);
+  if (!destino) return null;
   const id = uid();
-  const reg = { id, tipo: dest.tipo };
-  if (dest.conFuente) reg.fuente = o.cuenta;
-  reg.monto = o.monto;
-  reg.fecha = o.fecha;
-  reg[dest.campoTexto] = o.desc;
-  reg._secundario = true;
-  reg._esEspejo = true; // por defecto un espejo NO es ingreso; `extra` lo anula si es plata nueva (_esExtraIngreso, _esPerdonRecibido, _esDiferencialEncargo)
-  reg._origenSeccion = o.origen;
-  if (o.extra) Object.assign(reg, o.extra);
+  const registro = { id, tipo: destino.tipo };
+  if (destino.conFuente) registro.fuente = o.cuenta;
+  registro.monto = o.monto;
+  registro.fecha = o.fecha;
+  registro[destino.campoTexto] = o.desc;
+  registro._secundario = true;
+  registro._esEspejo = true; // por defecto un espejo NO es ingreso; `extra` lo anula si es plata nueva (_esExtraIngreso, _esPerdonRecibido, _esDiferencialEncargo)
+  registro._origenSeccion = o.origen;
+  if (o.extra) Object.assign(registro, o.extra);
   // `clase` (docs/analisis-financiero.md, «La respuesta está guardada en el movimiento»): explícita si el módulo la pasa; si no, se deduce
   // de las banderas de "plata nueva" de `extra` (hasta que cada llamador pase `clase` a mano) y,
   // por defecto, un espejo es 'neutro'. Las salidas de un espejo también son 'neutro'.
-  reg.clase = _claseValida(o.clase) ? o.clase
-    : (o.flujo !== 'salida' && (reg._esExtraIngreso || reg._esPerdonRecibido || reg._esDiferencialEncargo)) ? 'ingreso'
+  registro.clase = _claseValida(o.clase) ? o.clase
+    : (o.flujo !== 'salida' && (registro._esExtraIngreso || registro._esPerdonRecibido || registro._esDiferencialEncargo)) ? 'ingreso'
     : 'neutro';
-  dest.lista.push(reg);
+  destino.lista.push(registro);
   return id;
 }
 
-function borrarMovEspejo(cuenta, id) {
+export function borrarMovimientoEspejo(cuenta, id) {
   if (!cuenta || !id) return false;
-  const dest = _espejoLista(cuenta, 'entrada', false);
-  if (!dest) return false;
-  if (!dest.lista.some(x => x.id === id && x.fuente === cuenta)) return false;
+  const destino = _espejoLista(cuenta, 'entrada', false);
+  if (!destino) return false;
+  if (!destino.lista.some(x => x.id === id && x.fuente === cuenta)) return false;
   // La lista se reasigna en su dueño (como hacía el código original), no se muta en sitio.
-  S.movimientos = dest.lista.filter(x => !(x.id === id && x.fuente === cuenta));
+  S.movimientos = destino.lista.filter(x => !(x.id === id && x.fuente === cuenta));
   return true;
 }

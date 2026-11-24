@@ -1,14 +1,13 @@
 // Sistema de PIN + biometría (WebAuthn) — extraído de index.html (era
 // <script type="module"> inline). Ver auditoria-tecnica.md #2.
 //
-// import de waitFor (js/core/wait-for-module.js — versión ES module
-// independiente de js/core/wait-for.js, ver ese archivo para el porqué):
+// import de waitFor (js/core/wait-for.js):
 // reemplaza los dos reintentos manuales con setInterval que tenía este
 // archivo (registro de Events('pin',...) y el hook de refresh(), más
 // abajo). Se usa `import` en vez de asumir un global porque este archivo
 // carga como `type="module" async`, sin garantía de orden frente a ningún
-// <script defer>. Ver CHANGELOG.md#infraestructura--seguridad.
-import { waitFor } from './wait-for-module.js';
+// <script defer>. Ver changelog/infraestructura-seguridad.md.
+import { waitFor } from './wait-for.js';
 // El hook a refresh() ya no es un wrap de window.refresh: se registra con Refresh.registrar() (js/core/refresh.js), esperando a que exista.
 
 /* ================================================================
@@ -21,7 +20,7 @@ import { waitFor } from './wait-for-module.js';
   const BIO_KEY  = 'mf_bio_enabled';   // 'true' si el usuario activó biometría
   const CRED_KEY = 'mf_bio_cred';      // credentialId (base64url) guardado
   const VER_KEY  = 'mf_bio_ver';       // versión de la credencial guardada (ver BIO_VERSION)
-  // Versión 2 (2026-10-29): credencial NO descubrible (ver _bioRegister). Las de la versión 1 eran passkeys (residentKey 'preferred'):
+  // Versión 2: credencial NO descubrible (ver _bioRegister). Las de la versión 1 eran passkeys (residentKey 'preferred'):
   // el gestor de contraseñas las guardaba y las mostraba al desbloquear. Una huella activada con la versión 1 se trata como
   // desactivada: Configuración vuelve a ofrecer «Activar huella» y la nueva credencial ya no pasa por el gestor.
   const BIO_VERSION = '2';
@@ -358,12 +357,12 @@ import { waitFor } from './wait-for-module.js';
   window._pinOlvide = async function() {
     const ok = await _pinDialogo('\u00bfOlvidaste el PIN?', 'Se cerrar\u00e1 la sesi\u00f3n y podr\u00e1s volver a entrar con Google.', 'Cerrar sesi\u00f3n');
     if(!ok) return;
-    if(!window._fb) return;
-    clearTimeout(window._fbSaveTimer);
+    if(!window._firebase) return;
+    clearTimeout(window._firebaseSaveTimer);
     _delPin();
     _delCred();
-    window._fbUser = null;
-    const {auth, signOut} = window._fb;
+    window._firebaseUser = null;
+    const {auth, signOut} = window._firebase;
     await signOut(auth);
     location.reload();
   };
@@ -440,21 +439,21 @@ import { waitFor } from './wait-for-module.js';
     _checkPendingPinGate();
   }
 
-  // `firebase-init.js` (que define window._fbLoadData) y este archivo cargan
+  // `firebase-init.js` (que define window._firebaseLoadData) y este archivo cargan
   // ambos como `type="module" async` (ver comentarios en index.html), así que
   // no hay garantía de orden de ejecución entre los dos: si pin-bio.js
   // termina de cargar/ejecutar primero, _launchApp() puede correr antes de
-  // que firebase-init.js haya llegado a definir window._fbLoadData, tronando
-  // con "window._fbLoadData is not a function". Mismo criterio que el guard
+  // que firebase-init.js haya llegado a definir window._firebaseLoadData, tronando
+  // con "window._firebaseLoadData is not a function". Mismo criterio que el guard
   // de window._pendingPinGate de más arriba: reintentar acotado en vez de
   // asumir que ya existe.
   function _launchApp(_intentos) {
-    if (typeof window._fbLoadData === 'function') {
-      window._fbLoadData();
+    if (typeof window._firebaseLoadData === 'function') {
+      window._firebaseLoadData();
     } else if ((_intentos || 0) < 100) { // hasta ~5s (100 x 50ms)
       setTimeout(() => _launchApp((_intentos || 0) + 1), 50);
     } else {
-      console.error('[pin-bio] window._fbLoadData nunca apareció tras 5s; firebase-init.js no cargó o falló.');
+      console.error('[pin-bio] window._firebaseLoadData nunca apareció tras 5s; firebase-init.js no cargó o falló.');
       if (window.toast) toast('No se pudo cargar tus datos. Recarga la página.', 'err');
     }
   }
@@ -468,7 +467,7 @@ import { waitFor } from './wait-for-module.js';
     const fuera = _ocultaDesde ? Date.now() - _ocultaDesde : 0;
     _ocultaDesde = 0;
     const pantalla = document.getElementById('pin-screen');
-    if(!_getPin() || !window._fbUser || fuera < AUTOBLOQUEO_MS || (pantalla && pantalla.classList.contains('open'))) return;
+    if(!_getPin() || !window._firebaseUser || fuera < AUTOBLOQUEO_MS || (pantalla && pantalla.classList.contains('open'))) return;
     _relock = true;
     _showPin('unlock','Ingresa tu PIN','Mis Finanzas');
     if(_bioEnabled() && _getCredId() && _bioAvailable()) setTimeout(window._pinBioTrigger, 400);
@@ -478,7 +477,7 @@ import { waitFor } from './wait-for-module.js';
   window._pinSetNew = async function() {
     // Cambiar un PIN que ya existe exige escribir el actual (sin PIN activo, `_pinVerificar` responde true al instante).
     if(_getPin() && !(await window._pinVerificar('Para cambiar tu PIN'))) return;
-    _showPin('set-new','Elige un PIN de 4 dígitos','Este PIN protegerá el acceso a la app');
+    _showPin('set-new','Elige un PIN de 4 dígitos','Este PIN será el candado de pantalla de la app');
     window._pendingLaunch = false;
   };
   // Borrar todos los datos (configuracion.js → borrarTodo): el PIN y la huella son locales a este
@@ -552,7 +551,7 @@ import { waitFor } from './wait-for-module.js';
     });
     return true;
   }
-  // Antes era un setInterval propio (ver CHANGELOG.md#infraestructura--
+  // Antes era un setInterval propio (ver changelog/infraestructura-seguridad.md
   // seguridad, entrada de consolidación de este patrón). _registrarEventosPin
   // ya hace el registro Y devuelve si tuvo éxito, así que sirve directo como
   // checkFn — waitFor solo lo vuelve a llamar hasta que dé true.
@@ -595,7 +594,7 @@ import { waitFor } from './wait-for-module.js';
 
   // Hook en refresh para re-renderizar botones cuando se abre Config. _renderBtn()/_renderBioBtn() son idempotentes (solo pintan según el
   // estado actual de PIN/biometría): se llama también una vez ya, sin esperar al próximo refresh() real.
-  // pin-bio.js es un módulo ES async y puede correr antes que js/core/refresh.js (clásico, defer): se espera a que exista Refresh.
+  // pin-bio.js es un módulo ES async y puede correr antes que js/core/refresh.js: se espera a que exista Refresh.
   waitFor(() => window.Refresh, () => window.Refresh.registrar('pin-bio-boton', _renderBtn));
   _renderBtn();
 })();

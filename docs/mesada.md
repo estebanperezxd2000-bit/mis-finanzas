@@ -2,7 +2,7 @@
 
 Documentación de la sección **Mesada** de `mis-finanzas`. El HTML (pantalla y sheets) vive en `index.html`; la lógica vive en [`js/modules/mesada.js`](./js/modules/mesada.js), un solo archivo con dos partes: la Parte 1 son las reglas de negocio (sin DOM) y la Parte 2 la pantalla. Pensada para volver a leerla en unos meses y entender el módulo sin releer el código: qué problema resuelve, qué reglas no se deben romper, qué datos guarda y por qué, cómo fluye la información, y qué decisiones de diseño se tomaron. Los detalles de implementación (funciones, ids de DOM) aparecen al final, como referencia rápida — no como el foco del documento.
 
-Los bugs ya corregidos y el detalle de cada fix viven en [`CHANGELOG.md`](./CHANGELOG.md#mesada), no acá.
+Los bugs ya corregidos y el detalle de cada fix viven en [`changelog/mesada.md`](./changelog/mesada.md), no acá.
 
 ---
 
@@ -56,6 +56,7 @@ Todo vive en `S.mesadas`:
 ```js
 S.mesadas = {
   papa: {
+    personaId: "...",                           // opcional: persona de la app que es tu papá (botón «Vincular persona»); lo mismo en `mama`
     cuotas: { "2025": 90000, "2026": 90000 },   // cuota mensual por año
     pagos: {
       "2026-6": {                                // key = "<año>-<mesIndex 0-11>"
@@ -63,13 +64,13 @@ S.mesadas = {
         fecha: "2026-07-05",
         destino: "nu",          // cuenta donde se metió la plata (modo simple) — nunca una TC
         splits: [                              // o bien, un arreglo si se dividió entre varias cuentas
-          { fuente: "nequi", monto: 50000, _movSecId: "abc123" },
-          { fuente: "cajita:xyz", monto: 30000, _movSecId: "def456" }
+          { fuente: "nequi", monto: 50000, _movimientoSecId: "abc123" },
+          { fuente: "cajita:xyz", monto: 30000, _movimientoSecId: "def456" }
         ],
         nota: "",
-        _movSecId: "abc123",    // id del movimiento espejo en la cuenta destino (solo modo simple)
+        _movimientoSecId: "abc123",    // id del movimiento espejo en la cuenta destino (solo modo simple)
         origenEncargo: {        // solo si se pagó con plata de un encargo (ver §2)
-          encargoId: "...", movId: "...", nombre: "Papá",
+          encargoId: "...", movimientoId: "...", nombre: "Papá",
           sumado: true          // la plata se sumó a una cuenta destino (false si el destino quedó vacío)
         },
 
@@ -77,7 +78,7 @@ S.mesadas = {
         cuotaEsperada: 80000,        // snapshot de la cuota cuando se marcó pendiente
         pendiente: 20000,            // cuánto falta por recibir (0 = ya saldado)
         pendienteHistorial: [        // abonos posteriores que fueron cerrando `pendiente`
-          { monto: 20000, fecha: "2026-07-20", destino: "nequi", nota: "", _movSecId: "ghi789",
+          { monto: 20000, fecha: "2026-07-20", destino: "nequi", nota: "", _movimientoSecId: "ghi789",
             origenEncargo: {...} }   // igual que arriba, si ese abono también salió de un encargo
         ]
       }
@@ -89,23 +90,23 @@ S.mesadas = {
 S.mesadaAnio  // año que se está viendo actualmente en la pantalla (nav ← →)
 ```
 
-**`origenEncargo`:** `movId` es la salida que se creó en el encargo al pagar; borrar el pago (o el abono) la quita de ahí.
+**`origenEncargo`:** `movimientoId` es la salida que se creó en el encargo al pagar; borrar el pago (o el abono) la quita de ahí.
 
-**`_movSecId`:** id del movimiento "espejo" generado en la cuenta destino (ver §7). Solo existe si el destino era una cuenta rastreable — si el destino quedó vacío ("No especificar / lo gasté"), no hay `_movSecId` porque no hubo ninguna cuenta que tocar.
+**`_movimientoSecId`:** id del movimiento "espejo" generado en la cuenta destino (ver §7). Solo existe si el destino era una cuenta rastreable — si el destino quedó vacío ("No especificar / lo gasté"), no hay `_movimientoSecId` porque no hubo ninguna cuenta que tocar.
 
 ---
 
 ### Clase de los movimientos (2026-10-09)
 
-Desde 2026-10-09 todo movimiento de ingreso/gasto lleva `clase` (`ingreso` · `gasto` · `neutro` · `ajuste`), escrita al crearlo, y los totales del mes (`Periodo`) la leen en vez de deducirla de etiquetas. Ver `libro-de-movimientos.md` (el libro no clasifica: lo hace `clase`) y `CHANGELOG.md#infraestructura--seguridad`.
+Desde 2026-10-09 todo movimiento de ingreso/gasto lleva `clase` (`ingreso` · `gasto` · `neutro` · `ajuste`), escrita al crearlo, y los totales del mes (`Periodo`) la leen en vez de deducirla de etiquetas. Ver `libro-de-movimientos.md` (el libro no clasifica: lo hace `clase`) y `changelog/infraestructura-seguridad.md`.
 
-- El espejo de un pago de Mesada en la cuenta destino (`registrarMovEspejo` con `origen: 'Mesada'`) es `neutro`: el ingreso de la mesada se cuenta una sola vez, en `Periodo.mesadaDelMes` (por la fecha del pago).
+- El espejo de un pago de Mesada en la cuenta destino (`registrarMovimientoEspejo` con `origen: 'Mesada'`) es `neutro`: el ingreso de la mesada se cuenta una sola vez, en `Periodo.mesadaDelMes` (por la fecha del pago).
 
 ### Mes que cubre vs. fecha en que te pagaron
 
 La clave del pago (`"2026-0"` = enero 2026) es el mes que la mesada **cubre**: sirve para saber qué mes está pagado, pendiente o perdido en esta pantalla. El **ingreso**, en cambio, cuenta en el mes de la fecha del pago (`fecha`), igual que cualquier otra plata que entra y que el historial de patrimonio: una mesada de enero que te pagan el 26 de octubre es ingreso de octubre. Cada abono de un pendiente cuenta en su propia fecha. La regla vive en `Periodo.mesadaEntradas()`/`mesadaDelMes()`; sin monto guardado se usa la cuota del año y sin fecha, el mes que cubre.
 
-Al registrar, el sheet «Registrar pago» lo dice bajo la fecha cuando no coinciden y se actualiza al cambiarla: «Cubre Ene 2026, pero cuenta como ingreso de este mes: el mes en que te la pagan.» (`mesadaAvisoMesPago(key, fecha)` → `#mpAvisoMes`). Es solo informativo: pagar con atraso es un caso legítimo.
+Al registrar, el sheet «Registrar pago» lo dice bajo la fecha cuando no coinciden y se actualiza al cambiarla: «Corresponde a Ene 2026, pero se cuenta como ingreso de Nov 2026, el mes de la fecha de pago.» (siempre con el nombre del mes, nunca «este mes»; si la fecha cae en el mes que se paga, no aparece nada) (`mesadaAvisoMesPago(key, fecha)` → `#mesadaPagoAvisoMes`). Es solo informativo: pagar con atraso es un caso legítimo.
 
 ## 5. Flujo
 
@@ -153,18 +154,18 @@ Para CADA uno, mesadaRevertirAbono():
 Borrar el registro del mes
 ```
 
-Todas las reversiones de saldo usan `descontarFuente(..., { exacto: true })`: sin piso en 0, para que borrar y volver a registrar un pago no deje la cuenta con un saldo distinto al real (ver `CHANGELOG.md#patrimonio-y-cálculos-globales`, 2026-09-30). La reversión usa el **monto guardado en el abono**, no el del movimiento del encargo: si esa salida ya no existe, igual se devuelve la plata a la cuenta.
+Todas las reversiones de saldo usan `descontarFuente(..., { exacto: true })`: sin piso en 0, para que borrar y volver a registrar un pago no deje la cuenta con un saldo distinto al real (ver `changelog/patrimonio-y-calculos-globales.md`, 2026-09-30). La reversión usa el **monto guardado en el abono**, no el del movimiento del encargo: si esa salida ya no existe, igual se devuelve la plata a la cuenta.
 
 ---
 
 ## 6. Casos especiales
 
-- **Subir la cuota a mitad de año** puede hacer que meses anteriores del mismo año (ya pagados completos en su momento) aparezcan sugeridos como "¿marcar como pendiente?" al abrir su detalle — porque la cuota se compara siempre contra el valor vigente hoy, no contra la que regía ese mes. No corrompe nada (es solo un botón sugerido, nada se marca solo), pero puede ser confuso si no se sabe que pasa esto.
+- **Subir la cuota a mitad de año** puede hacer que meses anteriores del mismo año (ya pagados completos en su momento) aparezcan sugeridos como "¿marcar como pendiente?" al abrir su detalle — porque la cuota se compara siempre contra el valor vigente hoy, no contra la que registrosía ese mes. No corrompe nada (es solo un botón sugerido, nada se marca solo), pero puede ser confuso si no se sabe que pasa esto.
 - **Sin destino especificado** ("No especificar / lo gasté"): el mes cuenta igual como recibido en las estadísticas, pero no mueve ningún saldo ni genera movimiento espejo.
 - **Un mes registrado con menos plata que la cuota pero nunca marcado como pendiente** (típico de registros viejos): muestra un aviso neutro para marcarlo retroactivamente como deuda, sin perder nada de lo ya guardado.
 - **Abono mal cargado:** se puede deshacer un abono puntual del historial de pendiente (con confirmación), revirtiendo su plata, su movimiento espejo, y devolviendo ese monto de `monto` a `pendiente`.
-- **La salida de un encargo creada por Mesada no se borra desde Encargos.** Su efecto real vive acá (suma a la cuenta destino + espejo); borrarla desde Encargos devolvería la plata al encargo pero dejaría el pago contándola. `deleteMovEncargo` lo reconoce con `mesadaOrigenDeMovEncargo(movId)` (`calc-helpers.js`; mira los pagos y abonos guardados, no una marca en el movimiento, así que también cubre las salidas anteriores a este cambio) y avisa que se borra desde Mesada.
-- **Limitación conocida del match por nombre:** "Papas" (la comida) es indistinguible de "Papás" (plural de papá) y entra como candidato, y un encargo que se llame de otra forma ("Carlos") no aparece. Es solo una opción de una lista; la solución es ponerle al encargo un nombre que diga papá/mamá. Si esto llega a ser un problema real, la alternativa sería guardar un vínculo explícito `S.mesadas[parent].personaId` (se probó el 2026-10-08 y se quitó por no hacer falta; ver `CHANGELOG.md#mesada`).
+- **La salida de un encargo creada por Mesada no se borra desde Encargos.** Su efecto real vive acá (suma a la cuenta destino + espejo); borrarla desde Encargos devolvería la plata al encargo pero dejaría el pago contándola. `deleteMovimientoEncargo` lo reconoce con `mesadaOrigenDeMovimientoEncargo(movimientoId)` (`calc-helpers.js`; mira los pagos y abonos guardados, no una marca en el movimiento, así que también cubre las salidas anteriores a este cambio) y avisa que se borra desde Mesada.
+- **Limitación conocida del match por nombre:** "Papas" (la comida) es indistinguible de "Papás" (plural de papá) y entra como candidato, y un encargo que se llame de otra forma ("Carlos") no aparece. Es solo una opción de una lista; la solución es ponerle al encargo un nombre que diga papá/mamá. Si esto llega a ser un problema real, la alternativa sería guardar un vínculo explícito `S.mesadas[parent].personaId` (se probó el 2026-10-08 y se quitó por no hacer falta; ver `changelog/mesada.md`).
 - **Sin encargos cargados:** Mesada consulta a Encargos con guards, sin forzar su carga. Si el módulo todavía no cargó, o no hay un encargo con saldo que coincida con papá/mamá, la opción de pagar con encargo simplemente no aparece.
 - **Borrar un pago viejo:** si borrarlo movería el saldo de una cuenta o de un encargo, aplica la protección por antigüedad (ver `docs/proteccion-antiguedad-movimientos.md`): los muy viejos se bloquean y los viejos piden una confirmación específica. Las "operaciones posteriores" que cuentan son los pagos de mesada más nuevos que tocaron alguna de las mismas cuentas. Un pago 100% "Sin especificar" (sin cuenta ni encargo afectados) no tiene nada que proteger y se borra normal.
 
@@ -174,7 +175,7 @@ Todas las reversiones de saldo usan `descontarFuente(..., { exacto: true })`: si
 
 Cuando entra plata de mesada y se elige una cuenta destino, además de sumarle el saldo, mesada deja un **movimiento visible** en el historial de esa cuenta — el mismo mecanismo que usan Prestado, Encargos y Spotify. Aparece con un candado 🔒 y la etiqueta "Automático": indica que vino de otra sección y que solo se puede eliminar desde ahí, no directamente desde el historial de la cuenta.
 
-El `id` de cada movimiento espejo se guarda junto al dato que lo originó (`_movSecId` en el pago simple, en cada `split`, o en cada entrada de `pendienteHistorial`) para poder encontrarlo y borrarlo después sin ambigüedad.
+El `id` de cada movimiento espejo se guarda junto al dato que lo originó (`_movimientoSecId` en el pago simple, en cada `split`, o en cada entrada de `pendienteHistorial`) para poder encontrarlo y borrarlo después sin ambigüedad.
 
 > Cuentas (`getMovimientosCuenta()`) debe leer estos movimientos **únicamente** desde `S.movimientos` — nunca reconstruirlos a partir de `S.mesadas`: cada pago aparecería dos veces, el segundo sin candado.
 
@@ -191,10 +192,10 @@ El `id` de cada movimiento espejo se guarda junto al dato que lo originó (`_mov
 
 ## 9. Referencia de implementación
 
-**Ubicación:** el HTML de la pantalla y los sheets sigue en `index.html`; los estilos en `styles.css` (clases `.mesada-grid`, `.mes-dot*` y el bloque `.ms-*`). La lógica vive en `js/modules/mesada.js`, un solo archivo (grupo lazy `Loader.GROUPS.mesada` en `js/core/lazy-loader.js`, sin `<script>` propio) con dos partes: **Parte 1, reglas de negocio** (sin DOM) y **Parte 2, pantalla**. La Parte 2 solo habla con la Parte 1 por su API. Depende de:
+**Ubicación:** el HTML de la pantalla y los sheets sigue en `index.html`; los estilos en `styles.css` (clases `.mesada-*`, `.mes-dot*` y el bloque `.ms-*`) y `pc.css`. La lógica vive en `js/modules/mesada.js`, un solo archivo (grupo lazy `Loader.GROUPS.mesada` en `js/core/lazy-loader.js`, sin `<script>` propio) con dos partes: **Parte 1, reglas de negocio** (sin DOM) y **Parte 2, pantalla**. La Parte 2 solo habla con la Parte 1 por su API. Depende de:
 
 - los globals del núcleo (`S`, `save`, `refresh`, `fmt`, `parseMoney`, `hoy`, `uid`, `toast`, `openSheet`/`closeSheet`, `dialogo`, `sumarFuente`/`descontarFuente`, etc.);
-- `js/core/calc-helpers.js` (`_ensureMesadas`, `_getCuotaAnio`, `getMesadaData`, `_mesNombreDeKey`, `mesadaOrigenDeMovEncargo`) y `js/core/cuenta-efectos.js` (`registrarMovEspejo`/`borrarMovEspejo`);
+- `js/core/calc-helpers.js` (`_ensureMesadas`, `_getCuotaAnio`, `getMesadaData`, `_mesNombreDeKey`, `mesadaOrigenDeMovimientoEncargo`) y `js/core/cuenta-efectos.js` (`registrarMovimientoEspejo`/`borrarMovimientoEspejo`);
 - `js/core/events.js` (`Events`) y el motor de split compartido (`js/core/split.js`);
 - `encargos.js`, solo de forma opcional y con guards.
 
@@ -204,15 +205,15 @@ El `id` de cada movimiento espejo se guarda junto al dato que lo originó (`_mov
 
 ### Pantalla principal (`#screen-mesada`)
 
-Navegación de año (`#anioLabel`, `cambiarAnio(d)`, rango ±2 años), resumen (`#ms-total`, `#ms-count`), banner de pendientes (`#ms-pendiente-banner`) y una tarjeta por padre con input de cuota (`mesadaMontoPapa`/`mesadaMontoMama`, `data-save-refresh`) y grilla de 12 puntos. `renderMesada()` solo pinta lo que calcula `mesadaResumenAnio()`.
+Título «Mesada de papás» con navegación de año (`#anioLabel`, `cambiarAnio(d)`, rango ±2 años; en PC la tira `#anio-tira` vive en la cabecera), resumen (`#ms-total`, `#ms-count`), cuadro «Pendiente» (`#ms-pendiente-banner`, texto en `#ms-pendiente-texto`) y una tarjeta por padre (`.mesada-persona`) con input de cuota (`mesadaMontoPapa`/`mesadaMontoMama`, `data-save-refresh`) y cuadrícula de 12 meses en 4 columnas (cada casilla trae el mes y, debajo, el monto, «debe …» o «sin pagar»). `renderMesada()` solo pinta lo que calcula `mesadaResumenAnio()`. Diseño de referencia y detalle de PC/celular: `docs/version-pc.md` §10 bis.
 
 ### Sheets
 
 | Sheet | id del overlay | Campos principales | Función que abre |
 |---|---|---|---|
-| Registrar pago | `sheet-mesada-pago` | `mpMonto`, `mpFecha`, `mpAvisoMes`, `mpDestino`, `mpModoSimple`/`mpModoDividido`, `mpQuedaDebiendo`, `mpNota`, `mpUsarEncargo` (+ `mpEncargoSel`, `mpEncargoCuentaSel`) | `abrirRegistrarMesada(parent, key, nombre)` |
+| Registrar pago | `sheet-mesada-pago` | `mesadaPagoMonto`, `mesadaPagoFecha`, `mesadaPagoAvisoMes`, `mesadaPagoDestino`, `mesadaPagoModoSimple`/`mesadaPagoModoDividido`, `mesadaPagoQuedaDebiendo`, `mesadaPagoNota`, `mesadaPagoUsarEncargo` (+ `mesadaPagoEncargoSel`, `mesadaPagoEncargoCuentaSel`) | `abrirRegistrarMesada(parent, key, nombre)` |
 | Detalle del mes | `sheet-mesada-det` | `mdTitle`, `mdContent` (armado por JS, con clases `.ms-*`) | `abrirDetalleMesada(parent, key, nombre)` |
-| Resolver pendiente | `sheet-mesada-pend` | `mppMonto`, `mppFecha`, `mppDestino`, `mppNota`, `mppPreview`, `mppUsarEncargo` (+ `mppEncargoSel`, `mppEncargoCuentaSel`) | `abrirResolverPendiente(parent, key)` |
+| Resolver pendiente | `sheet-mesada-pend` | `mesadaPagoPendienteMonto`, `mesadaPagoPendienteFecha`, `mesadaPagoPendienteDestino`, `mesadaPagoPendienteNota`, `mesadaPagoPendientePreview`, `mesadaPagoPendienteUsarEncargo` (+ `mesadaPagoPendienteEncargoSel`, `mesadaPagoPendienteEncargoCuentaSel`) | `abrirResolverPendiente(parent, key)` |
 
 ### Parte 1 — Reglas (sin DOM)
 
@@ -231,7 +232,7 @@ Navegación de año (`#anioLabel`, `cambiarAnio(d)`, rango ±2 años), resumen (
 | `mesadaEncargosDelParent(parent)` | Encargos candidatos (con saldo y cuyo nombre coincide con papá/mamá) |
 | `mesadaDisponibleEncargo(id, cuenta)` / `mesadaCuentasDeEncargo(id)` | Lectura opcional de Encargos con guards |
 | `mesadaCuotaDeKey(parent, key)` | Cuota del **año del mes** (no del año visible) |
-| `mesadaFuentesDe(info)` / `mesadaTieneCuentaAfectada(info)` / `mesadaOpsPosteriores(...)` | Insumos de la protección por antigüedad (incluyen las cuentas de los abonos) |
+| `mesadaFuentesDe(info)` / `mesadaTieneCuentaAfectada(info)` / `mesadaOperacionesPosteriores(...)` | Insumos de la protección por antigüedad (incluyen las cuentas de los abonos) |
 
 ### Parte 2 — Pantalla
 
@@ -239,10 +240,10 @@ Navegación de año (`#anioLabel`, `cambiarAnio(d)`, rango ±2 años), resumen (
 |---|---|
 | `renderMesada()` | Pinta la pantalla a partir de `mesadaResumenAnio()` |
 | `clickMesDot`, `cambiarAnio` | Navegación (registrar o detalle según haya datos / ±1 año guardando antes las cuotas) |
-| `abrirRegistrarMesada`, `actualizarMpPreview`, `mesadaAvisoMesPago`/`actualizarMpAvisoMes`, `_syncMpDebeWrap`, `confirmarMesadaPago` | Sheet de registrar pago (lee el formulario y llama a `mesadaRegistrarPago`) |
-| `abrirResolverPendiente`, `actualizarMppPreview`, `confirmarPendienteMesada` | Sheet de pago de lo pendiente |
+| `abrirRegistrarMesada`, `actualizarMesadaPagoPreview`, `mesadaAvisoMesPago`/`actualizarMesadaPagoAvisoMes`, `_syncMesadaPagoDebeWrap`, `confirmarMesadaPago` | Sheet de registrar pago (lee el formulario y llama a `mesadaRegistrarPago`) |
+| `abrirResolverPendiente`, `actualizarMesadaPagoPendientePreview`, `confirmarPendienteMesada` | Sheet de pago de lo pendiente |
 | `abrirDetalleMesada`, `eliminarMesadaPago`, `marcarMesadaComoPendiente`, `deshacerPendienteMesada` | Detalle y acciones (el borrado aplica la protección por antigüedad antes de llamar al dominio) |
-| `_crearEncargoPicker(prefijo, estado, onCambio)` | Widget "pagó con plata de un encargo": una instancia por sheet (`mp`, `mpp`) |
+| `_crearEncargoPicker(prefijo, estado, onCambio)` | Widget "pagó con plata de un encargo": una instancia por sheet (`mesadaPago`, `mesadaPagoPendiente`) |
 | `_mesadaMostrarError(r, previewId)` | Traduce un rechazo del dominio a mensaje (escapa el nombre del encargo) |
 
 ---
@@ -253,7 +254,11 @@ Navegación de año (`#anioLabel`, `cambiarAnio(d)`, rango ±2 años), resumen (
 node --test "tests/*.test.js"
 ```
 
-- la suite `mesada-reglas` de `tests/mesada.test.js` — reglas (Parte 1): forma de lo guardado, validación sin efectos a medias, **ida y vuelta exacta** (registrar/abonar y luego borrar deja `S` idéntico, en 8 escenarios), regresiones de los bugs de `CHANGELOG.md#mesada` (2026-10-08), vencimientos, resumen anual, encargos candidatos.
+- la suite `mesada-reglas` de `tests/mesada.test.js` — reglas (Parte 1): forma de lo guardado, validación sin efectos a medias, **ida y vuelta exacta** (registrar/abonar y luego borrar deja `S` idéntico, en 8 escenarios), regresiones de los bugs de `changelog/mesada.md` (2026-10-08), vencimientos, resumen anual, encargos candidatos.
 - la suite `mesada-ui` de `tests/mesada.test.js` — la Parte 2 real sobre la Parte 1 real, con el DOM simulado de `tests/support/fake-dom.js`: abrir, escribir, confirmar, previews, detalle (clases y escape).
 
 No cubren el navegador real (layout, CSS, eventos nativos, `html`/`raw` reales): eso sigue requiriendo una pasada manual.
+
+## Borrar un registro
+
+`eliminarMesadaPago(parent, key)` siempre pide confirmación («Borrar registro», con el nombre del padre y el mes y, si el pago movió el saldo de una cuenta o encargo, la advertencia de que se resta). Si además el pago es «viejo» (protección por antigüedad), esa confirmación ya hace de aviso y no se pregunta dos veces; si está bloqueado, solo avisa.

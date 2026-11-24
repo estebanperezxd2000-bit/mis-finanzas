@@ -1,6 +1,7 @@
 'use strict';
 const fs = require('fs');
 const vm = require('vm');
+const { aClasico, PRELUDIO } = require('../../scripts/modulos-a-clasico');
 const { createDocumentStub } = require('./dom-stub');
 
 /**
@@ -37,7 +38,7 @@ function loadApp(appFiles, options = {}) {
   const sandbox = {
     console,
     Math, Date, JSON, Object, Array, String, Number, Boolean, RegExp, Error,
-    Set, Map, Promise,
+    Set, Map, WeakMap, Promise,
     parseInt, parseFloat, isNaN, isFinite, Infinity, NaN,
     encodeURIComponent, decodeURIComponent,
     setTimeout, clearTimeout, setInterval, clearInterval,
@@ -93,8 +94,10 @@ function loadApp(appFiles, options = {}) {
   // core-state.js ya no es un archivo: se expande a sus partes, en el orden de index.html (ver nucleo-estado.js).
   appFiles = appFiles.flatMap(f => /(^|[\\/])core-state\.js$/.test(f) ? require('./nucleo-estado').RUTAS : [f]);
 
+  vm.runInContext(PRELUDIO, context);
   for (const file of appFiles) {
-    const code = fs.readFileSync(file, 'utf8');
+    // Los archivos de la app son módulos ES (M6): aquí se evalúan como script, sin `import`/`export` (el ámbito global hace de puente).
+    const code = aClasico(fs.readFileSync(file, 'utf8'));
     vm.runInContext(code, context, { filename: file });
   }
 

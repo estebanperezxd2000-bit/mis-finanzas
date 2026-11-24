@@ -9,7 +9,7 @@
    una revelación por pantalla completa, avanzando con tap, swipe o
    flechas del teclado, con una barra de progreso tipo stories arriba.
    Reemplaza la versión anterior de una sola pantalla con scroll de
-   tarjetas apiladas (ver CHANGELOG.md#wrapped) — era el punto abierto
+   tarjetas apiladas (ver changelog/wrapped.md) — era el punto abierto
    de diseño documentado en wrapped.md §7 ("reconsiderar UX hacia una
    presentación tipo slide/story tap-through").
 
@@ -66,18 +66,31 @@
    Depende de (todas con guard typeof, ninguna es obligatoria):
    - `_esGastoVarNoReal` / `_esEntradaEspejoNoIngreso` — helpers de
      Análisis financiero (núcleo eager, ver analisis-financiero.md §9bis).
-   - `window._alcRachaAhorro` — expuesta por alcancia.js (grupo lazy
+   - `window._alcanciaRachaAhorro` — expuesta por alcancia.js (grupo lazy
      aparte); si Alcancía no cargó todavía, esa cifra puntual no se
      muestra.
-   - `getPersonaNombre` — expuesta por personas.js (núcleo eager, ver
-     personas.md §8); si no existe todavía, cada dominio nuevo cae al
-     nombre crudo que ya guarda su propio registro (`d.nombre`,
-     `enc.nombre`), escapado igual con `escHtml`.
+   - `Personas.nombre` — núcleo eager (personas-core.js): el nombre de
+     cada persona sale siempre de ahí (los registros no guardan copia),
+     escapado con `escHtml`.
    - `showScreen` — núcleo eager (navegacion.js); usada solo para volver
      a "Más" al cerrar la historia. Con guard typeof: si no existe, el
      botón cerrar simplemente no navega (no rompe nada).
    - `fmt`, `escHtml`, `hoy` — núcleo eager.
    ═══════════════════════════════════════════════════════════════ */
+import { exponerGlobales, exponerVariables } from '../core/puente.js';
+import { UMBRALES } from '../core/umbrales.js';
+import { esAbonoDeDeuda, escHtml, fmt, hoy } from '../core/estado.js';
+import { Periodo } from '../core/periodo.js';
+import { Fecha } from '../core/fecha.js';
+import { _esGastoVarNoReal, entradasIngresoReal } from '../core/ingresos.js';
+import { _fechaSafe, toast } from '../core/dialogos.js';
+import { registrarSonda, save } from '../core/persistencia.js';
+import { Personas } from '../core/personas-core.js';
+import { Deudas } from '../core/calc-helpers.js';
+import { SIN_DATO } from '../core/utilidades-ui.js';
+import { showScreen } from '../core/navegacion.js';
+import { Ui } from '../core/ui.js';
+
 (function(){
 'use strict';
 
@@ -215,7 +228,7 @@ function _wrappedLogDebug(S){
    (`_wrappedLogDebug`) — útil, pero obliga a tener las devtools abiertas y
    no muestra NADA sobre por qué el motor de insights/personalidad eligió
    lo que eligió. Este panel es puramente de inspección para quien ajusta
-   el motor (mismo criterio que ya regía la consola): se arma a partir del
+   el motor (mismo criterio que ya registrosía la consola): se arma a partir del
    snapshot que `_wrappedBuildSlides` ya deja en `slides._wrappedDebugInfo`
    (ver ese comentario) — no dispara ningún cálculo nuevo, no guarda nada
    en `S`, y jamás se inyecta al DOM si `_wrappedDebugOn()` es falso (ver
@@ -389,7 +402,7 @@ function _wrappedCategoriaMasConcentrada(items){
    mes" pudiera dar un balance más bajo (incluso negativo) que el que
    Análisis financiero ya muestra para ese mismo mes, con la misma plata
    real. Se lee `S.mesadas`/`S.ingresosFijos` directo, sin pasar por
-   `getMesadaData()`/`_getCuotaAnio()`/`getIngresosFijosMes()` (funciones
+   `getMesadaData()`/`_getCuotaAnio()` (funciones
    de otros módulos lazy que pueden no estar cargados) — no hace falta ni
    el guard `typeof` porque acá solo se lee la FORMA de `S`, ya
    documentada (mesada.md §4, analisis-financiero.md §3), igual que el
@@ -449,7 +462,7 @@ function _wrappedEntradasIngreso(S){
 
 function _wrappedCalcularPeriodo(S, tipo, mesK, anioK){
   S = S || {};
-  const movs = S.movimientos || [];
+  const movimientos = S.movimientos || [];
 
 
   const { gastosVarPeriodo, pagosFijosPeriodo } = _wrappedItemsRealesPeriodo(S, tipo, mesK, anioK);
@@ -501,7 +514,7 @@ function _wrappedCalcularPeriodo(S, tipo, mesK, anioK){
   // Alcancía del período: depósitos del ciclo activo dentro del rango +
   // ciclos ya destapados cuyo cierre (fechaFin) cae dentro del rango.
   //
-  // Verificado contra alcancia.js/alcancia.md (2026-09-12): al destapar,
+  // Verificado contra alcancia.js/alcancia.md: al destapar,
   // `a.saldoRegistrado` se resetea a 0 de inmediato y el ciclo cerrado
   // queda copiado en `a.historial[]` — pero `a.movimientos[]` NO se limpia
   // en ese momento. Solo se limpia cuando el usuario elige explícitamente
@@ -693,14 +706,14 @@ function _wrappedPatrimonioAnio(S, anioK){
     const baseAnio = delAnio.reduce((a, k) => a + (cierres[k].base || 0), 0);
     diff = (fin - inicio) - baseAnio;
   } else {
-    const hist = (S.patrimonioHistorial || [])
+    const historial = (S.patrimonioHistorial || [])
       .filter(p => (p.fecha||'').slice(0,4) === anioK)
       .slice()
       .sort((a,b) => (a.fecha||'').localeCompare(b.fecha||''));
-    if(hist.length < 2) return null;
-    const primero = hist[0], ultimo = hist[hist.length-1];
+    if(historial.length < 2) return null;
+    const primero = historial[0], ultimo = historial[historial.length-1];
     let montoBaseAcumulado = 0;
-    hist.forEach(p => { if(p !== primero) montoBaseAcumulado += (p.montoBase||0); });
+    historial.forEach(p => { if(p !== primero) montoBaseAcumulado += (p.montoBase||0); });
     inicio = val(primero); fin = val(ultimo);
     diff = (fin - inicio) - montoBaseAcumulado;
   }
@@ -723,19 +736,19 @@ function _wrappedPatrimonioAnio(S, anioK){
 function _wrappedSerieMensualAnio(S, anioK){
   const { anioActual, mesActualIdx } = _wrappedAnioYMesActual();
   const mesMax = (anioK === anioActual) ? mesActualIdx : 11;
-  const hist = (S.patrimonioHistorial || [])
+  const historial = (S.patrimonioHistorial || [])
     .filter(p => p.fecha)
     .slice()
     .sort((a,b) => a.fecha.localeCompare(b.fecha));
   const val = p => (typeof p.valorVisible === 'number') ? p.valorVisible : (p.valor||0);
 
   let ultimoConocido = null;
-  hist.forEach(p => { if(p.fecha.slice(0,4) < anioK) ultimoConocido = val(p); });
+  historial.forEach(p => { if(p.fecha.slice(0,4) < anioK) ultimoConocido = val(p); });
 
   const serie = [];
   for(let m=0; m<=mesMax; m++){
     const mesK = Fecha.mesKey(anioK, m+1);
-    const puntosDelMes = hist.filter(p => p.fecha.slice(0,7) === mesK);
+    const puntosDelMes = historial.filter(p => p.fecha.slice(0,7) === mesK);
     if(puntosDelMes.length) ultimoConocido = val(puntosDelMes[puntosDelMes.length-1]);
     serie.push({ mesK, valor: ultimoConocido });
   }
@@ -1058,7 +1071,7 @@ const WRAPPED_SNAPSHOT_VERSION = 1;
 const _WRAPPED_BTN_GUARDAR = '<button type="button" class="wrapped-cta" data-wrapped-action="guardar">Guardar este Wrapped</button>';
 const _WRAPPED_BTN_GUARDADO = '<button type="button" class="wrapped-cta ghost" disabled>Guardado</button>';
 function _wrappedMarcarGuardado(slides){
-  return slides.map(sl => (sl.id === 'cierre' ? Object.assign({}, sl, { html: sl.html.replace(_WRAPPED_BTN_GUARDAR, _WRAPPED_BTN_GUARDADO) }) : sl));
+  return slides.map(slide => (slide.id === 'cierre' ? Object.assign({}, slide, { html: slide.html.replace(_WRAPPED_BTN_GUARDAR, _WRAPPED_BTN_GUARDADO) }) : slide));
 }
 
 function _wrappedSinMascara(html){ return html.replace(/\s*\bsaldo-hidden\b/g, ''); }
@@ -1070,10 +1083,10 @@ function _wrappedSnapshotDe(slides){
   return {
     version: WRAPPED_SNAPSHOT_VERSION,
     generadoEn: hoy(),
-    slides: _wrappedMarcarGuardado(slides).map(sl => {
-      const o = { id: sl.id, html: _wrappedSinMascara(sl.html) };
-      if(sl.mood) o.mood = sl.mood;
-      if(sl.confetti) o.confetti = true;
+    slides: _wrappedMarcarGuardado(slides).map(slide => {
+      const o = { id: slide.id, html: _wrappedSinMascara(slide.html) };
+      if(slide.mood) o.mood = slide.mood;
+      if(slide.confetti) o.confetti = true;
       return o;
     })
   };
@@ -1081,7 +1094,7 @@ function _wrappedSnapshotDe(slides){
 
 // Guardar un año (acción explícita del usuario): reemplaza el guardado de ese año si lo había. Nunca se llama con el mensaje de «no alcanzó».
 function _wrappedGuardar(S, anioK, slides){
-  if(slides.some(sl => sl.id === 'insuf-titular')) throw new Error('El mensaje «no alcanzó el tiempo» no se guarda');
+  if(slides.some(slide => slide.id === 'insuf-titular')) throw new Error('El mensaje «no alcanzó el tiempo» no se guarda');
   if(!S.wrappedAnios) S.wrappedAnios = {};
   S.wrappedAnios[anioK] = _wrappedSnapshotDe(slides);
   if(typeof save === 'function') save();
@@ -1090,7 +1103,7 @@ function _wrappedGuardar(S, anioK, slides){
 // Las diapositivas guardadas listas para pintar: aquí sí se aplica la preferencia actual de ocultar saldos.
 function _wrappedSlidesDeSnapshot(snap){
   const ocultar = _wrappedSaldosOcultos();
-  return snap.slides.map(sl => Object.assign({}, sl, { html: (ocultar && sl.id === 'alcancia') ? _wrappedConMascara(sl.html) : sl.html }));
+  return snap.slides.map(slide => Object.assign({}, slide, { html: (ocultar && slide.id === 'alcancia') ? _wrappedConMascara(slide.html) : slide.html }));
 }
 
 // Frase sobre el patrimonio del año. `ctx` (opcional): { balance, gastoMasGrande } del año, para explicar la CAUSA de una caída.
@@ -1217,7 +1230,7 @@ function _wrappedCopyCategoria(topCategoria){
   return base;
 }
 
-// `fmt2` (2026-09-15, ver §3 nota junto al slide "actividad"): se agrega
+// `fmt2`: se agrega
 // SOLO para poder narrar el desglose puntual de ESTE mes (ingresos y
 // gastos de un mes concreto ya era un highlight permitido vía `balance`;
 // esto simplemente lo hace explícito en vez de dejarlo implícito en la
@@ -1291,7 +1304,7 @@ function _wrappedCopyDesgloseMes(mesObj, fmt2){
    *en relación al propio gasto típico del usuario* (nunca contra un
    umbral fijo en pesos, que no tendría sentido entre personas con gastos
    de escalas muy distintas). */
-// `totalGastosAnio` (2026-09-15) se usa EXACTAMENTE como `catShare` en
+// `totalGastosAnio` se usa EXACTAMENTE como `catShare` en
 // `_wrappedCopyCategoria`: solo para derivar una proporción a mostrar
 // ("representó el X% de tus gastos"), nunca se pinta el total en crudo —
 // mismo criterio ya aceptado por §3, no una excepción nueva.
@@ -1331,7 +1344,7 @@ function _wrappedCopyGasto(gastoMasGrande, avgGasto, totalGastosAnio){
 }
 
 function _wrappedCopyAlcancia(alcanciaPeriodo, gastoMasGrande, ciclos){
-  // `ciclos` (2026-09-15): cuántas "alcancías" distintas aportaron a esta
+  // `ciclos`: cuántas "alcancías" distintas aportaron a esta
   // cifra (ciclo activo con depósitos + ciclos ya destapados este año,
   // ver el conteo en `_wrappedCalcularPeriodo`). Con 2+ se aclara antes
   // que nada — si no, el número se lee como si viniera de una sola
@@ -1436,31 +1449,31 @@ function _wrappedCopyEncargos(e, fmt2){
     // una sola persona. Ahora se agrega como frase extra, igual que ya
     // hace `_wrappedCopyPrestado` con su `topDeudor` sin importar cuántas
     // personas hubo en total.
-    const detalleTop = (e.topEncargo && e.topEncargo.nombre)
+    const detalleTop = (e.topEncargo && e.topEncargo.personaId)
       ? ' ' + _wrappedBankPick('encargos-top', [
-          `La mayor parte te la encargó ${_wrappedNombrePersona(e.topEncargo.personaId, e.topEncargo.nombre)}${(typeof fmt2 === 'function' && Number.isFinite(e.topEncargo.monto)) ? `, con ${fmt2(e.topEncargo.monto)}` : ''}.`,
-          `Quien más confió en ti para guardarle plata fue ${_wrappedNombrePersona(e.topEncargo.personaId, e.topEncargo.nombre)}.`,
-          `${_wrappedNombrePersona(e.topEncargo.personaId, e.topEncargo.nombre)} fue quien más plata te encargó cuidar.`,
-        ], e.topEncargo.nombre)
+          `La mayor parte te la encargó ${escHtml(Personas.nombre(e.topEncargo.personaId))}${(typeof fmt2 === 'function' && Number.isFinite(e.topEncargo.monto)) ? `, con ${fmt2(e.topEncargo.monto)}` : ''}.`,
+          `Quien más confió en ti para guardarle plata fue ${escHtml(Personas.nombre(e.topEncargo.personaId))}.`,
+          `${escHtml(Personas.nombre(e.topEncargo.personaId))} fue quien más plata te encargó cuidar.`,
+        ], e.topEncargo.personaId)
       : '';
     return _wrappedBankPick('encargos-varias', [
       `Repartida entre ${e.nPersonas} personas que confiaron en ti para guardarla.`,
       `${e.nPersonas} personas te encargaron su plata este año.`,
     ], e.nPersonas) + detalleTop;
   }
-  if(e.topEncargo && e.topEncargo.nombre) return _wrappedBankPick('encargos-una', [
-    `La mayor parte te la encargó ${_wrappedNombrePersona(e.topEncargo.personaId, e.topEncargo.nombre)}.`,
-    `Fue ${_wrappedNombrePersona(e.topEncargo.personaId, e.topEncargo.nombre)} quien más confió en ti para guardarle plata.`,
-    `${_wrappedNombrePersona(e.topEncargo.personaId, e.topEncargo.nombre)} te encargó su plata todo el año.`,
-  ], e.topEncargo.nombre);
+  if(e.topEncargo && e.topEncargo.personaId) return _wrappedBankPick('encargos-una', [
+    `La mayor parte te la encargó ${escHtml(Personas.nombre(e.topEncargo.personaId))}.`,
+    `Fue ${escHtml(Personas.nombre(e.topEncargo.personaId))} quien más confió en ti para guardarle plata.`,
+    `${escHtml(Personas.nombre(e.topEncargo.personaId))} te encargó su plata todo el año.`,
+  ], e.topEncargo.personaId);
   return _wrappedBankPick('encargos-generica', [
     'Plata ajena que pasó por tus manos este año.',
     'Este año también cuidaste plata que no era tuya.',
   ]);
 }
 function _wrappedCopyPrestado(p, fmt2){
-  if(p.topDeudor && p.topDeudor.nombre){
-    const nombre = _wrappedNombrePersona(p.topDeudor.personaId, p.topDeudor.nombre);
+  if(p.topDeudor && p.topDeudor.personaId){
+    const nombre = escHtml(Personas.nombre(p.topDeudor.personaId));
     const detalle = (typeof fmt2 === 'function' && Number.isFinite(p.topDeudor.n))
       ? `, con ${fmt2(p.topDeudor.monto)} prestados en ${p.topDeudor.n} movimiento${p.topDeudor.n===1?'':'s'}`
       : '';
@@ -1468,7 +1481,7 @@ function _wrappedCopyPrestado(p, fmt2){
       `Tu cliente más frecuente fue ${nombre}${detalle}.`,
       `${nombre} fue quien más confió en tu "banco" este año${detalle}.`,
       `A ${nombre} fue a quien más le prestaste${detalle}.`,
-    ], p.topDeudor.nombre);
+    ], p.topDeudor.personaId);
   }
   if(p.totalDevuelto >= p.totalPrestado && p.totalDevuelto > 0) return _wrappedBankPick('prestado-cobradoTodo', [
     'Y este año te pagaron más de lo que prestaste.',
@@ -1508,7 +1521,7 @@ function _wrappedCopyMesada(m){
   ], partes[0]);
 }
 function _wrappedCopySpotify(s, fmt2){
-  // `fmt2` (2026-09-15, mismo criterio que `_wrappedCopyDesgloseMes`):
+  // `fmt2`:
   // solo para narrar el desglose cobrado/pagado del período — ambos ya
   // eran cifras permitidas por wrapped.md §7ter (el balance ya se
   // mostraba), esto solo las hace explícitas en vez de dejarlas
@@ -1637,7 +1650,7 @@ function _wrappedAnimarLinea(slideEl){
   let len;
   try { len = path.getTotalLength(); } catch(e){ return; }
   if(!len) return;
-  // (2026-09-15) Esta función no respetaba `prefers-reduced-motion` —
+  // Esta función no respetaba `prefers-reduced-motion` —
   // a diferencia de `_wrappedAnimarNumeros` y `_wrappedLanzarConfeti`,
   // que sí lo chequean. Con movimiento reducido, la línea se muestra
   // completa de una vez, sin la transición de 1.1s.
@@ -1713,13 +1726,13 @@ function _wrappedAnimarNumeros(container, fmt2){
 function _wrappedLanzarConfeti(slideEl){
   if(typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   if(!slideEl || !slideEl.querySelector) return;
-  let cont = slideEl.querySelector('.wrapped-confetti');
-  if(!cont){
-    cont = document.createElement('div');
-    cont.className = 'wrapped-confetti';
-    slideEl.appendChild(cont);
+  let contenedor = slideEl.querySelector('.wrapped-confetti');
+  if(!contenedor){
+    contenedor = document.createElement('div');
+    contenedor.className = 'wrapped-confetti';
+    slideEl.appendChild(contenedor);
   }
-  cont.innerHTML = '';
+  contenedor.innerHTML = '';
   const colores = ['var(--accent)','var(--amber)','var(--blue)','var(--red)','var(--purple)'];
   for(let i=0; i<18; i++){
     const pieza = document.createElement('i');
@@ -1727,7 +1740,7 @@ function _wrappedLanzarConfeti(slideEl){
     pieza.style.background = colores[i % colores.length];
     pieza.style.animationDelay = (Math.random()*0.35).toFixed(2) + 's';
     pieza.style.transform = 'rotate(' + Math.floor(Math.random()*360) + 'deg)';
-    cont.appendChild(pieza);
+    contenedor.appendChild(pieza);
   }
 }
 
@@ -1904,7 +1917,7 @@ function _wrappedSlideBignum(eyebrow, headline, value, color, opts){
   // faltante en un registro viejo) el slide igual debe poder pintarse —
   // nunca con `NaN` visible en el atributo ni en el conteo animado.
   const valorSeguro = Number.isFinite(value) ? value : 0;
-  // `opts.ocultarValor` (2026-09-15): reusa la MISMA clase `.saldo-hidden`
+  // `opts.ocultarValor`: reusa la MISMA clase `.saldo-hidden`
   // que ya existe en `styles.css` para "Ocultar saldos" (blur + bloquea
   // selección/click) — no se inventa un mecanismo de ocultamiento nuevo.
   // Solo tapa visualmente el número; el valor real sigue en el DOM
@@ -2008,9 +2021,9 @@ function _wrappedFasesAnio(S, anioK, mesMax){
 
   const { enPrimera, enSegunda } = _wrappedCorteMitadAnio(anioK, mesMax);
 
-  const alcMovs = (S.alcancia && Array.isArray(S.alcancia.movimientos)) ? S.alcancia.movimientos : [];
-  const ahorroPrimera = alcMovs.filter(m => m && enPrimera(m.fecha)).reduce((s,m)=>s+(m.monto||0),0);
-  const ahorroSegunda = alcMovs.filter(m => m && enSegunda(m.fecha)).reduce((s,m)=>s+(m.monto||0),0);
+  const alcanciaMovimientos = (S.alcancia && Array.isArray(S.alcancia.movimientos)) ? S.alcancia.movimientos : [];
+  const ahorroPrimera = alcanciaMovimientos.filter(m => m && enPrimera(m.fecha)).reduce((s,m)=>s+(m.monto||0),0);
+  const ahorroSegunda = alcanciaMovimientos.filter(m => m && enSegunda(m.fecha)).reduce((s,m)=>s+(m.monto||0),0);
   const cambioAhorro = _wrappedCambioFuerte(ahorroPrimera, ahorroSegunda);
   if(cambioAhorro){
     return { tipo:'ahorro', direccion: cambioAhorro.direccion };
@@ -2108,21 +2121,6 @@ function _wrappedSiTuAnioFuera(ctx){
    casos especiales.
    ═══════════════════════════════════════════════════════════════════════ */
 
-/* Nombre de una persona: preferimos el sistema unificado de Personas
-   (`getPersonaNombre`, ver personas.md §2 — "el nombre mostrado siempre
-   se resuelve preferentemente desde la persona vinculada") y caemos al
-   nombre crudo que cada módulo ya guarda si Personas no cargó o el
-   registro no tiene `personaId` ("sin perfil", ver personas.md §2/§6).
-   Escapa siempre — un nombre de persona es dato del usuario. */
-function _wrappedNombrePersona(personaId, nombreCrudo){
-  let nombre = nombreCrudo || 'Alguien';
-  if(personaId && typeof getPersonaNombre === 'function'){
-    const resuelto = getPersonaNombre(personaId);
-    if(resuelto) nombre = resuelto;
-  }
-  return escHtml(nombre);
-}
-
 /* ─── ENCARGOS ─────────────────────────────────────────────────────────
    "Cuánta plata ajena te encargaron cuidar este año" — suma de
    movimientos tipo 'entrada' (ver encargos.md §4: es lo único que
@@ -2138,19 +2136,19 @@ function _wrappedCalcularEncargos(S, tipo, mesK, anioK){
   let topEncargo = null; // el que más recibió este período
   const personasSet = new Set();
 
-  encargos.forEach(enc => {
-    const movs = Array.isArray(enc.movimientos) ? enc.movimientos : [];
+  encargos.forEach(encargo => {
+    const movimientos = Array.isArray(encargo.movimientos) ? encargo.movimientos : [];
     let totalEsteEncargo = 0;
-    movs.forEach(m => {
+    movimientos.forEach(m => {
       if(m && m.tipo === 'entrada' && _wrappedEnRango(m.fecha, tipo, mesK, anioK)){
         totalEsteEncargo += (m.monto||0);
       }
     });
     if(totalEsteEncargo > 0){
       totalEncargado += totalEsteEncargo;
-      personasSet.add(enc.personaId || enc.nombre || enc.id);
+      personasSet.add(encargo.personaId);
       if(!topEncargo || totalEsteEncargo > topEncargo.monto){
-        topEncargo = { nombre: enc.nombre, personaId: enc.personaId || null, monto: totalEsteEncargo };
+        topEncargo = { personaId: encargo.personaId, monto: totalEsteEncargo };
       }
     }
   });
@@ -2162,7 +2160,7 @@ function _wrappedCalcularEncargos(S, tipo, mesK, anioK){
 /* ─── PRESTADO — Me deben (S.deudores) ────────────────────────────────
    Cuánto prestaste este período (movimientos 'prestamo', dinero que
    sale de una cuenta tuya, ver prestado.md §2.2) y cuánto te devolvieron
-   ('abono'/'pago-completo'). El deudor "del año" se elige por cuánto le
+   ('abono'/'pago_completo'). El deudor "del año" se elige por cuánto le
    prestaste en el período — no por su deuda pendiente total, que puede
    venir de años anteriores y no sería un dato de "este año". */
 function _wrappedCalcularPrestado(S, tipo, mesK, anioK){
@@ -2173,17 +2171,17 @@ function _wrappedCalcularPrestado(S, tipo, mesK, anioK){
   let topDeudor = null;
 
   deudores.forEach(d => {
-    const movs = Array.isArray(d.movimientos) ? d.movimientos : [];
+    const movimientos = Array.isArray(d.movimientos) ? d.movimientos : [];
     let prestadoAEsta = 0, nPrestamosAEsta = 0;
-    movs.forEach(m => {
+    movimientos.forEach(m => {
       if(!m || !_wrappedEnRango(m.fecha, tipo, mesK, anioK)) return;
       if(m.tipo === 'prestamo'){ totalPrestado += (m.monto||0); prestadoAEsta += (m.monto||0); nPrestamosAEsta++; }
-      // Un perdón de deuda ("¿Se lo regalas?", m._perdon) es un 'pago-completo' que NO
+      // Un perdón de deuda ("¿Se lo regalas?", m._perdon) es un 'pago_completo' que NO
       // devolvió plata: no cuenta como devuelto (ya cuenta como gasto real, ver gastos.md).
-      else if((m.tipo === 'abono' || m.tipo === 'pago-completo') && !m._perdon){ totalDevuelto += (m.monto||0); }
+      else if(esAbonoDeDeuda(m.tipo) && !m._perdon){ totalDevuelto += (m.monto||0); }
     });
     if(prestadoAEsta > 0 && (!topDeudor || prestadoAEsta > topDeudor.monto)){
-      topDeudor = { nombre: d.nombre, personaId: d.personaId || null, monto: prestadoAEsta, n: nPrestamosAEsta };
+      topDeudor = { personaId: d.personaId, monto: prestadoAEsta, n: nPrestamosAEsta };
     }
   });
 
@@ -2202,8 +2200,8 @@ function _wrappedCalcularMisDeudas(S, tipo, mesK, anioK){
   let totalRecibido = 0, totalPagado = 0;
 
   misDeudas.forEach(d => {
-    const movs = Array.isArray(d.movimientos) ? d.movimientos : [];
-    movs.forEach(m => {
+    const movimientos = Array.isArray(d.movimientos) ? d.movimientos : [];
+    movimientos.forEach(m => {
       if(!m || !_wrappedEnRango(m.fecha, tipo, mesK, anioK)) return;
       if(m.tipo === 'recibido') totalRecibido += (m.monto||0);
       else if(m.tipo === 'pago' && !m._perdon) totalPagado += (m.monto||0); // un perdón no es plata pagada
@@ -2262,11 +2260,11 @@ function _wrappedCalcularMesada(S, tipo, mesK, anioK){
    pantalla de Spotify. Es un "cobrado menos pagado del año" honesto, no
    la ganancia oficial del módulo. */
 function _wrappedCalcularSpotify(S, tipo, mesK, anioK){
-  const hist = (S.spotify||{}).historial;
-  if(!Array.isArray(hist) || !hist.length) return null;
+  const historial = (S.spotify||{}).historial;
+  if(!Array.isArray(historial) || !historial.length) return null;
 
   let cobrado = 0, pagado = 0;
-  hist.forEach(h => {
+  historial.forEach(h => {
     if(!h || !_wrappedEnRango(h.fecha, tipo, mesK, anioK)) return;
     if(h.tipo === 'cobro') cobrado += (h.monto||0);
     else if(h.tipo === 'pago') pagado += (h.monto||0);
@@ -2523,8 +2521,8 @@ function _wrappedPersonalidad(S, anioK){
   const prestado = _wrappedCalcularPrestado(S, 'anio', null, anioK);
   const periodo = _wrappedCalcularPeriodo(S, 'anio', null, anioK);
   let racha = 0;
-  if(typeof window !== 'undefined' && typeof window._alcRachaAhorro === 'function' && S.alcancia && S.alcancia.historial){
-    racha = window._alcRachaAhorro(S.alcancia.historial);
+  if(typeof window !== 'undefined' && typeof window._alcanciaRachaAhorro === 'function' && S.alcancia && S.alcancia.historial){
+    racha = window._alcanciaRachaAhorro(S.alcancia.historial);
   }
   const catsDistintas = new Set((S.gastosVar||[]).map(g => g.cat).filter(Boolean)).size;
   const tieneCdt = cajitas.some(c => Array.isArray(c.cdts) && c.cdts.length > 0);
@@ -2575,7 +2573,7 @@ function _wrappedPersonalidad(S, anioK){
   // real — nunca un segundo puesto inventado para rellenar el slide
   // (misma regla de "no forzar" que ya aplicaba al resultado único).
   const secundario = candidatos.length > 1 ? candidatos[1] : null;
-  // `_candidatos` (2026-09-15): la lista completa, en el mismo orden de
+  // `_candidatos`: la lista completa, en el mismo orden de
   // prioridad de siempre — agregada solo para que el panel de debug
   // visual (`_wrappedDebugPanelHtml`) pueda mostrar qué otros arquetipos
   // también aplicaron y no se usaron, sin recalcular nada. Prefijo `_`
@@ -2633,34 +2631,31 @@ function _wrappedGastoMasRandom(S, tipo, mesK, anioK, gastoMasGrande){
    Prestado, Spotify) — nunca solo uno. Cuenta MOVIMIENTOS (interacción),
    no plata — es una pregunta distinta de "quién te encargó más" o "a
    quién le prestaste más" (esas ya las responden sus propios slides de
-   §7ter). Agrupa por `personaId` cuando existe; si no, por nombre crudo
-   — mismo criterio de "sin perfil" de personas.md §2/§6. */
+   §7ter). Agrupa por `personaId`. */
 function _wrappedProtagonistas(S, tipo, mesK, anioK){
-  const conteo = {}; // key -> {nombre, personaId, n}
-  const sumar = (key, nombre, personaId, n) => {
-    if(!key) return;
-    if(!conteo[key]) conteo[key] = { nombre, personaId, n: 0 };
-    conteo[key].n += n;
+  const conteo = {}; // personaId -> {personaId, n}
+  const sumar = (personaId, n) => {
+    if(!personaId) return;
+    if(!conteo[personaId]) conteo[personaId] = { personaId, n: 0 };
+    conteo[personaId].n += n;
   };
 
-  (S.encargos||[]).forEach(enc => {
-    const n = (enc.movimientos||[]).filter(m => m && _wrappedEnRango(m.fecha, tipo, mesK, anioK)).length;
-    if(n>0) sumar(enc.personaId||enc.nombre, enc.nombre, enc.personaId||null, n);
+  (S.encargos||[]).forEach(encargo => {
+    const n = (encargo.movimientos||[]).filter(m => m && _wrappedEnRango(m.fecha, tipo, mesK, anioK)).length;
+    if(n>0) sumar(encargo.personaId, n);
   });
   Deudas.lista('favor').forEach(d => {
     const n = (d.movimientos||[]).filter(m => m && _wrappedEnRango(m.fecha, tipo, mesK, anioK)).length;
-    if(n>0) sumar(d.personaId||d.nombre, d.nombre, d.personaId||null, n);
+    if(n>0) sumar(d.personaId, n);
   });
   Deudas.lista('contra').forEach(d => {
     const n = (d.movimientos||[]).filter(m => m && _wrappedEnRango(m.fecha, tipo, mesK, anioK)).length;
-    if(n>0) sumar(d.personaId||d.nombre, d.nombre, d.personaId||null, n);
+    if(n>0) sumar(d.personaId, n);
   });
   ((S.spotify||{}).historial||[]).forEach(h => {
-    if(h && h.tipo==='cobro' && h.spId && _wrappedEnRango(h.fecha, tipo, mesK, anioK)){
-      const sp = ((S.spotify||{}).personas||[]).find(p => p.id === h.spId);
-      const nombre = sp ? sp.nombre : h.nombre;
-      const personaId = sp ? sp.personaId : null;
-      sumar(personaId||nombre, nombre, personaId||null, 1);
+    if(h && h.tipo==='cobro' && h.spotifyId && _wrappedEnRango(h.fecha, tipo, mesK, anioK)){
+      const spotify = ((S.spotify||{}).integrantes||[]).find(p => p.id === h.spotifyId);
+      if(spotify) sumar(spotify.personaId, 1);
     }
   });
 
@@ -2866,12 +2861,12 @@ function _wrappedSuscripciones(S){
     .map(f => ({ desc: f.nombre || 'Suscripción', monto: f.monto || 0 }))
     .filter(p => p.monto > 0);
 
-  const spotifyActivo = Array.isArray((S.spotify||{}).personas) && (S.spotify||{}).personas.length > 0;
+  const spotifyActivo = Array.isArray((S.spotify||{}).integrantes) && (S.spotify||{}).integrantes.length > 0;
   if(!personales.length && !spotifyActivo) return null;
 
   return {
     personales,
-    spotify: spotifyActivo ? { personas: (S.spotify||{}).personas.length, costoMensual: (S.spotify||{}).costo || 0 } : null
+    spotify: spotifyActivo ? { integrantes: ((S.spotify||{}).integrantes||[]).length, costoMensual: (S.spotify||{}).costo || 0 } : null
   };
 }
 
@@ -2888,21 +2883,21 @@ function _wrappedRecuperacionMasRapida(S, anioK){
   const deudores = Deudas.lista('favor');
   let mejor = null;
   deudores.forEach(d => {
-    const movs = (Array.isArray(d.movimientos) ? d.movimientos : [])
+    const movimientos = (Array.isArray(d.movimientos) ? d.movimientos : [])
       .filter(m => m && typeof m.fecha === 'string')
       .slice()
       .sort((a,b) => a.fecha.localeCompare(b.fecha));
-    if(movs.length !== 2) return;
-    const [primero, segundo] = movs;
+    if(movimientos.length !== 2) return;
+    const [primero, segundo] = movimientos;
     if(primero.tipo !== 'prestamo') return;
-    if(!(segundo.tipo === 'abono' || segundo.tipo === 'pago-completo')) return;
+    if(!esAbonoDeDeuda(segundo.tipo)) return;
     if(segundo._perdon) return; // perdonada ≠ recuperada: no es una devolución rápida
     if((segundo.monto||0) < (primero.monto||0)) return;
     if(primero.fecha.slice(0,4) !== anioK) return;
     const dias = Fecha.diasEntre(primero.fecha, segundo.fecha);
     if(!Number.isFinite(dias) || dias < 0) return;
     if(!mejor || dias < mejor.dias){
-      mejor = { dias, nombre: d.nombre, personaId: d.personaId || null, monto: primero.monto||0 };
+      mejor = { dias, personaId: d.personaId, monto: primero.monto||0 };
     }
   });
   return mejor;
@@ -2976,9 +2971,9 @@ function _wrappedRecordsAnio(S, anioK, s, prestadoAnio, serieMensual){
   }
 
   const { gastosVarPeriodo } = _wrappedItemsRealesPeriodo(S, 'anio', null, anioK);
-  let totalMovs = gastosVarPeriodo.length + (S.movimientos||[]).length;
-  Deudas.lista('favor').forEach(d => totalMovs += (d.movimientos||[]).length);
-  Deudas.lista('contra').forEach(d => totalMovs += (d.movimientos||[]).length);
+  let totalMovimientos = gastosVarPeriodo.length + (S.movimientos||[]).length;
+  Deudas.lista('favor').forEach(d => totalMovimientos += (d.movimientos||[]).length);
+  Deudas.lista('contra').forEach(d => totalMovimientos += (d.movimientos||[]).length);
 
   const registros = [
     { l:'Mayor gasto', v: s.gastoMasGrande ? s.gastoMasGrande.monto : null, fmt:'money' },
@@ -2986,22 +2981,21 @@ function _wrappedRecordsAnio(S, anioK, s, prestadoAnio, serieMensual){
     { l:'Mayor préstamo', v: mayorPrestamo ? mayorPrestamo.monto : null, fmt:'money' },
     { l:'Mes más caro', v: mesMasCaro ? _wrappedMesKaAbrev(mesMasCaro.mesK) : null, fmt:'text' },
     { l:'Ahorro neto', v: s.balance, fmt:'money' },
-    { l:'Movimientos totales', v: totalMovs || null, fmt:'text' }
+    { l:'Movimientos totales', v: totalMovimientos || null, fmt:'text' }
   ];
   return registros.some(r => r.v !== null) ? registros : null;
 }
 
 /* Cuenta identidades distintas involucradas en dominios "de terceros" —
    deudores, "yo debo", integrantes de Spotify, encargantes — usando
-   `personaId` cuando existe y el nombre crudo como fallback, para no
-   contar dos veces a la misma persona vinculada al sistema unificado. */
+   `personaId`, para no contar dos veces a la misma persona. */
 function _wrappedPersonasInvolucradas(S){
   const set = new Set();
-  const add = (personaId, nombre) => { if(personaId) set.add('p:'+personaId); else if(nombre) set.add('n:'+String(nombre).toLowerCase()); };
-  Deudas.lista('favor').forEach(d => add(d.personaId, d.nombre));
-  Deudas.lista('contra').forEach(d => add(d.personaId, d.nombre));
-  ((S.spotify||{}).personas||[]).forEach(p => add(p.personaId, p.nombre));
-  (S.encargos||[]).forEach(e => add(e.personaId, e.nombre));
+  const add = personaId => { if(personaId) set.add(personaId); };
+  Deudas.lista('favor').forEach(d => add(d.personaId));
+  Deudas.lista('contra').forEach(d => add(d.personaId));
+  ((S.spotify||{}).integrantes||[]).forEach(p => add(p.personaId));
+  (S.encargos||[]).forEach(e => add(e.personaId));
   return set.size;
 }
 
@@ -3015,9 +3009,9 @@ function _wrappedPersonasInvolucradas(S){
 function _wrappedPeriodoEnNumeros(S, anioK, s, prestadoAnio, serieMensual){
   const { gastosVarPeriodo } = _wrappedItemsRealesPeriodo(S, 'anio', null, anioK);
   const categorias = new Set(gastosVarPeriodo.map(g => g.cat).filter(Boolean)).size;
-  let totalMovs = gastosVarPeriodo.length + (S.movimientos||[]).length;
-  Deudas.lista('favor').forEach(d => totalMovs += (d.movimientos||[]).length);
-  Deudas.lista('contra').forEach(d => totalMovs += (d.movimientos||[]).length);
+  let totalMovimientos = gastosVarPeriodo.length + (S.movimientos||[]).length;
+  Deudas.lista('favor').forEach(d => totalMovimientos += (d.movimientos||[]).length);
+  Deudas.lista('contra').forEach(d => totalMovimientos += (d.movimientos||[]).length);
   return [
     { l:'Dinero movido', v: s.totalIngresos + s.totalGastos, fmt:'money' },
     { l:'Ingresos', v: s.totalIngresos, fmt:'money' },
@@ -3027,7 +3021,7 @@ function _wrappedPeriodoEnNumeros(S, anioK, s, prestadoAnio, serieMensual){
     { l:'Personas', v: _wrappedPersonasInvolucradas(S), fmt:'text' },
     { l:'Categorías', v: categorias, fmt:'text' },
     { l:'Meses activos', v: serieMensual ? serieMensual.length : 0, fmt:'text' },
-    { l:'Movimientos', v: totalMovs, fmt:'text' }
+    { l:'Movimientos', v: totalMovimientos, fmt:'text' }
   ];
 }
 function _wrappedRecordsHtml(registros, fmt2){
@@ -3126,7 +3120,7 @@ const WRAPPED_MAX_INSIGHTS_POOL = 8;
 /* Lee el estado de "Ocultar saldos" (saldos-ocultos.js) directo de
    su localStorage ya documentado (`mf-saldos-ocultos`) — Wrapped no
    tiene forma de leer la variable interna de ese módulo (no está
-   expuesta como `window._algo`, a diferencia de `_alcRachaAhorro`), así
+   expuesta como `window._algo`, a diferencia de `_alcanciaRachaAhorro`), así
    que usa la misma llave pública que ya persiste el toggle.
    Confirmado contra `saldos-ocultos.js`:
    `toggleSaldos()` guarda literalmente `'1'`/`'0'` (no `'true'`/`'false'`,
@@ -3176,8 +3170,8 @@ function _wrappedBuildSlides(S, fmt2, anioOpt){
   _wrappedIniciarBanco(anioK + '|' + s.totalIngresos + '|' + s.totalGastos + '|' + (patrimonio && Number.isFinite(patrimonio.diff) ? patrimonio.diff : 0));
 
   let racha = 0;
-  if(typeof window !== 'undefined' && typeof window._alcRachaAhorro === 'function' && S.alcancia && S.alcancia.historial){
-    racha = window._alcRachaAhorro(S.alcancia.historial);
+  if(typeof window !== 'undefined' && typeof window._alcanciaRachaAhorro === 'function' && S.alcancia && S.alcancia.historial){
+    racha = window._alcanciaRachaAhorro(S.alcancia.historial);
   }
 
   // Dominios "de terceros" — ver comentario de cabecera del archivo y
@@ -3190,7 +3184,7 @@ function _wrappedBuildSlides(S, fmt2, anioOpt){
   const mesadaAnio      = _wrappedCalcularMesada(S, 'anio', null, anioK);
   const spotifyAnio     = _wrappedCalcularSpotify(S, 'anio', null, anioK);
   const comprometidaAnio = _wrappedCalcularComprometida(S, 'anio', null, anioK);
-  // Tarjetas de Crédito (2026-09-15) — nuevo dominio, agregado después de
+  // Tarjetas de Crédito — nuevo dominio, agregado después de
   // revisar `tarjetas-credito.js` a pedido del usuario. Deliberadamente
   // acotado a los INTERESES cobrados en el período (`_esCargoEspecial &&
   // _motivoCargo==='interes'`), no a la deuda actual (`tc.deuda`, que
@@ -3201,19 +3195,19 @@ function _wrappedBuildSlides(S, fmt2, anioOpt){
   // que no se puede ver/reexportar). Los intereses sí son un dato
   // 100% puntual del período, igual que el resto de §7ter.
   const interesesTC = _wrappedCalcularInteresesTC(S, 'anio', null, anioK);
-  // Comisiones (2026-09-15, misma sesión): mismo dato de origen
+  // Comisiones: mismo dato de origen
   // (S.tarjetasCredito), motivo distinto — ver `_wrappedCalcularComisionesTC`
   // para el razonamiento completo de por qué es un candidato aparte y por
   // qué el tercer motivo ("otro cargo del banco") se dejó afuera.
   const comisionesTC = _wrappedCalcularComisionesTC(S, 'anio', null, anioK);
 
-  // Segunda tanda (2026-09-13): personalidad, gasto random, protagonistas.
+  // Segunda tanda: personalidad, gasto random, protagonistas.
   const personalidad   = _wrappedPersonalidad(S, anioK);
   const gastoRandom    = _wrappedGastoMasRandom(S, 'anio', null, anioK, s.gastoMasGrande);
   const protagonistas  = _wrappedProtagonistas(S, 'anio', null, anioK);
   const metaCajita     = _wrappedMetaCajita(S);
 
-  // Tercera tanda (2026-09-14) — ver comentario de cabecera de esa sección.
+  // Tercera tanda — ver comentario de cabecera de esa sección.
   const comparaciones   = _wrappedComparaciones(S, 'anio', null, anioK, s);
   const suscripciones   = _wrappedSuscripciones(S);
   const recuperacion    = _wrappedRecuperacionMasRapida(S, anioK);
@@ -3228,7 +3222,7 @@ function _wrappedBuildSlides(S, fmt2, anioOpt){
     esBanquero: !!(prestadoAnio && prestadoAnio.totalPrestado > 0),
     tasaAhorroInterna,
     fasesAnio,
-    prestadoDistintoDeRecuperacion: !!(prestadoAnio && prestadoAnio.topDeudor && recuperacion && prestadoAnio.topDeudor.nombre !== recuperacion.nombre)
+    prestadoDistintoDeRecuperacion: !!(prestadoAnio && prestadoAnio.topDeudor && recuperacion && prestadoAnio.topDeudor.personaId !== recuperacion.personaId)
   });
 
   const slides = [];
@@ -3261,7 +3255,7 @@ function _wrappedBuildSlides(S, fmt2, anioOpt){
     </div>`
   });
 
-  // Slide "actividad" (2026-09-15): cuánta plata se movió en total y en
+  // Slide "actividad": cuánta plata se movió en total y en
   // cuántos registros — es la apertura tipo "escuchaste 40.000 minutos"
   // de Spotify Wrapped: una cifra de volumen/actividad, no de resultado.
   // OJO CON LA REGLA DE §3: esto suma ingresos + gastos reales del año en
@@ -3310,7 +3304,7 @@ function _wrappedBuildSlides(S, fmt2, anioOpt){
       sub: _wrappedCopyCategoria(s.topCategoria)
     }) });
 
-    // Slide nuevo (2026-09-15): ranking de TODAS las categorías, no solo
+    // Slide nuevo: ranking de TODAS las categorías, no solo
     // la ganadora — reusa `_wrappedItemsRealesPeriodo` (ya centralizado,
     // ver comentario ahí) para no recalcular el filtro de "gasto real",
     // y `_wrappedRankingCategorias` para no reimplementar el agrupado
@@ -3537,7 +3531,7 @@ function _wrappedBuildSlides(S, fmt2, anioOpt){
     });
   }
 
-  // Frecuencia vs. peso por movimiento (2026-09-15) — mismo espíritu que
+  // Frecuencia vs. peso por movimiento — mismo espíritu que
   // la cláusula que ya existía dentro de `_wrappedCopyCategoria`
   // (`topPorFrecuencia`), pero como slide propio porque el contraste con
   // "la categoría más concentrada" es un dato curioso completo por sí
@@ -3586,7 +3580,7 @@ function _wrappedBuildSlides(S, fmt2, anioOpt){
   if(suscripciones){
     const filas = [];
     if(suscripciones.spotify){
-      filas.push(`Spotify compartido: ${fmt2(suscripciones.spotify.costoMensual)} al mes entre ${suscripciones.spotify.personas} persona${suscripciones.spotify.personas===1?'':'s'}.`);
+      filas.push(`Spotify compartido: ${fmt2(suscripciones.spotify.costoMensual)} al mes entre ${suscripciones.spotify.integrantes} persona${suscripciones.spotify.integrantes===1?'':'s'}.`);
     }
     suscripciones.personales.forEach(p => filas.push(`${escHtml(p.desc)}: ${fmt2(p.monto)} al mes.`));
     candidatosInsights.push({
@@ -3610,7 +3604,7 @@ function _wrappedBuildSlides(S, fmt2, anioOpt){
       intensidad: Math.max(0, Math.min(4, (30 - recuperacion.dias) / 6)),
       html: `<div class="wrapped-slide-inner">
         <div class="wrapped-eyebrow">El regreso triunfal</div>
-        <div class="wrapped-headline">${_wrappedNombrePersona(recuperacion.personaId, recuperacion.nombre)}</div>
+        <div class="wrapped-headline">${escHtml(Personas.nombre(recuperacion.personaId))}</div>
         <div class="wrapped-bignum c-green">${recuperacion.dias}</div>
         <div class="wrapped-sub">día${recuperacion.dias===1?'':'s'} para devolverte por completo lo que le prestaste.</div>
       </div>`
@@ -3654,7 +3648,7 @@ function _wrappedBuildSlides(S, fmt2, anioOpt){
   }
 
   if(protagonistas && protagonistas.top && protagonistas.top.n >= 3){
-    const nombre = _wrappedNombrePersona(protagonistas.top.personaId, protagonistas.top.nombre);
+    const nombre = escHtml(Personas.nombre(protagonistas.top.personaId));
     candidatosInsights.push({
       involucraPersona: true,
       intensidad: Math.min(4, protagonistas.top.n / 5),
@@ -3689,7 +3683,7 @@ function _wrappedBuildSlides(S, fmt2, anioOpt){
     });
   }
 
-  // `candidatosPuntuados` (2026-09-15): antes este cálculo vivía inline y
+  // `candidatosPuntuados`: antes este cálculo vivía inline y
   // se cortaba directo con `.slice`, descartando para siempre los
   // candidatos que no entraron. Separarlo en dos pasos no cambia qué
   // insights se eligen (`insightsElegidos` sigue siendo exactamente el
@@ -3701,7 +3695,7 @@ function _wrappedBuildSlides(S, fmt2, anioOpt){
     .sort((a,b) => b.score - a.score); // sort estable: empates conservan el orden en que se agregaron arriba
   const insightsElegidos = candidatosPuntuados.slice(0, WRAPPED_MAX_INSIGHTS_POOL);
 
-  // Puente narrativo (2026-09-14): una micro-pausa de texto, sin ningún
+  // Puente narrativo: una micro-pausa de texto, sin ningún
   // dato nuevo, entre el bloque de "datos ancla" (patrimonio, categoría,
   // mejor/peor mes, gasto más grande) y el pool de insights variables —
   // le da ritmo de "capítulo" a la historia en vez de saltar de golpe.
@@ -3822,10 +3816,10 @@ function _wrappedBuildSlides(S, fmt2, anioOpt){
   // `--accent`, el mismo default neutro de siempre.
   const _MOOD_DE_CLASE = { 'c-purple':'purple', 'c-blue':'blue', 'c-amber':'amber', 'c-red':'red', 'c-green':'accent' };
   const _moodRegex = /(?:^|[\s"])(c-purple|c-blue|c-amber|c-red|c-green)(?=[\s"])/;
-  slides.forEach(sl => {
-    if(sl.mood) return;
-    const m = _moodRegex.exec(sl.html);
-    sl.mood = m ? _MOOD_DE_CLASE[m[1]] : 'accent';
+  slides.forEach(slide => {
+    if(slide.mood) return;
+    const m = _moodRegex.exec(slide.html);
+    slide.mood = m ? _MOOD_DE_CLASE[m[1]] : 'accent';
   });
 
   // Snapshot para el panel de debug visual (2026-09-15, ver
@@ -3922,7 +3916,7 @@ function _wrappedCerrar(){
   //
   // 'config' ya no es una suposición: Wrapped se abre ahora desde
   // Configuración → Herramientas → "Tu resumen" (antes vivía en el menú
-  // "Más", ver CHANGELOG.md#wrapped), así que volver a 'config' es
+  // "Más", ver changelog/wrapped.md), así que volver a 'config' es
   // exactamente la pantalla de la que se entró — mismo patrón que ya usa
   // Actividad reciente para volver a Configuración.
   //
@@ -3972,7 +3966,7 @@ function _wrappedSetupNav(overlay, fmt2, contexto){
 
   const slidesEls = Array.prototype.slice.call(overlay.querySelectorAll('.wrapped-slide'));
   const segEls    = Array.prototype.slice.call(overlay.querySelectorAll('.wrapped-seg'));
-  const contSlides = overlay.querySelector('#wrapped-slides');
+  const contenedorSlides = overlay.querySelector('#wrapped-slides');
   const closeBtn   = overlay.querySelector('#wrapped-close');
   const restartBtn = overlay.querySelector('#wrapped-restart');
   const hintEl     = overlay.querySelector('#wrapped-hint');
@@ -3993,7 +3987,7 @@ function _wrappedSetupNav(overlay, fmt2, contexto){
   // cierre) lo deja pasar; si no, navega según la mitad de la pantalla
   // donde ocurrió el tap — mismo patrón de "zonas muertas" que usa la
   // navegación tipo stories.
-  contSlides.addEventListener('click', function(e){
+  contenedorSlides.addEventListener('click', function(e){
     // Un tap sobre una zona de mes del gráfico interactivo (ver
     // `_wrappedGraficoMensualSvg`) selecciona ese mes en vez de navegar de
     // slide — se resuelve ANTES que la lista de "interactivo" de abajo
@@ -4013,18 +4007,18 @@ function _wrappedSetupNav(overlay, fmt2, contexto){
       else if(accion === 'guardar') _wrappedAlGuardar(interactivo, contexto);
       return;
     }
-    const rect = contSlides.getBoundingClientRect();
+    const rect = contenedorSlides.getBoundingClientRect();
     const x = e.clientX - rect.left;
     if(x < rect.width * 0.34) anterior();
     else siguiente();
   });
 
   let touchX = null, touchY = null;
-  contSlides.addEventListener('touchstart', function(e){
+  contenedorSlides.addEventListener('touchstart', function(e){
     touchX = e.touches[0].clientX;
     touchY = e.touches[0].clientY;
   }, { passive: true });
-  contSlides.addEventListener('touchend', function(e){
+  contenedorSlides.addEventListener('touchend', function(e){
     if(touchX === null) return;
     const dx = e.changedTouches[0].clientX - touchX;
     const dy = e.changedTouches[0].clientY - touchY;
@@ -4096,7 +4090,7 @@ window.renderWrapped = function(anioOpt){
   let slides;
   if(generable){
     const frescas = _wrappedBuildSlides(S, fmt2, anioK);
-    const esMensaje = frescas.some(sl => sl.id === 'insuf-titular');
+    const esMensaje = frescas.some(slide => slide.id === 'insuf-titular');
     if(guardado && esMensaje){
       slides = _wrappedSlidesDeSnapshot(guardado);
     } else {
@@ -4110,9 +4104,9 @@ window.renderWrapped = function(anioOpt){
   }
 
   const progresoHtml = slides.map(() => `<div class="wrapped-seg"><i></i></div>`).join('');
-  const slidesHtml = slides.map(sl => `<div class="wrapped-slide" data-mood="${sl.mood || 'accent'}"${sl.confetti ? ' data-confetti="1"' : ''}>${sl.html}</div>`).join('');
+  const slidesHtml = slides.map(slide => `<div class="wrapped-slide" data-mood="${slide.mood || 'accent'}"${slide.confetti ? ' data-confetti="1"' : ''}>${slide.html}</div>`).join('');
 
-  // Panel de debug visual (2026-09-15) — solo se arma y se inyecta cuando
+  // Panel de debug visual — solo se arma y se inyecta cuando
   // la URL trae `?debug=1`/`#debug` (ver `_wrappedDebugPanelHtml`); en
   // cualquier otro caso `debugHtml` queda vacío y no se agrega nada al
   // DOM ni se paga el costo de armar las tablas.
@@ -4187,23 +4181,23 @@ window.renderWrapped = function(anioOpt){
 // intereses y comisiones de tarjeta). Los años anteriores no se ven en ninguna pantalla, así que no se exige conservarlos: la política de
 // corte (Cierre.corteMasReciente, ≥ 24 meses, siempre ≤ dic de año − 2) deja intacto este año por construcción y la sonda lo comprueba.
 // Corre aislada: las funciones reciben la copia como `S`. docs/cierre-de-periodos.md.
-registrarSonda('wrapped',function(st){
+registrarSonda('wrapped',function(estadoActual){
   const out={};
   const anioObjetivo=typeof window._wrappedAnioObjetivo==='function'?window._wrappedAnioObjetivo():String(parseInt(hoy().slice(0,4),10)-1);
   [anioObjetivo].forEach(anioK=>{
     out[anioK]={
-      periodo:_wrappedCalcularPeriodo(st,'anio',null,anioK),
-      mejorPeor:_wrappedMejorPeorMesAnio(st,anioK),
-      encargos:_wrappedCalcularEncargos(st,'anio',null,anioK),
-      prestado:_wrappedCalcularPrestado(st,'anio',null,anioK),
-      misDeudas:_wrappedCalcularMisDeudas(st,'anio',null,anioK),
-      mesada:_wrappedCalcularMesada(st,'anio',null,anioK),
-      spotify:_wrappedCalcularSpotify(st,'anio',null,anioK),
-      comprometida:_wrappedCalcularComprometida(st,'anio',null,anioK),
-      interesesTC:_wrappedCalcularInteresesTC(st,'anio',null,anioK),
-      comisionesTC:_wrappedCalcularComisionesTC(st,'anio',null,anioK),
-      protagonistas:_wrappedProtagonistas(st,'anio',null,anioK),
-      recuperacion:_wrappedRecuperacionMasRapida(st,anioK)
+      periodo:_wrappedCalcularPeriodo(estadoActual,'anio',null,anioK),
+      mejorPeor:_wrappedMejorPeorMesAnio(estadoActual,anioK),
+      encargos:_wrappedCalcularEncargos(estadoActual,'anio',null,anioK),
+      prestado:_wrappedCalcularPrestado(estadoActual,'anio',null,anioK),
+      misDeudas:_wrappedCalcularMisDeudas(estadoActual,'anio',null,anioK),
+      mesada:_wrappedCalcularMesada(estadoActual,'anio',null,anioK),
+      spotify:_wrappedCalcularSpotify(estadoActual,'anio',null,anioK),
+      comprometida:_wrappedCalcularComprometida(estadoActual,'anio',null,anioK),
+      interesesTC:_wrappedCalcularInteresesTC(estadoActual,'anio',null,anioK),
+      comisionesTC:_wrappedCalcularComisionesTC(estadoActual,'anio',null,anioK),
+      protagonistas:_wrappedProtagonistas(estadoActual,'anio',null,anioK),
+      recuperacion:_wrappedRecuperacionMasRapida(estadoActual,anioK)
     };
   });
   return out;
@@ -4261,8 +4255,7 @@ window._wrappedInternals = {
   _wrappedCopyInteresesTC,
   _wrappedCalcularComisionesTC,
   _wrappedCopyComisionesTC,
-  _wrappedNombrePersona,
-  _wrappedMesadaMes,
+    _wrappedMesadaMes,
   _wrappedIngresosFijosMes,
   _wrappedCuotaAnioFallback,
   _wrappedListaCajitas,

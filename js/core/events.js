@@ -90,11 +90,13 @@
 
    Esto no reemplaza un `btn.disabled = true` manual dentro de un
    handler que además quiera dar feedback visual propio (texto tipo
-   "Guardando…", como ya hace _fbDeleteAccount) — ambos conviven sin
+   "Guardando…", como ya hace _firebaseDeleteAccount) — ambos conviven sin
    pisarse.
    ═══════════════════════════════════════════════════════════════ */
 
-const Events = (function () {
+import { exponerGlobales, exponerVariables } from './puente.js';
+
+export const Events = (function () {
   const registry = {};
   // Elementos con una acción async todavía en vuelo — clics sobre ellos
   // se ignoran hasta que la promesa se resuelva o falle.
@@ -172,3 +174,6 @@ const Events = (function () {
 
   return { on, attr, registerAll };
 })();
+
+// Puente global (js/core/puente.js): constantes y clases ya inicializadas, y variables que otros archivos leen por nombre.
+exponerGlobales({ Events });

@@ -9,7 +9,7 @@
 // El atributo onload="..." es un event handler inline: la CSP lo bloquea
 // igual que bloquearía un <script> inline, aunque viva en un <link> y no en
 // un <script> — se detectó recién al probar en navegador real después de
-// sacar 'unsafe-inline' de script-src (ver CHANGELOG.md#infraestructura--seguridad,
+// sacar 'unsafe-inline' de script-src (ver changelog/infraestructura-seguridad.md,
 // entrada de esta sesión). El barrido anterior de "0 atributos onclick/
 // onchange/oninput/hover inline" nunca cubrió onload porque no es uno de
 // esos cuatro — punto ciego real, no un falso positivo.
@@ -25,6 +25,8 @@
 // decida correr este script en concreto. El fallback de abajo cubre el
 // caso (ahora más frecuente, al ejecutarse más tarde) en que el CSS ya
 // haya terminado de cargar antes de que este script llegue a correr.
+import { exponerGlobales, exponerVariables } from './puente.js';
+
 (function () {
   document.querySelectorAll('link[data-async-css]').forEach(function (link) {
     if (link.media === 'all') return; // ya se activó (poco probable en este punto)

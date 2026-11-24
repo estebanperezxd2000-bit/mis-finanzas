@@ -20,7 +20,7 @@
    Carga: grupo lazy 'cuentas', junto con js/modules/cuentas.js.
    Regla de dependencia (UN solo sentido): este módulo se apoya en cuentas.js, nunca al revés. Una cuenta de ahorro es una cuenta
    más y reutiliza lo genérico de esa capa — _descriptorCuenta, _pintarAdministrarCuenta, _tituloCuentaHtml, _showCuentasPanel, _setBtnEstado,
-   _setBtnTransferir, _MIN_RETIRO, getMovimientosCuenta, renderMovsCuenta, abrirAgregarDinero, abrirRestarDinero,
+   _setBtnTransferir, _MIN_RETIRO, getMovimientosCuenta, renderMovimientosCuenta, abrirAgregarDinero, abrirRestarDinero,
    abrirTransferir, actualizarBotonRetirar, actualizarBotonesTransferir, registrarEntradaConApertura, registrarSalida,
    _aperturaToggleUI — únicamente cuando una función corre. cuentas.js no nombra nada de este archivo: la clase 'ahorro' se le
    presenta registrándose en CuentaPantallas (js/core/cuentas-fuentes.js) al cargar. La prueba 'cuentas-nu-archivos' (tests/cuentas.test.js)
@@ -29,14 +29,31 @@
    Ver docs/nu.md (objetivo, reglas y modelo de datos) y docs/cuentas.md.
    ═══════════════════════════════════════════════════════════════ */
 
+import { exponerGlobales, exponerVariables } from '../core/puente.js';
+import { CuentaPantallas, Plata, ajustarSaldoCuenta, cajitasDeCuenta, cuentaDeCajita, esCuentaAhorro, getCuenta, getCuentaDeFuente, nombreCuenta } from '../core/cuentas-fuentes.js';
+import { MAX, S, fmt, hoy, uid } from '../core/estado.js';
+import { _diasEntreFechas, _saldoEncargosEnCajita, _segmentosTasa, _tasaVigenteEnFecha, ahorroAplicarTasaEscrita, ahorroTasaConfigurada, ahorroTotal, ahorroValorEsperadoCajita, cajitasChequeables, calcC, calcCDT, getTasaCuenta, rendimientoCajitaPorMes, tasaATexto, tasaDesdeTexto, tasaSanear } from '../core/nu-calc.js';
+import { html, raw } from '../core/html-tag.js';
+import { _fechaSafe, avisarNoSePuede, confirmarEliminar, dialogo, toast } from '../core/dialogos.js';
+import { closeSheet, openSheet } from '../core/navegacion.js';
+import { fmtInput, parseMoney, parsePct, save } from '../core/persistencia.js';
+import { refresh } from '../core/refresh.js';
+import { Events } from '../core/events.js';
+import { SIN_DATO, emptyInline, emptyState } from '../core/utilidades-ui.js';
+import { FuentesFiltro } from '../core/fuentes-filtro.js';
+import { Fecha } from '../core/fecha.js';
+import { Ui } from '../core/ui.js';
+// Puente global (js/core/puente.js): las funciones se hoistean, así que quedan en window desde el principio.
+exponerGlobales({ _ahorroActualId, _ahorroActual, _nombreAhorro, registrarTasaHistorial, materializarIntereses, calcularSerieTasaImplicita, verificarTasaAhorro, poblarChequeoNu, abrirChequeoNu, _interpretarLecturaChequeoNu, guardarChequeoNu, corregirChequeoNu, _abrirConfirmarTasaNu, confirmarCambioTasaNu, verificarVencimientosCDT, _procesarSiguienteCDTVencido, calcMetaProgreso, abrirMetaCajita, _renderMetaAportes, _metaAporteEliminar, _updateMetaCuotaPreview, guardarMetaCajita, toggleMetaMinWrap, quitarMetaCajita, addCajita, deleteCajita, _cdtModoSheet, confirmarSheetCDT, abrirCrearCDT, validarCamposCDT, confirmarCrearCDT, liberarCDTManual, abrirCobrarCDT, confirmarCobrarCDT, _cancelarCobrarCDT, editarCDT, guardarCDT, renderCajitas, renderDetalleAhorro, _nuActualizarBotonesTransferir, volverANu, volverADetalleCajita, abrirDetalleCajita, _renderDetalleCajita, _cajitaDetDelete, abrirSubMeta, abrirSubCDTs, _refreshCajitaDet, abrirNuMovimiento, _nuMovimientoRenderCajitas, _nuMovimientoToggleApertura, _nuMovimientoActualizarPreview, confirmarNuMovimiento, _cajitasAhorroActual, _wireTasaInput, _motivoNuSinCajitas, _motivoNuSinTasa, _motivoNuMovimiento, _motivoNuChequeo, actualizarBotonesNu });
+
 // Cuenta de ahorro abierta ahora ('' si no hay ninguna): todo lo que esta pantalla crea o chequea es de ESA cuenta.
-function _ahorroActualId(){
+export function _ahorroActualId(){
   const c=getCuentaDeFuente(typeof cuentaActual==='string'?cuentaActual:'');
   return esCuentaAhorro(c)?c.id:'';
 }
-function _ahorroActual(){return getCuenta(_ahorroActualId());}
+export function _ahorroActual(){return getCuenta(_ahorroActualId());}
 // Nombre de la cuenta de ahorro para los textos ("la app de Nu"): el que le puso el usuario.
-function _nombreAhorro(cuentaId){return nombreCuenta(getCuenta(cuentaId||_ahorroActualId()));}
+export function _nombreAhorro(cuentaId){return nombreCuenta(getCuenta(cuentaId||_ahorroActualId()));}
 
 /* ───────────────────────────────────────────────────────────────
    SECCIÓN: Cuenta de ahorro — tasa EA (con historial por tramos) y cálculo de CDTs
@@ -45,7 +62,7 @@ function _nombreAhorro(cuentaId){return nombreCuenta(getCuenta(cuentaId||_ahorro
 // Permite corregir retroactivamente: si el banco subió la tasa el 6 de julio pero te enteraste
 // el 12, registras {fecha:'2026-07-06', tasa:9.30} y calcC() recalcula automáticamente
 // todos los días desde el 6 con la tasa nueva.
-function registrarTasaHistorial(cuentaId, fechaStr, tasa){
+export function registrarTasaHistorial(cuentaId, fechaStr, tasa){
   const cu=getCuenta(cuentaId);
   if(!cu||!fechaStr||tasa==null||isNaN(tasa))return;
   if(!cu.historialTasas)cu.historialTasas=[];
@@ -58,7 +75,7 @@ function registrarTasaHistorial(cuentaId, fechaStr, tasa){
 }
 
 // Materializa los intereses acumulados en el saldo (llama esto antes de depósitos/retiros)
-function materializarIntereses(c){
+export function materializarIntereses(c){
   if(!c.fecha)c.fecha=hoy();
   const k=calcC(c);
   if(k.dias>0&&k.ganado>0.005){
@@ -80,7 +97,7 @@ function materializarIntereses(c){
 }
 
 // Umbrales del chequeo rápido (ver cuentas.md §5 y §7). Un solo lugar para ajustarlos.
-const _CFG_CHEQUEO={
+export const _CFG_CHEQUEO={
   // — Detección de cambio de tasa —
   umbralEA:0.05,      // desvío mínimo (puntos de EA) para que un punto cuente como "tasa distinta"
   minDias:5,          // días mínimos entre dos chequeos para poder compararlos (con menos, el ruido de
@@ -96,7 +113,7 @@ const _CFG_CHEQUEO={
 // Calcula, para cada fecha en que hiciste un chequeo, la tasa EA que mejor explica el
 // crecimiento real de las cajitas chequeadas ese día (ponderado por saldo), de UNA cuenta de ahorro. Misma lógica
 // validada en el laboratorio externo de cajitas.
-function calcularSerieTasaImplicita(cuentaId){
+export function calcularSerieTasaImplicita(cuentaId){
   const propias=new Set(cajitasDeCuenta(cuentaId).map(c=>c.id));
   const chequeos=(S.chequeosAhorro||[]).filter(ch=>propias.has(ch.cajitaId));
   if(!chequeos.length)return[];
@@ -107,7 +124,7 @@ function calcularSerieTasaImplicita(cuentaId){
   });
   const serie=[];
   fechas.forEach(fecha=>{
-    let sumaPond=0,sumaPesos=0,difPesos=0;
+    let sumaPond=0,sumaPesos=0,diferencialPesos=0;
     chequeos.filter(ch=>ch.fecha===fecha).forEach(ch=>{
       const prev=prevByCajita[ch.cajitaId];
       if(!prev){prevByCajita[ch.cajitaId]={balance:ch.saldoReal,fecha};return;}
@@ -126,12 +143,12 @@ function calcularSerieTasaImplicita(cuentaId){
           let esperado=prev.balance;
           _segmentosTasa(cuentaId,prev.fecha,fecha).forEach(seg=>{esperado*=Math.pow(1+seg.tasa/100,seg.dias/365);});
           sumaPond+=ea*prev.balance;sumaPesos+=prev.balance;
-          difPesos+=ch.saldoReal-esperado;
+          diferencialPesos+=ch.saldoReal-esperado;
         }
       }
       prevByCajita[ch.cajitaId]={balance:ch.saldoReal,fecha};
     });
-    if(sumaPesos>0)serie.push({fecha,ea:sumaPond/sumaPesos,difPesos});
+    if(sumaPesos>0)serie.push({fecha,ea:sumaPond/sumaPesos,diferencialPesos});
   });
   return serie;
 }
@@ -142,13 +159,13 @@ function calcularSerieTasaImplicita(cuentaId){
 // diferencia equivale a más de tolPesos pesos (no es redondeo). Los saltos imposibles ya se
 // descartan al armar la serie (maxDesvioEA). La racha exige 2+ puntos consecutivos del MISMO lado: uno por encima y otro
 // por debajo es ruido que se compensa, no una tasa nueva.
-function verificarTasaAhorro(cuentaId){
+export function verificarTasaAhorro(cuentaId){
   const serie=calcularSerieTasaImplicita(cuentaId);
   if(!serie.length)return null;
   const tasaActual=_tasaVigenteEnFecha(hoy(),cuentaId);
   const C=_CFG_CHEQUEO;
   const desvio=p=>p.ea-tasaActual;
-  const esDesvio=p=>Math.abs(desvio(p))>C.umbralEA&&Math.abs(p.difPesos)>C.tolPesos;
+  const esDesvio=p=>Math.abs(desvio(p))>C.umbralEA&&Math.abs(p.diferencialPesos)>C.tolPesos;
   let racha=[];
   for(let i=serie.length-1;i>=0;i--){
     const p=serie[i];
@@ -161,15 +178,15 @@ function verificarTasaAhorro(cuentaId){
   return null;
 }
 
-function poblarChequeoNu(){
-  const cont=document.getElementById('chequeoNuLista');
-  if(!cont)return;
+export function poblarChequeoNu(){
+  const contenedor=document.getElementById('chequeoNuLista');
+  if(!contenedor)return;
   // Solo las cajitas que ya generaron intereses un día completo (cada una por su cuenta): comparar el saldo real con un
   // cálculo de 0 días no dice nada de la tasa. Las nuevas aparecen solas cuando cumplen su primer día.
   const cuentaId=_ahorroActualId();
   const aptas=cajitasChequeables(cuentaId);
   const faltan=cajitasDeCuenta(cuentaId).length-aptas.length;
-  cont.innerHTML=html`${aptas.map(c=>{
+  contenedor.innerHTML=html`${aptas.map(c=>{
     const e=ahorroValorEsperadoCajita(c); // el total que debería mostrar el banco: propio + intereses + encargos guardados ahí
     return html`<div class="ig nu-chq-campo">
       <label class="il" for="chq-${c.id}">${c.nombre} <span class="nu-chq-debe">(debería verse: ${fmt(e.total)})</span></label>
@@ -180,7 +197,7 @@ function poblarChequeoNu(){
 }
 
 // Abre el chequeo solo si hay algo que chequear (el botón ya sale deshabilitado; esto cubre cualquier otra vía).
-function abrirChequeoNu(){
+export function abrirChequeoNu(){
   const motivo=_motivoNuChequeo();
   if(motivo){toast(motivo,'err',4000);return;}
   openSheet('chequeo-nu');
@@ -199,7 +216,7 @@ function abrirChequeoNu(){
 // encargos incluido (ahorroValorEsperadoCajita). Antes se adivinaba si el usuario había puesto el total o solo lo propio según
 // cuál valor quedaba más cerca, y la pantalla mostraba solo lo propio. Ahora no hay nada que adivinar:
 // saldo propio = lectura − encargos, y la referencia contra la que se compara es el total esperado.
-function _interpretarLecturaChequeoNu(c,val){
+export function _interpretarLecturaChequeoNu(c,val){
   const e=ahorroValorEsperadoCajita(c);
   return{saldoPropio:val-e.encargos,referencia:e.total,encargos:e.encargos};
 }
@@ -207,9 +224,9 @@ function _interpretarLecturaChequeoNu(c,val){
 // Foto del estado justo antes de aplicar un chequeo, para poder deshacerlo si el usuario, al ver
 // el aviso de cambio de tasa, se da cuenta de que se equivocó al anotar. Solo vive en memoria:
 // no se guarda en S (si se cierra la app, el chequeo queda aplicado como siempre).
-let _chequeoNuUndo=null;
+export let _chequeoNuUndo=null;
 
-async function guardarChequeoNu(){
+export async function guardarChequeoNu(){
   const motivo=_motivoNuChequeo();
   if(motivo){toast(motivo,'err',4000);return;}
   const cuentaId=_ahorroActualId();
@@ -231,10 +248,10 @@ async function guardarChequeoNu(){
   // La lectura es el total de Nu: no puede ser menor que el dinero de encargos que hay en esa cajita (el saldo propio
   // saldría negativo). Casi siempre es haber anotado solo lo propio: se corrige antes de guardar nada.
   for(const l of lecturas){
-    const enc=_saldoEncargosEnCajita(l.cajitaId);
-    if(l.val<enc){
+    const encargo=_saldoEncargosEnCajita(l.cajitaId);
+    if(l.val<encargo){
       const c=(S.cajitas||[]).find(cc=>cc.id===l.cajitaId);
-      toast('En "'+((c&&c.nombre)||'la cajita')+'" anotaste '+fmt(l.val)+', pero ahí hay '+fmt(enc)+' de encargos. Pon el total que ves en la app de '+_nombreAhorro(cuentaId)+' (encargos incluidos).','err',5000);
+      toast('En "'+((c&&c.nombre)||'la cajita')+'" anotaste '+fmt(l.val)+', pero ahí hay '+fmt(encargo)+' de encargos. Pon el total que ves en la app de '+_nombreAhorro(cuentaId)+' (encargos incluidos).','err',5000);
       return;
     }
   }
@@ -249,9 +266,9 @@ async function guardarChequeoNu(){
     const c=(S.cajitas||[]).find(cc=>cc.id===l.cajitaId);
     if(!c)return;
     const {referencia}=_interpretarLecturaChequeoNu(c,l.val);
-    const dif=l.val-referencia;
-    if(Math.abs(dif)>Math.max(_CFG_CHEQUEO.avisoMinPesos,Math.abs(referencia)*_CFG_CHEQUEO.avisoPct)){
-      anomalias.push('• '+(c.nombre||'Cajita')+': anotaste '+fmt(l.val)+' y la app calculaba '+fmt(referencia)+' ('+(dif>0?'+':'−')+fmt(Math.abs(dif))+')');
+    const diferencial=l.val-referencia;
+    if(Math.abs(diferencial)>Math.max(_CFG_CHEQUEO.avisoMinPesos,Math.abs(referencia)*_CFG_CHEQUEO.avisoPct)){
+      anomalias.push('• '+(c.nombre||'Cajita')+': anotaste '+fmt(l.val)+' y la app calculaba '+fmt(referencia)+' ('+(diferencial>0?'+':'−')+fmt(Math.abs(diferencial))+')');
     }
   });
   if(anomalias.length){
@@ -301,7 +318,7 @@ async function guardarChequeoNu(){
 
 // "Me equivoqué al anotar": deshace el chequeo recién guardado (saldos, fechas y puntos de
 // S.chequeosAhorro vuelven a como estaban) y reabre el chequeo con los mismos valores para editarlos.
-function corregirChequeoNu(){
+export function corregirChequeoNu(){
   const u=_chequeoNuUndo;
   _tasaNuPendiente=null;
   closeSheet('confirmar-tasa-nu');
@@ -327,9 +344,9 @@ function corregirChequeoNu(){
 // navegador (que solo daba Aceptar/Cancelar) por un sheet propio de la app donde la
 // tasa sugerida y la fecha "desde" quedan editables antes de confirmar, por si el
 // usuario se equivocó al anotar el saldo y quiere corregir el valor antes de guardar.
-let _tasaNuPendiente=null;
+export let _tasaNuPendiente=null;
 
-function _abrirConfirmarTasaNu(r,cuentaId){
+export function _abrirConfirmarTasaNu(r,cuentaId){
   _tasaNuPendiente=Object.assign({},r,{cuentaId});
   const tasaActual=_tasaVigenteEnFecha(hoy(),cuentaId);
   const msgEl=document.getElementById('ctn-msg');
@@ -341,7 +358,7 @@ function _abrirConfirmarTasaNu(r,cuentaId){
   openSheet('confirmar-tasa-nu');
 }
 
-function confirmarCambioTasaNu(){
+export function confirmarCambioTasaNu(){
   if(!_tasaNuPendiente)return;
   const tasaInput=document.getElementById('ctn-tasa');
   const fechaInput=document.getElementById('ctn-fecha');
@@ -366,7 +383,7 @@ function confirmarCambioTasaNu(){
 
 // Verifica y libera CDTs vencidos automáticamente
 // Cola de CDTs vencidos pendientes de confirmar (uno a la vez vía sheet 'cobrar-cdt')
-let _colaCDTsVencidos=[];
+export let _colaCDTsVencidos=[];
 
 // Detecta CDTs vencidos y los encola para que el usuario confirme el valor REAL
 // depositado por Nu (igual que abrirCobrarCDT/confirmarCobrarCDT).
@@ -374,7 +391,7 @@ let _colaCDTsVencidos=[];
 // monto (a veces ligeramente distinto al real) entrara solo, sin que el usuario
 // pudiera corregirlo, porque el CDT ya se había borrado del array antes de
 // que la pantalla terminara de cargar.
-function verificarVencimientosCDT(){
+export function verificarVencimientosCDT(){
   _colaCDTsVencidos=[];
   (S.cajitas||[]).forEach(c=>{
     (c.cdts||[]).forEach(cdt=>{
@@ -395,7 +412,7 @@ function verificarVencimientosCDT(){
 }
 
 // Abre el sheet de cobro real para el siguiente CDT vencido en cola (si hay).
-function _procesarSiguienteCDTVencido(){
+export function _procesarSiguienteCDTVencido(){
   if(!_colaCDTsVencidos.length)return;
   const {cajitaId,cdtId}=_colaCDTsVencidos[0];
   const c=(S.cajitas||[]).find(x=>x.id===cajitaId);
@@ -414,10 +431,10 @@ function _procesarSiguienteCDTVencido(){
    ─────────────────────────────────────────────────────────────── */
 /* ---- METAS DE AHORRO EN CAJITAS ---- */
 // meta = { objetivo, inicio, fin, aportes:[{desc,monto}], minimo }
-let _metaCajitaId = null;
-let _metaAportesTemp = [];
+export let _metaCajitaId = null;
+export let _metaAportesTemp = [];
 
-function calcMetaProgreso(c){
+export function calcMetaProgreso(c){
   const meta = c.meta;
   if(!meta || !meta.objetivo || !meta.fin) return null;
   const saldo = calcC(c).val;
@@ -438,69 +455,7 @@ function calcMetaProgreso(c){
   return { saldo, obj, pct, falta, cuotaMensual, esperadoHoy, diferencia, mesesRestantes, totalMeses, mesesPasados };
 }
 
-function renderMetaProgress(c){
-  const p = calcMetaProgreso(c);
-  if(!p) return '';
-  const estado = p.diferencia >= 0 ? 'ok' : (p.diferencia > -(p.cuotaMensual*0.5) ? 'warn' : 'late');
-  const estadoLabels = {ok:'Al día', warn:'Un poco atrás', late:'Atrasado/a'};
-  const aportesHtml = c.meta.aportes && c.meta.aportes.length ? c.meta.aportes.map(ap=>`<span class="cajita-meta-aporte-chip">${escHtml(ap.desc)}: ${fmt(ap.monto)}/mes</span>`).join('') : '';
-  // saldo mínimo
-  const minInfo = c.meta.minimo ? `<div class="nu-min-caja">
-    <div class="nu-min-cap">Saldo mínimo configurado</div>
-    <div class="nu-fila-sb">
-      <span class="nu-min-txt">Mínimo: <b class="nu-b-text">${fmt(c.meta.minimo)}</b></span>
-      ${p.saldo < c.meta.minimo ? `<span class="nu-min-bajo">¡Bajo el mínimo! Faltan ${fmt(c.meta.minimo - p.saldo)}</span>` : `<span class="nu-min-ok">OK (${fmt(p.saldo - c.meta.minimo)} sobre el mínimo)</span>`}
-    </div>
-    ${_calcPrestadoMeta(c.id) > 0 ? `<div class="nu-prestado-aviso">${fmt(_calcPrestadoMeta(c.id))} prestado de esta cajita · Debería haber: ${fmt(p.saldo + _calcPrestadoMeta(c.id))}</div>` : ''}
-  </div>` : '';
-  return `<div class="cajita-meta-box">
-    <div class="cajita-meta-header">
-      <span class="cajita-meta-title">Meta: ${fmt(p.obj)}</span>
-      <button type="button" ${Events.attr('nu:abrirMetaCajita', c.id)} data-stop-propagation="true" class="nu-link-editar">editar</button>
-    </div>
-    <div class="cajita-meta-progress"><div class="cajita-meta-fill nu-fill-${estado}" style="width:${p.pct.toFixed(1)}%;"></div></div>
-    <div class="nu-meta-pct-fila">
-      <span>${p.pct.toFixed(0)}% logrado</span>
-      <span>${p.mesesRestantes} ${p.mesesRestantes===1?'mes':'meses'} restantes · ${fmt(p.falta)} por ahorrar</span>
-    </div>
-    <div class="cajita-meta-stats">
-      <div class="cajita-meta-stat"><div class="cajita-meta-stat-label">Cuota/mes</div><div class="cajita-meta-stat-val">${fmt(p.cuotaMensual)}</div></div>
-      <div class="cajita-meta-stat"><div class="cajita-meta-stat-label">Esperado hoy</div><div class="cajita-meta-stat-val">${fmt(p.esperadoHoy)}</div></div>
-      <div class="cajita-meta-stat"><div class="cajita-meta-stat-label">Estado</div><div class="cajita-meta-stat-val ${estado}">${estadoLabels[estado]}</div></div>
-    </div>
-    ${aportesHtml ? `<div class="cajita-meta-aporte-row">${aportesHtml}</div>` : ''}
-    ${minInfo}
-  </div>`;
-}
-
-function _calcPrestadoMeta(cajitaId){
-  // Suma todos los préstamos pendientes que incluyen esta cajita como fuente
-  let total = 0;
-  Deudas.lista('favor').forEach(d=>{
-    (d.movimientos||[]).forEach(m=>{
-      if(m.tipo==='prestamo'){
-        // fuente simple
-        if(m.fuente && m.fuente === 'cajita:'+cajitaId) total += m.monto;
-        // fuente dividida
-        if(m.fuentes && Array.isArray(m.fuentes)){
-          m.fuentes.forEach(f=>{ if(f.fuente==='cajita:'+cajitaId) total += (f.monto||0); });
-        }
-      }
-      // restar abonos que pueden haber regresado a la cajita
-      if(m.tipo==='abono' || m.tipo==='pago-completo'){
-        // destino simple
-        if(m.destino==='cajita:'+cajitaId) total -= m.monto;
-        // destino dividido
-        if(m.destinos && Array.isArray(m.destinos)){
-          m.destinos.forEach(r=>{ if(r.fuente==='cajita:'+cajitaId) total -= (r.monto||0); });
-        }
-      }
-    });
-  });
-  return Math.max(0, total);
-}
-
-function abrirMetaCajita(cajitaId){
+export function abrirMetaCajita(cajitaId){
   _metaCajitaId = cajitaId;
   const c = (S.cajitas||[]).find(x=>x.id===cajitaId);
   if(!c) return;
@@ -519,7 +474,7 @@ function abrirMetaCajita(cajitaId){
   openSheet('meta-cajita');
 }
 
-function _renderMetaAportes(){
+export function _renderMetaAportes(){
   const el = document.getElementById('meta_aportes_list');
   if(!el) return;
   el.innerHTML = html`${_metaAportesTemp.map((ap,i)=>html`
@@ -561,13 +516,13 @@ function _renderMetaAportes(){
 
 // Wrapper con nombre propio para el data-action (antes era un onclick con 3
 // sentencias inline: splice + re-render + actualizar preview).
-function _metaAporteEliminar(i){
+export function _metaAporteEliminar(i){
   _metaAportesTemp.splice(i,1);
   _renderMetaAportes();
   _updateMetaCuotaPreview();
 }
 
-function _updateMetaCuotaPreview(){
+export function _updateMetaCuotaPreview(){
   const obj = parseMoney(document.getElementById('meta_objetivo').value)||0;
   const inicio = document.getElementById('meta_inicio').value;
   const fin = document.getElementById('meta_fin').value;
@@ -580,7 +535,7 @@ function _updateMetaCuotaPreview(){
   el.textContent = `${meses} meses · cuota estimada: ${fmt(cuota)}/mes${totalAportes&&totalAportes!==cuota?' (suma de tus aportes)':''}`;
 }
 
-function guardarMetaCajita(){
+export function guardarMetaCajita(){
   const c = (S.cajitas||[]).find(x=>x.id===_metaCajitaId);
   if(!c){ toast('Cajita no encontrada','err'); return; }
   const obj = parseMoney(document.getElementById('meta_objetivo').value)||0;
@@ -605,7 +560,7 @@ function guardarMetaCajita(){
 // sheet meta cajita) — usaba `this` para el botón clickeado; acá se busca
 // por id en vez de depender de `this`, para que funcione igual vía
 // data-action (ver Events.registerAll más abajo).
-function toggleMetaMinWrap(){
+export function toggleMetaMinWrap(){
   const wrap=document.getElementById('meta_min_wrap');
   const btn=document.getElementById('btn-toggle-meta-min');
   if(!wrap||!btn)return;
@@ -616,7 +571,7 @@ function toggleMetaMinWrap(){
     :'<i class="fa-solid fa-chevron-down nu-ico-r4"></i>Configurar saldo mínimo';
 }
 
-function quitarMetaCajita(){
+export function quitarMetaCajita(){
   const c = (S.cajitas||[]).find(x=>x.id===_metaCajitaId);
   if(!c) return;
   delete c.meta;
@@ -626,10 +581,10 @@ function quitarMetaCajita(){
   toast('Meta eliminada','ok');
 }
 
-// Sección "Préstamo con origen dividido" (_sp_prest.toggle / _renderPrestSplit /
+// Sección "Préstamo con origen dividido" (_spotify_prest.toggle / _renderPrestSplit /
 // _updatePrestSplitResumen) migrada a js/modules/prestado.js — ver docs/prestado.md.
 
-function addCajita(){
+export function addCajita(){
   const cuentaId=_ahorroActualId();
   if(!cuentaId)return;
   if(!ahorroTasaConfigurada(cuentaId)){
@@ -641,13 +596,13 @@ function addCajita(){
   if(!S.cajitas)S.cajitas=[];
   if(cajitasDeCuenta(cuentaId).length>=MAX)return;
   const nombre='Cajita '+(cajitasDeCuenta(cuentaId).length+1);
-  S.cajitas.push({id:uid(),cuentaId,nombre,saldo:0,cdts:[]});
+  S.cajitas.push({id:uid(),cuentaId,nombre,cdts:[]});Libro.hidratar(S);
   save();renderCajitas();
   const _newId=S.cajitas[S.cajitas.length-1].id;
   if(window.logCambio)logCambio('Creaste una cajita',nombre,0,'cajita',_newId);
 }
 
-async function deleteCajita(id){
+export async function deleteCajita(id){
   const c=(S.cajitas||[]).find(x=>x.id===id);
   if(!c)return;
   if(c.cdts&&c.cdts.length){
@@ -675,17 +630,17 @@ async function deleteCajita(id){
   if(window.logCambio)logCambio('Eliminaste cajita "'+nombreEl+'"','',0,'eliminar');
 }
 
-let _cdtCajitaId=null;
+export let _cdtCajitaId=null;
 // Interruptor ÚNICO del sheet "crear-cdt": null = crear; con un id = editar ese CDT. El botón del sheet
 // tiene UN solo listener (confirmarSheetCDT) que mira esta variable. Antes el modo edición le sumaba un
 // segundo handler con `btn.onclick`, y al guardar corrían los dos: confirmarCrearCDT() (que exige saldo en la
 // cajita y, con saldo, creaba un CDT duplicado descontándolo) y guardarCDT().
-let _cdtEditId=null;
+export let _cdtEditId=null;
 
 // Pinta el sheet para crear (editando=false) o editar (true): título, texto, botón, y qué campos aplican.
 // En edición el capital NO se puede cambiar (la plata ya está en el CDT) y no tiene sentido mostrar el
 // saldo disponible ni "Invertir todo".
-function _cdtModoSheet(editando){
+export function _cdtModoSheet(editando){
   const set=(id,fn)=>{const el=document.getElementById(id);if(el)fn(el);};
   set('cdtSheetTitle',e=>{e.textContent=editando?'Editar CDT':'Crear CDT en cajita';});
   set('cdtDesc',e=>{e.textContent=editando
@@ -698,12 +653,12 @@ function _cdtModoSheet(editando){
   set('btn-confirmar-crear-cdt',e=>{e.textContent=editando?'Guardar cambios':'Crear CDT';});
 }
 
-function confirmarSheetCDT(){
+export function confirmarSheetCDT(){
   if(_cdtEditId)guardarCDT(_cdtCajitaId,_cdtEditId);
   else confirmarCrearCDT();
 }
 
-function abrirCrearCDT(cajitaId){
+export function abrirCrearCDT(cajitaId){
   _cdtCajitaId=cajitaId;
   _cdtEditId=null;
   _cdtModoSheet(false);
@@ -732,41 +687,41 @@ function abrirCrearCDT(cajitaId){
 // Reglas de los campos de un CDT (tasa, retención, fechas): UNA sola vez, para crear (confirmarCrearCDT) y
 // para editar (guardarCDT). Pura: no lee el DOM ni muestra avisos; recibe los textos del formulario.
 //  · tasa:   vacía → tasaDefecto; si no, un número > 0 (lo que lea parsePct).
-//  · rte:    vacía → rteDefecto; si no, número 0–100 con punto o coma (0 es válido; texto o negativo se rechaza).
+//  · tasaRetencion:    vacía → tasaRetencionDefecto; si no, número 0–100 con punto o coma (0 es válido; texto o negativo se rechaza).
 //  · inicio: vacío → inicioDefecto; no puede ser futuro.
 //  · vence:  obligatoria y posterior a la apertura.
-// Devuelve {ok:true, tasa, rte, inicio, vence} o {ok:false, mensaje}. `ahora` solo existe para poder probarla.
-function validarCamposCDT(o,ahora){
+// Devuelve {ok:true, tasa, tasaRetencion, inicio, vence} o {ok:false, mensaje}. `ahora` solo existe para poder probarla.
+export function validarCamposCDT(o,ahora){
   const err=mensaje=>({ok:false,mensaje});
   const txt=v=>(v==null?'':String(v)).trim();
   const tasaRaw=txt(o.tasa);
   const tasa=tasaRaw===''?o.tasaDefecto:parsePct(tasaRaw);
   if(!(tasa>0))return err('La tasa (EA) debe ser un número mayor que 0');
-  const rteRaw=txt(o.rte);
-  if(rteRaw!==''&&!/^\d+([.,]\d+)?$/.test(rteRaw))return err('La retención (RTE) no es un número válido');
-  const rte=rteRaw===''?o.rteDefecto:parsePct(rteRaw);
-  if(rte>100)return err('La retención (RTE) no puede pasar de 100 %');
+  const retencionRaw=txt(o.tasaRetencion);
+  if(retencionRaw!==''&&!/^\d+([.,]\d+)?$/.test(retencionRaw))return err('La retención (RTE) no es un número válido');
+  const tasaRetencion=retencionRaw===''?o.tasaRetencionDefecto:parsePct(retencionRaw);
+  if(tasaRetencion>100)return err('La retención (RTE) no puede pasar de 100 %');
   const inicio=o.inicio||o.inicioDefecto;
   const vence=o.vence;
   if(_fechaSafe(inicio)>(ahora||new Date()))return err('La fecha de apertura no puede ser futura');
   if(!vence)return err('Debes definir la fecha de vencimiento');
   if(_fechaSafe(vence)<=_fechaSafe(inicio))return err('La fecha de vencimiento debe ser posterior a la apertura');
-  return{ok:true,tasa,rte,inicio,vence};
+  return{ok:true,tasa,tasaRetencion: tasaRetencion,inicio,vence};
 }
 
-function confirmarCrearCDT(){
+export function confirmarCrearCDT(){
   const c=(S.cajitas||[]).find(x=>x.id===_cdtCajitaId);
   if(!c){toast('Cajita no encontrada','err');return;}
   const monto=parseMoney(document.getElementById('cdt_monto').value)||0;
   // Tasa, RTE y fechas: validarCamposCDT (mismas reglas que al editar). Vacío = tasa 9,25 y RTE 4 (valores por
   // defecto del formulario); la RTE 0 es válida.
   const v=validarCamposCDT({
-    tasa:document.getElementById('cdt_tasa').value, rte:document.getElementById('cdt_rte').value,
+    tasa:document.getElementById('cdt_tasa').value, tasaRetencion:document.getElementById('cdt_rte').value,
     inicio:document.getElementById('cdt_inicio').value, vence:document.getElementById('cdt_vence').value,
-    tasaDefecto:9.25, rteDefecto:4, inicioDefecto:hoy()
+    tasaDefecto:9.25, tasaRetencionDefecto:4, inicioDefecto:hoy()
   });
   if(!v.ok){toast(v.mensaje,'err');return;}
-  const {tasa,rte,inicio,vence}=v;
+  const {tasa,tasaRetencion: tasaRetencion,inicio,vence}=v;
   if(monto<50000){toast('El monto mínimo para un CDT es $50.000','err');return;}
   // Calcular saldo real incluyendo intereses sub-día (lo mismo que muestra el modal)
   const saldoReal=calcC(c).val;
@@ -783,7 +738,7 @@ function confirmarCrearCDT(){
   ajustarSaldoCuenta('cajita:'+c.id,c.saldo-montoFinal,{tipo:'cdt',desc:'Capital invertido en CDT',origen:{modulo:'cuentas'}});
   // Agregar CDT al array de CDTs de la cajita
   if(!c.cdts)c.cdts=[];
-  c.cdts.push({id:uid(),monto:montoFinal,tasa,rte,inicio,vence});
+  c.cdts.push({id:uid(),monto:montoFinal,tasa,tasaRetencion: tasaRetencion,inicio,vence});
   _cdtEditId=null;
   save();
   closeSheet('crear-cdt');
@@ -792,7 +747,7 @@ function confirmarCrearCDT(){
   toast(`CDT creado por ${fmt(montoFinal)} al ${String(tasa).replace('.',',')}% EA — se libera el ${vence}`,'ok',4000);
 }
 
-async function liberarCDTManual(cajitaId,cdtId){
+export async function liberarCDTManual(cajitaId,cdtId){
   const c=(S.cajitas||[]).find(x=>x.id===cajitaId);
   if(!c)return;
   const cdt=(c.cdts||[]).find(x=>x.id===cdtId);
@@ -810,9 +765,9 @@ async function liberarCDTManual(cajitaId,cdtId){
 }
 
 
-let _cobrarCajitaId=null, _cobrarCdtId=null;
+export let _cobrarCajitaId=null, _cobrarCdtId=null;
 
-function abrirCobrarCDT(cajitaId,cdtId,esVencimientoAuto){
+export function abrirCobrarCDT(cajitaId,cdtId,esVencimientoAuto){
   const c=(S.cajitas||[]).find(x=>x.id===cajitaId);
   if(!c)return;
   const cdt=(c.cdts||[]).find(x=>x.id===cdtId);
@@ -846,7 +801,7 @@ function abrirCobrarCDT(cajitaId,cdtId,esVencimientoAuto){
   openSheet('cobrar-cdt');
 }
 
-async function confirmarCobrarCDT(){
+export async function confirmarCobrarCDT(){
   const cajitaId=_cobrarCajitaId, cdtId=_cobrarCdtId;
   const c=(S.cajitas||[]).find(x=>x.id===cajitaId);
   if(!c)return;
@@ -879,7 +834,7 @@ async function confirmarCobrarCDT(){
 // - El CDT sigue en S.cdts con fecha vencida (volverá a preguntarse después).
 // - Si hay más CDTs vencidos en cola, mostramos el siguiente (no nos quedamos
 //   atorados esperando que el usuario abra el sheet manualmente).
-function _cancelarCobrarCDT(){
+export function _cancelarCobrarCDT(){
   if(_colaCDTsVencidos.length){
     const {cajitaId,cdtId}=_colaCDTsVencidos[0];
     if(cajitaId===_cobrarCajitaId&&cdtId===_cobrarCdtId){
@@ -889,7 +844,7 @@ function _cancelarCobrarCDT(){
   }
 }
 
-async function editarCDT(cajitaId,cdtId){
+export async function editarCDT(cajitaId,cdtId){
   const ok=await dialogo('Editar CDT','Los CDTs están diseñados para no tocarse. Editar puede cambiar los intereses calculados. ¿Estás seguro?','Editar de todas formas',true);
   if(!ok)return;
   const c=(S.cajitas||[]).find(x=>x.id===cajitaId);
@@ -904,7 +859,7 @@ async function editarCDT(cajitaId,cdtId){
   document.getElementById('cdt_tasa').value=String(cdt.tasa).replace('.',',');
   document.getElementById('cdt_inicio').value=cdt.inicio||hoy();
   document.getElementById('cdt_vence').value=cdt.vence||'';
-  document.getElementById('cdt_rte').value=cdt.rte!=null?String(cdt.rte).replace('.',','):'4';
+  document.getElementById('cdt_rte').value=cdt.tasaRetencion!=null?String(cdt.tasaRetencion).replace('.',','):'4';
   document.getElementById('cdt_preview').textContent='';
   document.getElementById('cdt_tasa').dispatchEvent(new Event('input',{bubbles:true})); // preview con los valores actuales
   openSheet('crear-cdt');
@@ -913,19 +868,19 @@ async function editarCDT(cajitaId,cdtId){
 // Guarda los cambios de un CDT existente. SOLO toca tasa, fechas y retención: el capital (cdt.monto) y el
 // saldo de la cajita no se tocan, así que no depende del saldo disponible. Los campos se validan con
 // validarCamposCDT, igual que al crear.
-function guardarCDT(cajitaId,cdtId){
+export function guardarCDT(cajitaId,cdtId){
   const c=(S.cajitas||[]).find(x=>x.id===cajitaId);
   if(!c){toast('Cajita no encontrada','err');return;}
   const cdt=(c.cdts||[]).find(x=>x.id===cdtId);
   if(!cdt){toast('Ese CDT ya no existe','err');return;}
   const v=validarCamposCDT({
-    tasa:document.getElementById('cdt_tasa').value, rte:document.getElementById('cdt_rte').value,
+    tasa:document.getElementById('cdt_tasa').value, tasaRetencion:document.getElementById('cdt_rte').value,
     inicio:document.getElementById('cdt_inicio').value, vence:document.getElementById('cdt_vence').value,
-    tasaDefecto:cdt.tasa, rteDefecto:cdt.rte!=null?cdt.rte:4, inicioDefecto:cdt.inicio||hoy() // vacío = conserva el valor actual
+    tasaDefecto:cdt.tasa, tasaRetencionDefecto:cdt.tasaRetencion!=null?cdt.tasaRetencion:4, inicioDefecto:cdt.inicio||hoy() // vacío = conserva el valor actual
   });
   if(!v.ok){toast(v.mensaje,'err');return;}
   cdt.tasa=v.tasa;
-  cdt.rte=v.rte;
+  cdt.tasaRetencion=v.tasaRetencion;
   cdt.inicio=v.inicio;
   cdt.vence=v.vence;
   _cdtEditId=null;
@@ -937,7 +892,7 @@ function guardarCDT(cajitaId,cdtId){
   toast('CDT actualizado','ok',3000);
 }
 
-function renderCajitas(){
+export function renderCajitas(){
   actualizarBotonesNu(); // depende solo de S: se evalúa antes de los retornos de abajo
   const el=document.getElementById('cajitasList');
   const msg=document.getElementById('cajitasMsg');
@@ -980,16 +935,16 @@ function renderCajitas(){
 
 /* ══ PANTALLA DE LA CUENTA DE AHORRO (detalle de la cuenta) ══
    Lo que cuentas.js le pide a una cuenta con pantalla propia (ver CuentaPantallas en js/core/cuentas-fuentes.js). */
-function renderDetalleAhorro(){
+export function renderDetalleAhorro(){
   // Color, título y rótulo salen del descriptor de la cuenta, igual que el detalle simple: el color llega por
   // --cuenta / --cuenta-rgb sobre #cuentas-detalle-nu y los estilos .cuenta-hero / .cuenta-action-btn lo usan.
   const cuenta=_ahorroActual();
   if(!cuenta)return;
   const dAh=_descriptorDeCuenta(cuenta);
-  const contAh=document.getElementById('cuentas-detalle-nu');
-  if(contAh){
-    contAh.style.setProperty('--cuenta',dAh.color);
-    contAh.style.setProperty('--cuenta-rgb',dAh.rgb);
+  const contenedorAh=document.getElementById('cuentas-detalle-nu');
+  if(contenedorAh){
+    contenedorAh.style.setProperty('--cuenta',dAh.color);
+    contenedorAh.style.setProperty('--cuenta-rgb',dAh.rgb);
     document.getElementById('det-nu-nombre').innerHTML=_tituloCuentaHtml(dAh);
     document.getElementById('det-nu-label').textContent=dAh.etiquetaDetalle;
   }
@@ -1010,11 +965,11 @@ function renderDetalleAhorro(){
   // Encargos en esta cuenta (cualquier cajita suya)
   if(typeof renderEncargosEnCuenta==='function') renderEncargosEnCuenta('det-nu-encargos',dAh.fuente);
   // Movimientos de la cuenta (cajitas)
-  renderMovsCuenta('det-nu-movs',getMovimientosCuenta(dAh.fuente),dAh.color,dAh.fuente,'movs-filtros-nu');
+  renderMovimientosCuenta('det-nu-movs',getMovimientosCuenta(dAh.fuente),dAh.color,dAh.fuente,'movs-filtros-nu');
 }
 
 // Pantalla de ahorro: activo si alguna cajita (no CDT) de la cuenta tiene saldo movible; y el "Mover" de la cajita abierta.
-function _nuActualizarBotonesTransferir(){
+export function _nuActualizarBotonesTransferir(){
   const hayNu=cajitasDeCuenta(_ahorroActualId()).some(c=>!c.esCDT&&FuentesFiltro.puedeMover('cajita:'+c.id));
   _setBtnTransferir(document.getElementById('btn-transferir-nu-det'),hayNu);
   if(_cajitaActualId) _setBtnTransferir(document.getElementById('cajita-det-mover'),FuentesFiltro.puedeMover('cajita:'+_cajitaActualId));
@@ -1029,21 +984,21 @@ CuentaPantallas.ahorro={
 };
 
 /* ══ NAVEGACIÓN CAJITA DETAIL ══ */
-let _cajitaActualId = null;
+export let _cajitaActualId = null;
 
-function volverANu(){
+export function volverANu(){
   _cajitaActualId = null;
   renderCajitas();
   _showCuentasPanel('cuentas-detalle-nu');
 }
 
-function volverADetalleCajita(){
+export function volverADetalleCajita(){
   const c=(S.cajitas||[]).find(x=>x.id===_cajitaActualId);
   if(c) _renderDetalleCajita(c);
   _showCuentasPanel('cuentas-detalle-cajita');
 }
 
-function abrirDetalleCajita(cajitaId){
+export function abrirDetalleCajita(cajitaId){
   const c=(S.cajitas||[]).find(x=>x.id===cajitaId);
   if(!c) return;
   _cajitaActualId = cajitaId;
@@ -1051,13 +1006,13 @@ function abrirDetalleCajita(cajitaId){
   _showCuentasPanel('cuentas-detalle-cajita');
 }
 
-function _renderDetalleCajita(c){
+export function _renderDetalleCajita(c){
   if(!c) c=(S.cajitas||[]).find(x=>x.id===_cajitaActualId);
   if(!c) return;
   // El color de una cajita es el de su cuenta: llega por --cuenta / --cuenta-rgb (como en los detalles de cuenta) a
   // .cuenta-hero, al título y al campo de nombre. Todas las rutas al detalle de cajita pasan por acá.
-  const _dNuCaj=_descriptorDeCuenta(cuentaDeCajita(c)||_ahorroActual()||{}), _pCaj=document.getElementById('cuentas-detalle-cajita');
-  if(_dNuCaj&&_pCaj){_pCaj.style.setProperty('--cuenta',_dNuCaj.color);_pCaj.style.setProperty('--cuenta-rgb',_dNuCaj.rgb);}
+  const _dNuCajita=_descriptorDeCuenta(cuentaDeCajita(c)||_ahorroActual()||{}), _pCajita=document.getElementById('cuentas-detalle-cajita');
+  if(_dNuCajita&&_pCajita){_pCajita.style.setProperty('--cuenta',_dNuCajita.color);_pCajita.style.setProperty('--cuenta-rgb',_dNuCajita.rgb);}
   const k=calcC(c);
   const tasaDisplay=getTasaCuenta(c.cuentaId);
   // Interés diario sobre la base completa (saldo propio + encargos en la cajita)
@@ -1127,7 +1082,7 @@ function _renderDetalleCajita(c){
   }
 }
 
-async function _cajitaDetDelete(){
+export async function _cajitaDetDelete(){
   if(!_cajitaActualId) return;
   await deleteCajita(_cajitaActualId);
   // Si se eliminó, volver a Nu
@@ -1136,7 +1091,7 @@ async function _cajitaDetDelete(){
 }
 
 /* ── Sub-pantalla: Meta ── */
-function abrirSubMeta(){
+export function abrirSubMeta(){
   const c=(S.cajitas||[]).find(x=>x.id===_cajitaActualId);
   if(!c) return;
   const el=document.getElementById('sub-meta-content');
@@ -1191,7 +1146,7 @@ function abrirSubMeta(){
 }
 
 /* ── Sub-pantalla: CDTs ── */
-function abrirSubCDTs(){
+export function abrirSubCDTs(){
   const c=(S.cajitas||[]).find(x=>x.id===_cajitaActualId);
   if(!c) return;
   const el=document.getElementById('sub-cdts-content');
@@ -1214,7 +1169,7 @@ function abrirSubCDTs(){
           <div>
             <div class="nu-cdt-val">${fmt(cdtK.val)}</div>
             <div class="nu-meta-obj-etq">Capital: ${fmt(cdt.monto)} · +${fmt(cdtK.ganado)} netos · ${String(cdt.tasa).replace('.',',')}% EA</div>
-            ${cdtK.retencion>0.01?html`<div class="nu-cdt-rte">RTE ${cdt.rte!=null?cdt.rte:4}%: −${fmt(cdtK.retencion)}</div>`:''}
+            ${cdtK.retencion>0.01?html`<div class="nu-cdt-rte">RTE ${cdt.tasaRetencion!=null?cdt.tasaRetencion:4}%: −${fmt(cdtK.retencion)}</div>`:''}
           </div>
           ${dr!==null?html`<span class="badge ${vencido?'bg-red':'bg-purple'}">${vencido?'¡Venció!':dr+'d'}</span>`:''}
         </div>
@@ -1255,7 +1210,7 @@ function abrirSubCDTs(){
 }
 
 // Cuando se guarde/refresh, actualizar el detalle de cajita si está abierto
-function _refreshCajitaDet(){
+export function _refreshCajitaDet(){
   // Usar _cajitaActualId, o _metaCajitaId como fallback (cuando se abre meta desde lista)
   const idActual = _cajitaActualId || _metaCajitaId;
   if(!idActual) return;
@@ -1270,25 +1225,25 @@ function _refreshCajitaDet(){
 }
 
 /* ---- ENTRÓ / SALIÓ PLATA EN NU ---- */
-let _nuMovTipo = 'entrada'; // 'entrada' | 'salida'
-let _nuMovCajitaSel = null; // fuente seleccionada: 'cajita:id'
+export let _nuMovimientoTipo = 'entrada'; // 'entrada' | 'salida'
+export let _nuMovimientoCajitaSel = null; // fuente seleccionada: 'cajita:id'
 
-function abrirNuMovimiento(tipo) {
+export function abrirNuMovimiento(tipo) {
   const motivo = _motivoNuMovimiento(tipo);
   if (motivo) { toast(motivo, 'err', 4000); return; } // los botones ya salen deshabilitados; esto cubre cualquier otra vía
   save();
-  _nuMovTipo = tipo;
-  _nuMovCajitaSel = null;
+  _nuMovimientoTipo = tipo;
+  _nuMovimientoCajitaSel = null;
   const esEntrada = tipo === 'entrada';
 
-  document.getElementById('nuMovTitle').textContent = esEntrada ? 'Agregar a ' + _nombreAhorro() : 'Retirar de ' + _nombreAhorro();
-  document.getElementById('nuMovSubtitle').innerHTML = esEntrada
+  document.getElementById('nuMovimientoTitle').textContent = esEntrada ? 'Agregar a ' + _nombreAhorro() : 'Retirar de ' + _nombreAhorro();
+  document.getElementById('nuMovimientoSubtitle').innerHTML = esEntrada
     ? 'El valor se <b class="nu-c-nu">sumará</b> a la cajita que elijas y contará como ingreso del mes.'
     : 'El valor se <b class="nu-c-red">restará</b> de la cajita que elijas.';
-  document.getElementById('nuMovDescLabel').innerHTML = esEntrada
+  document.getElementById('nuMovimientoDescLabel').innerHTML = esEntrada
     ? '¿De dónde viene esta plata? <span class="nu-c-red">*</span>'
     : '¿En qué se gastó o a dónde fue? <span class="nu-c-red">*</span>';
-  document.getElementById('nuMovMontoLabel').textContent = esEntrada ? '¿Cuánto recibiste?' : '¿Cuánto vas a restar?';
+  document.getElementById('nuMovimientoMontoLabel').textContent = esEntrada ? '¿Cuánto recibiste?' : '¿Cuánto vas a restar?';
   const btnConf = document.getElementById('btn-confirmar-nu-mov');
   if (btnConf) {
     btnConf.textContent = esEntrada ? 'Registrar ingreso' : 'Registrar salida';
@@ -1297,29 +1252,29 @@ function abrirNuMovimiento(tipo) {
   }
 
   // Ocultar toggle apertura en salida, y también si la config lo desactiva
-  const aperturaWrap = document.getElementById('nuMovAperturaWrap');
+  const aperturaWrap = document.getElementById('nuMovimientoAperturaWrap');
   const _mostrarApertura = esEntrada && (S.modulos?.corregirSaldo !== false);
   if (aperturaWrap) aperturaWrap.style.display = _mostrarApertura ? 'flex' : 'none';
-  const chk = document.getElementById('nuMovEsApertura');
-  if (chk) chk.checked = false;
+  const checkbox = document.getElementById('nuMovimientoEsApertura');
+  if (checkbox) checkbox.checked = false;
 
   // Resetear campos
-  document.getElementById('nuMovDesc').value = '';
-  document.getElementById('nuMovMonto').value = '';
-  document.getElementById('nuMovFecha').value = hoy();
-  const nuMovNotaEl = document.getElementById('nuMovNota');
-  if (nuMovNotaEl) nuMovNotaEl.value = '';
-  document.getElementById('nuMovPreview').textContent = '';
+  document.getElementById('nuMovimientoDesc').value = '';
+  document.getElementById('nuMovimientoMonto').value = '';
+  document.getElementById('nuMovimientoFecha').value = hoy();
+  const nuMovimientoNotaEl = document.getElementById('nuMovimientoNota');
+  if (nuMovimientoNotaEl) nuMovimientoNotaEl.value = '';
+  document.getElementById('nuMovimientoPreview').textContent = '';
 
   // Renderizar selector de cajitas
-  _nuMovRenderCajitas();
+  _nuMovimientoRenderCajitas();
 
   openSheet('nu-movimiento');
-  focusSheetField('nuMovDesc');
+  focusSheetField('nuMovimientoDesc');
 }
 
-function _nuMovRenderCajitas() {
-  const wrap = document.getElementById('nuMovCajitasWrap');
+export function _nuMovimientoRenderCajitas() {
+  const wrap = document.getElementById('nuMovimientoCajitasWrap');
   if (!wrap) return;
   const cajitas = _cajitasAhorroActual();
   if (!cajitas.length) {
@@ -1334,27 +1289,27 @@ function _nuMovRenderCajitas() {
         <div class="nu-sel-nombre">${c.nombre||'Cajita'}</div>
         <div class="nu-sel-saldo">${fmt(saldo)}</div>
       </div>
-      <div id="_nuMovCheck_${c.id}" class="nu-sel-radio"></div>
+      <div id="_nuMovimientoCheck_${c.id}" class="nu-sel-radio"></div>
     </div>`;
   })}`;
 
   wrap.querySelectorAll('[data-nu-cajita]').forEach(el => {
     el.addEventListener('click', function() {
-      _nuMovCajitaSel = this.dataset.nuCajita;
+      _nuMovimientoCajitaSel = this.dataset.nuCajita;
       // Resaltar selección
       wrap.querySelectorAll('[data-nu-cajita]').forEach(e => {
         e.style.borderColor = 'var(--border2)';
         e.style.background = 'var(--bg3)';
         const cid = e.dataset.nuCajita.split(':')[1];
-        const chkEl = document.getElementById('_nuMovCheck_'+cid);
-        if (chkEl) chkEl.innerHTML = '';
+        const checkboxEl = document.getElementById('_nuMovimientoCheck_'+cid);
+        if (checkboxEl) checkboxEl.innerHTML = '';
       });
       this.style.borderColor = 'var(--nu-light)';
       this.style.background = 'rgba(192,96,240,.08)';
-      const selId = _nuMovCajitaSel.split(':')[1];
-      const chkEl = document.getElementById('_nuMovCheck_'+selId);
-      if (chkEl) chkEl.innerHTML = '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--nu-light)" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>';
-      _nuMovActualizarPreview();
+      const selId = _nuMovimientoCajitaSel.split(':')[1];
+      const checkboxEl = document.getElementById('_nuMovimientoCheck_'+selId);
+      if (checkboxEl) checkboxEl.innerHTML = '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--nu-light)" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>';
+      _nuMovimientoActualizarPreview();
     });
   });
 
@@ -1365,20 +1320,20 @@ function _nuMovRenderCajitas() {
   }
 }
 
-function _nuMovToggleApertura() {
-  _aperturaToggleUI({chk:'nuMovEsApertura',lbl:'nuMovDescLabel',inp:'nuMovDesc',descPlaceholder:'Ej: Salario, mesada, bono...'});
+export function _nuMovimientoToggleApertura() {
+  _aperturaToggleUI({checkbox:'nuMovimientoEsApertura',lbl:'nuMovimientoDescLabel',inp:'nuMovimientoDesc',descPlaceholder:'Ej: Salario, mesada, bono...'});
 }
 
-function _nuMovActualizarPreview() {
-  const prev = document.getElementById('nuMovPreview');
-  if (!prev || !_nuMovCajitaSel) return;
-  const v = parseMoney(document.getElementById('nuMovMonto').value) || 0;
+export function _nuMovimientoActualizarPreview() {
+  const prev = document.getElementById('nuMovimientoPreview');
+  if (!prev || !_nuMovimientoCajitaSel) return;
+  const v = parseMoney(document.getElementById('nuMovimientoMonto').value) || 0;
   if (!v) { prev.textContent = ''; return; }
-  const cid = _nuMovCajitaSel.split(':')[1];
-  const caj = (S.cajitas || []).find(x => x.id === cid);
-  if (!caj) return;
-  const saldoActual = calcC(caj).val;
-  if (_nuMovTipo === 'entrada') {
+  const cid = _nuMovimientoCajitaSel.split(':')[1];
+  const cajita = (S.cajitas || []).find(x => x.id === cid);
+  if (!cajita) return;
+  const saldoActual = calcC(cajita).val;
+  if (_nuMovimientoTipo === 'entrada') {
     prev.textContent = fmt(saldoActual) + ' + ' + fmt(v) + ' = ' + fmt(saldoActual + v);
     prev.style.color = 'var(--accent)';
   } else {
@@ -1388,56 +1343,56 @@ function _nuMovActualizarPreview() {
   }
 }
 
-function confirmarNuMovimiento() {
-  const v = parseMoney(document.getElementById('nuMovMonto').value) || 0;
-  const desc = document.getElementById('nuMovDesc').value.trim();
-  const fecha = document.getElementById('nuMovFecha').value || hoy();
-  const nota = document.getElementById('nuMovNota')?.value.trim() || '';
-  const esApertura = _nuMovTipo === 'entrada' && (document.getElementById('nuMovEsApertura')?.checked || false);
+export function confirmarNuMovimiento() {
+  const v = parseMoney(document.getElementById('nuMovimientoMonto').value) || 0;
+  const desc = document.getElementById('nuMovimientoDesc').value.trim();
+  const fecha = document.getElementById('nuMovimientoFecha').value || hoy();
+  const nota = document.getElementById('nuMovimientoNota')?.value.trim() || '';
+  const esApertura = _nuMovimientoTipo === 'entrada' && (document.getElementById('nuMovimientoEsApertura')?.checked || false);
 
-  if (!_nuMovCajitaSel) { toast('Selecciona una cajita', 'err'); return; }
+  if (!_nuMovimientoCajitaSel) { toast('Selecciona una cajita', 'err'); return; }
   if (!v) { toast('Ingresa el monto', 'err'); return; }
   if (!esApertura && !desc) {
-    toast(_nuMovTipo === 'entrada' ? 'Describe de dónde viene la plata' : 'Describe en qué se gastó', 'err');
+    toast(_nuMovimientoTipo === 'entrada' ? 'Describe de dónde viene la plata' : 'Describe en qué se gastó', 'err');
     return;
   }
 
-  const cid = _nuMovCajitaSel.split(':')[1];
-  const caj = (S.cajitas || []).find(x => x.id === cid);
-  if (!caj) { toast('Cajita no encontrada', 'err'); return; }
+  const cid = _nuMovimientoCajitaSel.split(':')[1];
+  const cajita = (S.cajitas || []).find(x => x.id === cid);
+  if (!cajita) { toast('Cajita no encontrada', 'err'); return; }
 
-  // Guarda de saldo (2026-10-05): misma razón que confirmarRestarDinero(). descontarFuente() recorta el
+  // Guarda de saldo: misma razón que confirmarRestarDinero(). descontarFuente() recorta el
   // saldo en 0 pero registrarSalida() guarda el monto completo; sacar más de lo que hay dejaba el
   // historial desfasado y borrar el movimiento devolvía de más. Se comprueba ANTES de materializar los
   // intereses para no dejar la cajita modificada a medias si se rechaza.
-  if (_nuMovTipo !== 'entrada') {
-    const val = Plata.validarSalida(_nuMovCajitaSel, v);
+  if (_nuMovimientoTipo !== 'entrada') {
+    const val = Plata.validarSalida(_nuMovimientoCajitaSel, v);
     if (!val.ok) { toast(val.motivo, 'err', 3500); return; }
   }
 
   // Materializar intereses antes de tocar el saldo
-  if (typeof materializarIntereses === 'function') materializarIntereses(caj);
+  if (typeof materializarIntereses === 'function') materializarIntereses(cajita);
 
-  if (_nuMovTipo === 'entrada') {
-    const descFinal = registrarEntradaConApertura(_nuMovCajitaSel, v, fecha, desc, esApertura, nota);
-    if (window.logCambio) logCambio('Agregaste dinero en ' + (caj.nombre || 'cajita'), descFinal, v, 'ingreso', cid);
-    toast(fmt(v) + (esApertura ? ' registrado como saldo inicial en ' : ' agregado a ') + (caj.nombre || 'cajita'), 'ok');
+  if (_nuMovimientoTipo === 'entrada') {
+    const descFinal = registrarEntradaConApertura(_nuMovimientoCajitaSel, v, fecha, desc, esApertura, nota);
+    if (window.logCambio) logCambio('Agregaste dinero en ' + (cajita.nombre || 'cajita'), descFinal, v, 'ingreso', cid);
+    toast(fmt(v) + (esApertura ? ' registrado como saldo inicial en ' : ' agregado a ') + (cajita.nombre || 'cajita'), 'ok');
   } else {
-    registrarSalida(_nuMovCajitaSel, v, fecha, desc, nota);
-    if (window.logCambio) logCambio('Retiraste dinero de ' + (caj.nombre || 'cajita'), desc, v, 'gasto', cid);
-    toast('− ' + fmt(v) + ' de ' + (caj.nombre || 'cajita') + ' — ' + desc, 'salida');
+    registrarSalida(_nuMovimientoCajitaSel, v, fecha, desc, nota);
+    if (window.logCambio) logCambio('Retiraste dinero de ' + (cajita.nombre || 'cajita'), desc, v, 'gasto', cid);
+    toast('− ' + fmt(v) + ' de ' + (cajita.nombre || 'cajita') + ' — ' + desc, 'salida');
   }
 
   save();
   closeSheet('nu-movimiento');
   refresh();
-  _nuMovCajitaSel = null;
+  _nuMovimientoCajitaSel = null;
 }
 
 /* ---- Acciones de Nu que dependen de la tasa y de las cajitas ----
    Una sola fuente del "por qué no" (vacío = se puede) para el botón (título y aviso) y para la lógica de cada acción. */
-function _cajitasAhorroActual() { return cajitasDeCuenta(_ahorroActualId()); }
-function _wireTasaInput() {
+export function _cajitasAhorroActual() { return cajitasDeCuenta(_ahorroActualId()); }
+export function _wireTasaInput() {
   const inp = document.getElementById('nuTasaGlobal');
   if (!inp || inp._wired) return;
   inp._wired = true;
@@ -1456,10 +1411,10 @@ function _wireTasaInput() {
 }
 _wireTasaInput();
 
-function _motivoNuSinCajitas() { return _cajitasAhorroActual().length ? '' : 'Primero crea una cajita en ' + _nombreAhorro() + '.'; }
-function _motivoNuSinTasa() { return ahorroTasaConfigurada(_ahorroActualId()) ? '' : 'Configura primero la tasa EA de ' + _nombreAhorro() + ' (campo "Tasa EA %").'; }
+export function _motivoNuSinCajitas() { return _cajitasAhorroActual().length ? '' : 'Primero crea una cajita en ' + _nombreAhorro() + '.'; }
+export function _motivoNuSinTasa() { return ahorroTasaConfigurada(_ahorroActualId()) ? '' : 'Configura primero la tasa EA de ' + _nombreAhorro() + ' (campo "Tasa EA %").'; }
 
-function _motivoNuMovimiento(tipo) {
+export function _motivoNuMovimiento(tipo) {
   const m = _motivoNuSinCajitas() || _motivoNuSinTasa();
   if (m) return m;
   if (tipo === 'salida' && !_cajitasAhorroActual().some(c => Math.round(calcC(c).val * 100) >= Math.round(_MIN_RETIRO * 100))) {
@@ -1468,14 +1423,14 @@ function _motivoNuMovimiento(tipo) {
   return '';
 }
 
-function _motivoNuChequeo() {
+export function _motivoNuChequeo() {
   const m = _motivoNuSinCajitas() || _motivoNuSinTasa();
   if (m) return m;
   if (!cajitasChequeables(_ahorroActualId()).length) return 'Se habilita cuando una cajita lleve un día completo generando intereses.';
   return '';
 }
 
-function actualizarBotonesNu() {
+export function actualizarBotonesNu() {
   const $ = id => document.getElementById(id);
   const mEntro = _motivoNuMovimiento('entrada'), mSalio = _motivoNuMovimiento('salida'), mChq = _motivoNuChequeo();
   _setBtnEstado($('btn-nu-entro'), !mEntro, mEntro);
@@ -1494,17 +1449,17 @@ function actualizarBotonesNu() {
 }
 
 // --- CDT ---
-const btnCDTConf = document.getElementById('btn-confirmar-crear-cdt');
+export const btnCDTConf = document.getElementById('btn-confirmar-crear-cdt');
 if (btnCDTConf) btnCDTConf.addEventListener('click', confirmarSheetCDT); // crear o editar según _cdtEditId
-const btnCobrarConf = document.getElementById('btn-confirmar-cobrar-cdt');
+export const btnCobrarConf = document.getElementById('btn-confirmar-cobrar-cdt');
 if (btnCobrarConf) btnCobrarConf.addEventListener('click', confirmarCobrarCDT);
 
 // --- Meta de ahorro en cajita ---
-const btnGuardarMeta = document.getElementById('btn-guardar-meta');
+export const btnGuardarMeta = document.getElementById('btn-guardar-meta');
 if (btnGuardarMeta) btnGuardarMeta.addEventListener('click', guardarMetaCajita);
-const btnQuitarMeta = document.getElementById('btn-quitar-meta');
+export const btnQuitarMeta = document.getElementById('btn-quitar-meta');
 if (btnQuitarMeta) btnQuitarMeta.addEventListener('click', quitarMetaCajita);
-const btnAddMetaAporte = document.getElementById('btn-add-meta-aporte');
+export const btnAddMetaAporte = document.getElementById('btn-add-meta-aporte');
 if (btnAddMetaAporte) btnAddMetaAporte.addEventListener('click', () => { _metaAportesTemp.push({desc:'',monto:0}); _renderMetaAportes(); });
 // Preview en vivo al cambiar monto objetivo / fechas en el sheet de meta
 ['meta_objetivo','meta_inicio','meta_fin'].forEach(id => {
@@ -1513,18 +1468,18 @@ if (btnAddMetaAporte) btnAddMetaAporte.addEventListener('click', () => { _metaAp
 });
 
 // --- Nu: entró / salió plata ---
-const btnNuEntro = document.getElementById('btn-nu-entro');
+export const btnNuEntro = document.getElementById('btn-nu-entro');
 if (btnNuEntro) btnNuEntro.addEventListener('click', () => abrirNuMovimiento('entrada'));
-const btnNuSalio = document.getElementById('btn-nu-salio');
+export const btnNuSalio = document.getElementById('btn-nu-salio');
 if (btnNuSalio) btnNuSalio.addEventListener('click', () => abrirNuMovimiento('salida'));
-const btnNuMovConf = document.getElementById('btn-confirmar-nu-mov');
-if (btnNuMovConf) btnNuMovConf.addEventListener('click', confirmarNuMovimiento);
+export const btnNuMovimientoConf = document.getElementById('btn-confirmar-nu-mov');
+if (btnNuMovimientoConf) btnNuMovimientoConf.addEventListener('click', confirmarNuMovimiento);
 document.addEventListener('input', function(e) {
-  if (e.target.id === 'nuMovMonto') _nuMovActualizarPreview();
+  if (e.target.id === 'nuMovimientoMonto') _nuMovimientoActualizarPreview();
 });
 
 // --- Cajita: agregar ---
-const btnAddCajita = document.getElementById('btnAddCajita');
+export const btnAddCajita = document.getElementById('btnAddCajita');
 if (btnAddCajita) btnAddCajita.addEventListener('click', addCajita);
 
 // Preview en vivo del sheet "crear CDT" (monto/tasa/fecha → valor neto
@@ -1536,20 +1491,20 @@ document.addEventListener('input',function(e){
   if(!['cdt_monto','cdt_tasa','cdt_vence','cdt_rte'].includes(e.target.id))return;
   const monto=parseMoney(document.getElementById('cdt_monto').value)||0;
   const tasa=parsePct(document.getElementById('cdt_tasa').value)||9.25;
-  const rteTxt=(document.getElementById('cdt_rte').value||'').trim();
-  const rte=(rteTxt===''?4:(parsePct(rteTxt)||0))/100; // vacío = 4 (por defecto); 0 es válido
+  const retencionTxt=(document.getElementById('cdt_rte').value||'').trim();
+  const tasaRetencion=(retencionTxt===''?4:(parsePct(retencionTxt)||0))/100; // vacío = 4 (por defecto); 0 es válido
   const vence=document.getElementById('cdt_vence').value;
   const prev=document.getElementById('cdt_preview');
   if(!prev)return;
   if(monto>=50000&&vence){
     const dias=Math.max(0,Fecha.diasEntre(hoy(),vence));
     const tasaDiaria=Math.pow(1+tasa/100,1/365)-1;
-    const tasaDiariaNet=tasaDiaria*(1-rte);
+    const tasaDiariaNet=tasaDiaria*(1-tasaRetencion);
     const valorFinal=monto*Math.pow(1+tasaDiariaNet,dias);
     const valorBruto=monto*Math.pow(1+tasaDiaria,dias);
     const ganado=valorFinal-monto;
     const retencionTotal=valorBruto-valorFinal;
-    prev.textContent=`En ${dias}d recibirás ~${fmt(valorFinal)} neto (+${fmt(ganado)} · RTE ${(rte*100).toFixed(0)}%: -${fmt(retencionTotal)})`;
+    prev.textContent=`En ${dias}d recibirás ~${fmt(valorFinal)} neto (+${fmt(ganado)} · RTE ${(tasaRetencion*100).toFixed(0)}%: -${fmt(retencionTotal)})`;
     prev.style.color='var(--accent)';
   } else if(monto>0&&monto<50000&&!_cdtEditId){
     prev.textContent='Mínimo $50.000 para el CDT';
@@ -1595,14 +1550,17 @@ Events.registerAll('nu', {
 
 // El 'change' del toggle "es saldo inicial" del sheet de Agregar/Retirar de Nu (antes onchange inline en el HTML).
 (function(){
-  const wrap=document.getElementById('nuMovAperturaWrap');
-  const chk=document.getElementById('nuMovEsApertura');
-  if(wrap&&chk){
-    wrap.addEventListener('click', () => chk.click());
-    chk.addEventListener('click', e => e.stopPropagation());
-    chk.addEventListener('change', _nuMovToggleApertura);
+  const wrap=document.getElementById('nuMovimientoAperturaWrap');
+  const checkbox=document.getElementById('nuMovimientoEsApertura');
+  if(wrap&&checkbox){
+    wrap.addEventListener('click', () => checkbox.click());
+    checkbox.addEventListener('click', e => e.stopPropagation());
+    checkbox.addEventListener('change', _nuMovimientoToggleApertura);
   }
 })();
 
 Ui.hoja('chequeo-nu', () => { poblarChequeoNu(); }, { key: 'nu-chequeo' });
 Ui.pantalla('cuentas', () => { if (typeof renderCajitas === 'function') renderCajitas(); }, { key: 'nu-cajitas-render' });
+
+// Puente global (js/core/puente.js): constantes y clases ya inicializadas, y variables que otros archivos leen por nombre.
+exponerGlobales({ _CFG_CHEQUEO, btnCDTConf, btnCobrarConf, btnGuardarMeta, btnQuitarMeta, btnAddMetaAporte, btnNuEntro, btnNuSalio, btnNuMovimientoConf, btnAddCajita });

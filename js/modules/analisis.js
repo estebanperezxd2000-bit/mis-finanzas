@@ -24,9 +24,34 @@
 
    ═══════════════════════════════════════════════════════════════ */
 
+import { exponerGlobales, exponerVariables } from '../core/puente.js';
+import { UMBRALES } from '../core/umbrales.js';
+import { Salud } from '../core/salud.js';
+import { PlanDeudas } from '../core/plan-deudas.js';
+import { calcBienes, calcPatrimonioConBienes, medirPatrimonioParaHistorial, purgarEfectoEnHistorial } from '../core/patrimonio.js';
+import { html, raw } from '../core/html-tag.js';
+import { S, escHtml, fmt, hoy, medirAnchoTexto, uid } from '../core/estado.js';
+import { Events } from '../core/events.js';
+import { mesActual } from '../core/ingresos.js';
+import { Fecha } from '../core/fecha.js';
+import { Periodo } from '../core/periodo.js';
+import { _deudasPropias, _situacion, calcEstadoSituacion, calcSinBase } from './inicio.js';
+import { SIN_DATO, emptyInline, mostrarSi } from '../core/utilidades-ui.js';
+import { _fechaSafe, avisarMovimientoBloqueado, confirmarBorrarMovimientoViejo, confirmarEliminar, nivelAntiguedadMovimiento, toast } from '../core/dialogos.js';
+import { cobroAvisoMes, cobroBorrar, cobroFuentesDe, cobroMesTexto, cobroRegistrar, cobroRevertir, cobrosDeIngresoFijo, ingresoFijoEstadoMes } from '../core/cobros.js';
+import { fuenteLabel, getSaldoFuente, opcionesCuenta } from '../core/cuentas-fuentes.js';
+import { fmtInput, parseMoney, save, setMoneyInput } from '../core/persistencia.js';
+import { closeSheet, openSheet } from '../core/navegacion.js';
+import { refresh } from '../core/refresh.js';
+import { crearSplitWidget, splitAgregarRow, splitGetData, splitReset, splitToggle } from '../core/split.js';
+import { _milesFormatear, parseMiles } from '../core/money-input.js';
+import { Ui } from '../core/ui.js';
+// Puente global (js/core/puente.js): las funciones se hoistean, así que quedan en window desde el principio.
+exponerGlobales({ renderBienes, renderAnalisis, renderSimulador, renderConciliacion, renderIngresosFijos, abrirSheetIngresoFijo, editarIngresoFijo, eliminarIngresoFijo, guardarIngresoFijo, actualizarCbAvisoMes, actualizarCbPreview, abrirCobroIngresoFijo, confirmarCobroIngresoFijo, eliminarCobroIngresoFijo, abrirPresupuestos, renderPresupuestos });
+
 /* ---- ANÁLISIS FINANCIERO ---- */
 // Bienes (una moto, un computador): activos no líquidos, APARTE del patrimonio financiero. Solo aparece si hay bienes registrados.
-function renderBienes(){
+export function renderBienes(){
   const el=document.getElementById('an-bienes');
   if(!el)return;
   const b=calcBienes();
@@ -46,8 +71,8 @@ function renderBienes(){
     </div>`;
 }
 
-let _anPatDias=30; // ventana de la gráfica de patrimonio (solo vista; no se guarda)
-function renderAnalisis(){
+export let _anPatDias=30; // ventana de la gráfica de patrimonio (solo vista; no se guarda)
+export function renderAnalisis(){
   const mes=mesActual();
   const MESES_NOMBRE=Fecha.MESES_CORTOS;
 
@@ -57,8 +82,8 @@ function renderAnalisis(){
   // ── Gastos del mes actual ──────────────────────────────────────────────
   // Nota: no hace falta excluir "favores" pagados con plata comprometida aquí —
   // esos gastos nunca se guardan en S.gastosVar. Viven en tc.compras (con
-  // _esFavor/_desdeCP cuando se pagan con TC) o son solo una reposición de
-  // cajita marcada con _esReposicionCP en S.movimientos. Ver _esEntradaEspejoNoIngreso.
+  // _esFavor/_desdePlataComprometida cuando se pagan con TC) o son solo una reposición de
+  // cajita marcada con _esReposicionPlataComprometida en S.movimientos. Ver _esEntradaEspejoNoIngreso.
   // También excluir _esExtraPrestamo: es plata de un extra/propina que se gastó de inmediato
   // (nunca se registró como ingreso, así que contarla como gasto real infla el balance negativamente)
   // conRendimientos: en Análisis los intereses de Nu (cajitas y CDT) cuentan como ingreso del mes, para que el balance
@@ -86,19 +111,19 @@ function renderAnalisis(){
     //   sin ingresos y sin gastos → neutro · sin ingresos y con gastos → rojo · ingresos > gastos → verde
     //   ingresos = gastos → neutro · gastos > ingresos → rojo
     const sinIngresos=!_hayIngresos;
-    const sinMovs=sinIngresos&&gastosTotalMes<0.005;
+    const sinMovimientos=sinIngresos&&gastosTotalMes<0.005;
     // Sin base (usuario nuevo) el balance del mes no es una conclusión: los ingresos pueden estar a medio anotar o el gasto salir de un saldo
     // inicial (que no es ingreso). Se muestra el dato, en tono neutro y sin juicio. Mismo criterio que la tarjeta de Salud de Inicio.
     const sinBase=typeof calcSinBase==='function'&&calcSinBase();
     // Gastos sin ningún ingreso anotado: falta información, no un déficit. Nunca rojo ni «−$X».
-    const estado=(sinMovs||sinIngresos||sinBase)?'neu':_cero?'neu':balance>0?'pos':'neg';
+    const estado=(sinMovimientos||sinIngresos||sinBase)?'neu':_cero?'neu':balance>0?'pos':'neg';
     const claseTono={pos:'c-green',neg:'c-red',neu:'an-t-muted'}[estado];
     const mes2d=MESES_NOMBRE[mesNum]+' '+anio;
     const flecha=trazo=>`<svg aria-hidden="true" class="an-hero-flecha" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">${trazo}</svg>`;
     const icono=estado==='pos'?flecha('<line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>')
       :estado==='neg'?flecha('<line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>'):'';
     let mensaje, monto;
-    if(sinMovs){ mensaje='Aún no hay ingresos ni gastos que cuenten para este mes.'; monto=fmt(0); }
+    if(sinMovimientos){ mensaje='Aún no hay ingresos ni gastos que cuenten para este mes.'; monto=fmt(0); }
     else if(sinIngresos){ mensaje='Registra tus ingresos para ver el balance del mes.'; monto=raw(SIN_DATO); }
     else if(_cero){ mensaje='Por ahora has gastado todo lo que has recibido este mes.'; monto=fmt(0); }
     else if(balance>0){ mensaje=sinBase?'Por ahora has gastado menos de lo que has recibido este mes.':'Por ahora vas bien: has gastado menos de lo que has recibido este mes.'; monto='+'+fmt(balance); }
@@ -116,11 +141,11 @@ function renderAnalisis(){
   }
 
   // ── Stats ──────────────────────────────────────────────────────────────
-  const elIng=document.getElementById('an-ingresos');
+  const elIngreso=document.getElementById('an-ingresos');
   const elGas=document.getElementById('an-gastos');
   const elFij=document.getElementById('an-fijos');
   const elVar=document.getElementById('an-variables');
-  if(elIng){ if(_hayIngresos) elIng.textContent=fmt(ingresosEstimados); else elIng.innerHTML=SIN_DATO; }
+  if(elIngreso){ if(_hayIngresos) elIngreso.textContent=fmt(ingresosEstimados); else elIngreso.innerHTML=SIN_DATO; }
   if(elGas) elGas.textContent=fmt(gastosTotalMes);
   if(elFij) elFij.textContent=fmt(gastoFijoTotal);
   if(elVar) elVar.textContent=fmt(gastoVariableTotal);
@@ -158,17 +183,17 @@ function renderAnalisis(){
 
   // ── Gráfico de barras — últimos 12 meses ──────────────────────────────
   const flujo12=Periodo.resumenFlujo(12,mes);
-  const hoy12=flujo12.meses.map(x=>({k:x.mes,label:MESES_NOMBRE[parseInt(x.mes.split('-')[1])-1],total:x.gastos,ing:x.ingresos}));
-  const maxBar=Math.max(...hoy12.map(x=>Math.max(x.total,x.ing)),1);
+  const hoy12=flujo12.meses.map(x=>({k:x.mes,label:MESES_NOMBRE[parseInt(x.mes.split('-')[1])-1],total:x.gastos,ingreso:x.ingresos}));
+  const maxBar=Math.max(...hoy12.map(x=>Math.max(x.total,x.ingreso)),1);
   const barEl=document.getElementById('an-grafico-barras');
   const labEl=document.getElementById('an-grafico-labels');
   if(barEl&&labEl){
     // Gasto (barra principal) junto al ingreso (barra fina verde): un déficit sostenido se ve de un vistazo.
-    barEl.innerHTML=hoy12.map(({k,total,ing,label})=>{
+    barEl.innerHTML=hoy12.map(({k,total,ingreso,label})=>{
       const pct=Math.max(total>0?Math.round((total/maxBar)*100):0,2);
-      const pctI=Math.max(ing>0?Math.round((ing/maxBar)*100):0,2);
+      const pctI=Math.max(ingreso>0?Math.round((ingreso/maxBar)*100):0,2);
       const esMesActual=k===mes;
-      return`<div class="an-bar-par" data-bar-label="${label}" data-bar-val="${total}" data-bar-ing="${ing}" data-bar-mes="${k}"><div class="an-bar ${esMesActual?'an-bar-act':'an-bar-inact'}" style="height:${pct}%;min-height:${total>0?4:2}px;"></div><div class="an-bar an-bar-ing" style="height:${pctI}%;min-height:${ing>0?4:2}px;"></div></div>`;
+      return`<div class="an-bar-par" data-bar-label="${label}" data-bar-val="${total}" data-bar-ingreso="${ingreso}" data-bar-mes="${k}"><div class="an-bar ${esMesActual?'an-bar-act':'an-bar-inact'}" style="height:${pct}%;min-height:${total>0?4:2}px;"></div><div class="an-bar an-bar-ing" style="height:${pctI}%;min-height:${ingreso>0?4:2}px;"></div></div>`;
     }).join('');
     labEl.innerHTML=hoy12.map(({label,k})=>{
       const esMesActual=k===mes;
@@ -186,27 +211,27 @@ function renderAnalisis(){
       const fmt2 = fmt;
       const label = bar.dataset.barLabel || '';
       const val = parseFloat(bar.dataset.barVal) || 0;
-      const ingVal = parseFloat(bar.dataset.barIng) || 0;
+      const ingresoVal = parseFloat(bar.dataset.barIngreso) || 0;
       // Limpiar tooltip previo
       const old = document.getElementById('_bar-tt');
       if(old){ old.remove(); if(old._lastBar === bar){ return; } }
-      if(!val&&!ingVal) return;
-      const tt = document.createElement('div');
-      tt.id = '_bar-tt';
-      tt._lastBar = bar;
-      tt.style.cssText = 'position:fixed;background:#1a1a1a;border:1px solid #383838;border-radius:9px;padding:9px 13px;font-family:\'DM Mono\',monospace;z-index:99999;pointer-events:none;box-shadow:0 4px 24px rgba(0,0,0,.8);text-align:center;min-width:90px;';
-      tt.innerHTML = `<div class="an-tt-lbl">${label}</div><div class="an-tt-val ${val>0?'an-tt-val-pos':''}">Gasto ${fmt2(val)}</div><div class="an-tt-val">Ingreso ${fmt2(ingVal)}</div>`;
-      document.body.appendChild(tt);
+      if(!val&&!ingresoVal) return;
+      const tooltip = document.createElement('div');
+      tooltip.id = '_bar-tt';
+      tooltip._lastBar = bar;
+      tooltip.style.cssText = 'position:fixed;background:#1a1a1a;border:1px solid #383838;border-radius:9px;padding:9px 13px;font-family:\'DM Mono\',monospace;z-index:99999;pointer-events:none;box-shadow:0 4px 24px rgba(0,0,0,.8);text-align:center;min-width:90px;';
+      tooltip.innerHTML = `<div class="an-tt-lbl">${label}</div><div class="an-tt-val ${val>0?'an-tt-val-pos':''}">Gasto ${fmt2(val)}</div><div class="an-tt-val">Ingreso ${fmt2(ingresoVal)}</div>`;
+      document.body.appendChild(tooltip);
       const rect = bar.getBoundingClientRect();
-      const ttW = tt.offsetWidth || 110;
-      let left = rect.left + rect.width/2 - ttW/2;
+      const tooltipW = tooltip.offsetWidth || 110;
+      let left = rect.left + rect.width/2 - tooltipW/2;
       if(left < 8) left = 8;
-      if(left + ttW > window.innerWidth - 8) left = window.innerWidth - ttW - 8;
-      const top = rect.top - tt.offsetHeight - 8;
-      tt.style.left = left + 'px';
-      tt.style.top = (top < 8 ? rect.bottom + 8 : top) + 'px';
-      clearTimeout(window._barTT_t);
-      window._barTT_t = setTimeout(()=>{ const t=document.getElementById('_bar-tt'); if(t) t.remove(); }, 2500);
+      if(left + tooltipW > window.innerWidth - 8) left = window.innerWidth - tooltipW - 8;
+      const top = rect.top - tooltip.offsetHeight - 8;
+      tooltip.style.left = left + 'px';
+      tooltip.style.top = (top < 8 ? rect.bottom + 8 : top) + 'px';
+      clearTimeout(window._barTooltip_t);
+      window._barTooltip_t = setTimeout(()=>{ const t=document.getElementById('_bar-tt'); if(t) t.remove(); }, 2500);
     };
   }
 
@@ -310,7 +335,7 @@ function renderAnalisis(){
             </div>
             <div class="an-der">
               <div class="an-comp-val ${diffClase(diffGastos,true)}">${diffGastos===0?'=':arrow(diffGastos)} ${fmt(Math.abs(diffGastos))}</div>
-              <div class="an-comp-sub an-t-muted">${totalPrev>0?Math.abs(Math.round(diffGastos/totalPrev*100))+'%':''} ${diffGastos<0?'menos':'más'} por ahora</div>
+              <div class="an-comp-sub an-t-muted">${diffGastos===0?'Igual que el mes pasado':gastosTotalMes===0?'Aún sin gastos este mes':Math.abs(Math.round(diffGastos/totalPrev*100))+'% '+(diffGastos<0?'menos':'más')+' por ahora'}</div>
             </div>
           </div>
           <div class="an-sep"></div>
@@ -344,9 +369,9 @@ function renderAnalisis(){
     const ventana=_opcionesVent.length?(_opcionesVent.includes(_anPatDias)?_anPatDias:_opcionesVent[0]):365;
     const corte=(()=>{const d=_fechaSafe(hoy());d.setDate(d.getDate()-ventana);return d;})();
     const todo=S.patrimonioHistorial||[];
-    let hist=todo.filter(h=>_fechaSafe(h.fecha)>=corte);
-    if(hist.length<2) hist=todo.slice(-Math.min(todo.length,Math.max(2,hist.length)));
-    if(hist.length<2){
+    let historial=todo.filter(h=>_fechaSafe(h.fecha)>=corte);
+    if(historial.length<2) historial=todo.slice(-Math.min(todo.length,Math.max(2,historial.length)));
+    if(historial.length<2){
       patriEl.innerHTML=emptyInline('Aún no hay suficiente historial. Vuelve mañana.',{centro:true});
     } else {
       // Serie «como si el saldo inicial siempre hubiera estado»: a cada punto se le suman los saldos iniciales (montoBase) registrados DESPUÉS.
@@ -354,7 +379,7 @@ function renderAnalisis(){
       // se le RESTABA a los puntos posteriores: la línea terminaba en −$2 M mientras el número decía $3.334 M). El cambio de la ventana
       // (último − primero) es exactamente el mismo: lo que entró como saldo inicial nunca es crecimiento ni pérdida.
       const _vp=h=>(h.valorVisible!=null)?h.valorVisible:h.valor;
-      const valsReales = hist.map((h,i)=>_vp(h)+hist.slice(i+1).reduce((a,x)=>a+(x.montoBase||0),0));
+      const valsReales = historial.map((h,i)=>_vp(h)+historial.slice(i+1).reduce((a,x)=>a+(x.montoBase||0),0));
       const maxV=Math.max(...valsReales);
       const minV=Math.min(...valsReales);
       const rng=maxV-minV||1;
@@ -362,17 +387,17 @@ function renderAnalisis(){
       // El eje X reparte los puntos por FECHA, no en partes iguales: un registro solo se guarda los días en que abres la app y
       // guardas algo, así que un salto de 10 días no debe verse igual que uno de 1 día. (Sin fechas distintas, partes iguales.)
       const _ms=h=>_fechaSafe(h.fecha).getTime(); // tolera «2026-9-26» (sin cero), igual que la Proyección
-      const _t0=_ms(hist[0]), _span=_ms(hist[hist.length-1])-_t0;
-      const _diasVentana=_span>0?Math.round(_span/Fecha.MS_DIA)+1:hist.length;
+      const _t0=_ms(historial[0]), _span=_ms(historial[historial.length-1])-_t0;
+      const _diasVentana=_span>0?Math.round(_span/Fecha.MS_DIA)+1:historial.length;
       const pts=valsReales.map((v,i)=>{
-        const px=PAD+(_span>0?(_ms(hist[i])-_t0)/_span:i/(hist.length-1))*(W-PAD*2);
+        const px=PAD+(_span>0?(_ms(historial[i])-_t0)/_span:i/(historial.length-1))*(W-PAD*2);
         const py=PAD+(1-(v-minV)/rng)*(H-PAD*2);
         return[px,py];
       });
       const polyline=pts.map(([x,y])=>x+','+y).join(' ');
       const areaPath='M '+pts[0][0]+','+H+' L '+pts.map(([x,y])=>x+','+y).join(' L ')+' L '+pts[pts.length-1][0]+','+H+' Z';
-      const primero=hist[0];
-      const ultimo2=hist[hist.length-1];
+      const primero=historial[0];
+      const ultimo2=historial[historial.length-1];
       // diffTotal: cambio real de patrimonio en la ventana, calculado sobre la serie ya
       // ajustada (valsReales) — no restando aperturas aparte del cambio crudo, porque eso
       // doble-cuenta el montoBase del primer punto (que ya forma parte de "primero.valor").
@@ -426,7 +451,7 @@ function renderAnalisis(){
             <line id="_pat-line" x1="0" y1="0" x2="0" y2="${H}" stroke="${diffColor}" stroke-width="1" stroke-dasharray="3,3" opacity="0" class="an-pe-none"/>
           </svg>
           <div id="_pat-tt" class="an-pat-tt" style="display:none;"></div>
-          <div id="_pat-overlay" class="an-pat-overlay" data-pts='${JSON.stringify(pts.map(([px,py],i)=>({px,py,fecha:hist[i].fecha,valor:valsReales[i],valorReal:valsReales[i]})))}' data-W="${W}" data-H="${H}" data-diffcolor="${diffColor}"></div>
+          <div id="_pat-overlay" class="an-pat-overlay" data-pts='${JSON.stringify(pts.map(([px,py],i)=>({px,py,fecha:historial[i].fecha,valor:valsReales[i],valorReal:valsReales[i]})))}' data-W="${W}" data-H="${H}" data-diffcolor="${diffColor}"></div>
         </div>
         <div class="an-pat-pie">
           <span class="an-pat-fecha">${primero.fecha.slice(5)}</span>
@@ -436,10 +461,10 @@ function renderAnalisis(){
       // Bind touch/click on the transparent overlay
       (function(){
         const overlay = patriEl.querySelector('#_pat-overlay');
-        const tt = patriEl.querySelector('#_pat-tt');
+        const tooltip = patriEl.querySelector('#_pat-tt');
         const dot = patriEl.querySelector('#_pat-dot');
         const vline = patriEl.querySelector('#_pat-line');
-        if(!overlay||!tt||!dot||!vline) return;
+        if(!overlay||!tooltip||!dot||!vline) return;
         const ptsData = JSON.parse(overlay.dataset.pts);
         const svgW = parseInt(overlay.dataset.w);
         const svgH = parseInt(overlay.dataset.h);
@@ -453,7 +478,7 @@ function renderAnalisis(){
           ptsData.forEach((p,i)=>{ const d=Math.abs(p.px - svgX); if(d<bestD){bestD=d;best=i;} });
           return ptsData[best];
         }
-        function showTT(clientX){
+        function showTooltip(clientX){
           // Todas las LECTURAS de geometría primero (rect no se invalida
           // hasta que empecemos a escribir el DOM más abajo).
           const rect = overlay.getBoundingClientRect();
@@ -471,35 +496,35 @@ function renderAnalisis(){
           // reflow) en vez de leer tt.offsetWidth después de escribir el
           // innerHTML — eso era lo que causaba el forced reflow en cada
           // touchmove al arrastrar sobre la gráfica.
-          const ttW = Math.max(
+          const tooltipW = Math.max(
             medirAnchoTexto(fechaFmt, '9px "DM Mono", monospace'),
             medirAnchoTexto(valorTxt, '700 13px "DM Mono", monospace')
           ) + 24; // padding:8px 12px del tooltip
-          let ttLeft = leftPx;
+          let tooltipLeft = leftPx;
           const wrapW = rect.width;
-          if(ttLeft - ttW/2 < 0) ttLeft = ttW/2;
-          if(ttLeft + ttW/2 > wrapW) ttLeft = wrapW - ttW/2;
+          if(tooltipLeft - tooltipW/2 < 0) tooltipLeft = tooltipW/2;
+          if(tooltipLeft + tooltipW/2 > wrapW) tooltipLeft = wrapW - tooltipW/2;
           // Ahora sí, todas las ESCRITURAS juntas al final.
-          tt.innerHTML = `<div class="an-pt-fecha">${fechaFmt}</div><div class="an-pt-valor">${valorTxt}</div>`;
-          tt.style.display = 'block';
-          tt.style.left = ttLeft + 'px';
-          tt.style.top = '2px';
+          tooltip.innerHTML = `<div class="an-pt-fecha">${fechaFmt}</div><div class="an-pt-valor">${valorTxt}</div>`;
+          tooltip.style.display = 'block';
+          tooltip.style.left = tooltipLeft + 'px';
+          tooltip.style.top = '2px';
           dot.setAttribute('cx', p.px);
           dot.setAttribute('cy', p.py);
           vline.setAttribute('x1', p.px); vline.setAttribute('x2', p.px);
           vline.setAttribute('opacity','0.5');
         }
-        function hideTT(){
-          tt.style.display='none';
+        function hideTooltip(){
+          tooltip.style.display='none';
           vline.setAttribute('opacity','0');
           // Restaurar dot al último punto
           const last = ptsData[ptsData.length-1];
           dot.setAttribute('cx',last.px); dot.setAttribute('cy',last.py);
         }
-        overlay.addEventListener('touchstart', function(e){ e.stopPropagation(); showTT(e.touches[0].clientX); }, {passive:true});
-        overlay.addEventListener('touchmove', function(e){ showTT(e.touches[0].clientX); }, {passive:true});
-        overlay.addEventListener('touchend', function(){ clearTimeout(window._patTT_t); window._patTT_t=setTimeout(hideTT,2000); }, {passive:true});
-        overlay.addEventListener('click', function(e){ showTT(e.clientX); clearTimeout(window._patTT_t); window._patTT_t=setTimeout(hideTT,2500); });
+        overlay.addEventListener('touchstart', function(e){ e.stopPropagation(); showTooltip(e.touches[0].clientX); }, {passive:true});
+        overlay.addEventListener('touchmove', function(e){ showTooltip(e.touches[0].clientX); }, {passive:true});
+        overlay.addEventListener('touchend', function(){ clearTimeout(window._patTooltip_t); window._patTooltip_t=setTimeout(hideTooltip,2000); }, {passive:true});
+        overlay.addEventListener('click', function(e){ showTooltip(e.clientX); clearTimeout(window._patTooltip_t); window._patTooltip_t=setTimeout(hideTooltip,2500); });
       })();
     }
   }
@@ -509,20 +534,20 @@ function renderAnalisis(){
 // Del último mes completo con dos fotos del patrimonio. Lo que no se explica con ingresos y gastos se muestra aparte, sin alarmismo: puede ser
 // un préstamo sin cuenta o un ajuste sin clasificar. Por debajo de UMBRALES.conciliacion.minimo (ruido de redondeo, intereses) no se muestra.
 // P8 — «¿Y si…?»: tres deslizadores que recalculan el balance, los meses de reservas y el tiempo para salir de deuda. No guarda nada.
-let _anSim={gastoPct:0,ingresoExtra:0,pagoDeuda:0};
-function renderSimulador(){
+export let _anSim={gastoPct:0,ingresoExtra:0,pagoDeuda:0};
+export function renderSimulador(){
   const el=document.getElementById('an-simulador');
   if(!el) return;
   if(typeof _situacion!=='function'||typeof Salud==='undefined'||!Salud.simular){ el.innerHTML=''; return; }
   const m=_situacion();
   if(!m||m.sinDatos||!(m.gastoTipico>0||m.ingresoTipico>0)){ el.innerHTML=''; return; }
   m.costoDeuda=(typeof _deudasPropias==='function'&&typeof PlanDeudas!=='undefined')?_deudasPropias().reduce((a,d)=>a+PlanDeudas.costoMensual(d.saldo,d.tasaEA),0):0;
-  const maxIng=Math.max(100000,Math.round((m.ingresoTipico||m.gastoTipico)*0.5/50000)*50000);
+  const maxIngreso=Math.max(100000,Math.round((m.ingresoTipico||m.gastoTipico)*0.5/50000)*50000);
   const maxPago=Math.max(0,Math.round(m.deudaPropia));
   const fila=(id,etq,min,max,paso,val)=>`<label class="an-sim-fila"><span class="an-sim-etq">${etq}</span><input type="range" class="an-sim-rng" id="${id}" min="${min}" max="${max}" step="${paso}" value="${val}"><span class="an-sim-val" id="${id}-v"></span></label>`;
   el.innerHTML=`<div class="sec-title">¿Y si…?</div><div class="card an-sim">
     ${fila('an-sim-gasto','Gastara menos',0,30,5,_anSim.gastoPct)}
-    ${fila('an-sim-ing','Ingresara más al mes',0,maxIng,10000,_anSim.ingresoExtra)}
+    ${fila('an-sim-ing','Ingresara más al mes',0,maxIngreso,10000,_anSim.ingresoExtra)}
     ${maxPago>0?fila('an-sim-pago','Pagara a mis deudas',0,maxPago,Math.max(1000,Math.round(maxPago/50/1000)*1000),Math.min(_anSim.pagoDeuda,maxPago)):''}
     <div class="an-sim-res" id="an-sim-res"></div>
     <div class="an-sim-nota">Estimación con tus promedios recientes; no guarda nada.</div></div>`;
@@ -533,8 +558,15 @@ function renderSimulador(){
     set('an-sim-gasto-v','−'+_anSim.gastoPct+' %'); set('an-sim-ing-v','+'+fmt(_anSim.ingresoExtra)); set('an-sim-pago-v',fmt(_anSim.pagoDeuda));
     const r=Salud.simular(m,_anSim);
     const sg=n=>(n>=0?'+':'−')+fmt(Math.abs(n));
-    const lineas=[`Balance mensual típico: <b class="${r.balance>=0?'c-green':'c-red'}">${sg(r.balance)}</b>`+(Math.abs(r.mejoraMensual)>=1?` <span class="an-opaco">(${sg(r.mejoraMensual)} frente a hoy)</span>`:'')];
-    if(r.mesesCubiertos!=null) lineas.push(`Tus reservas cubrirían <b>${r.mesesCubiertos.toFixed(1).replace('.',',')}</b> meses de gastos`);
+    // Con algún deslizador movido se muestra el ANTES (hoy) y el DESPUÉS; con todos en 0 solo la situación de hoy.
+    const cambia=Math.abs(r.mejoraMensual)>=1, cl=n=>n>=0?'c-green':'c-red';
+    const lineas=[cambia
+      ?`Balance mensual típico: hoy <b class="${cl(r.balanceBase)}">${sg(r.balanceBase)}</b> <svg aria-hidden="true" class="analisis-flecha" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg> <b class="${cl(r.balance)}">${sg(r.balance)}</b> <span class="an-opaco">(${sg(r.mejoraMensual)} al mes)</span>`
+      :`Balance mensual típico hoy: <b class="${cl(r.balance)}">${sg(r.balance)}</b>`];
+    const mesesHoy=m.gastoTipico>0&&m.liquidezNeta>0?m.liquidezNeta/m.gastoTipico:null, f1=n=>n.toFixed(1).replace('.',',');
+    if(r.mesesCubiertos!=null) lineas.push(mesesHoy!=null&&Math.abs(r.mesesCubiertos-mesesHoy)>=0.05
+      ?`Tus reservas cubrirían: hoy <b>${f1(mesesHoy)}</b> <svg aria-hidden="true" class="analisis-flecha" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg> <b>${f1(r.mesesCubiertos)}</b> meses de gastos`
+      :`Tus reservas cubrirían <b>${f1(r.mesesCubiertos)}</b> meses de gastos`);
     if(m.deudaPropia>0) lineas.push(r.deudaPropia<=0?'Quedarías <b>sin deudas propias</b>':`Deuda propia: <b>${fmt(r.deudaPropia)}</b>`+(r.mesesLibre!=null?` · libre en unos <b>${r.mesesLibre}</b> ${r.mesesLibre===1?'mes':'meses'} con ese ritmo`:' · con este balance no baja'));
     if(r.ahorroIntereses>=1) lineas.push(`Te ahorrarías cerca de <b>${fmt(r.ahorroIntereses)}</b> al mes en intereses`);
     const res=document.getElementById('an-sim-res'); if(res) res.innerHTML=lineas.map(l=>`<div class="an-sim-lin">${l}</div>`).join('');
@@ -543,19 +575,19 @@ function renderSimulador(){
   pintar();
 }
 
-function renderConciliacion(){
+export function renderConciliacion(){
   const el=document.getElementById('an-conciliacion');
   if(!el)return;
   const c=Periodo.conciliar(Periodo.mesAnterior(mesActual()));
   if(!c){ el.innerHTML=''; return; }
   const nombreMes=(['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'][Number(c.mes.slice(5,7))-1])||c.mes;
   const delta=c.delta-c.base;                       // sin saldos iniciales ni ajustes: lo que de verdad cambió
-  const verbo=delta<0?'bajó':'subió';
+  const cambio=Math.abs(delta)<0.5?'se mantuvo igual':(delta<0?'bajó ':'subió ')+fmt(Math.abs(delta));
   const sin=c.sinExplicar;
   const hayRaro=Math.abs(sin)>=UMBRALES.conciliacion.minimo;
   el.innerHTML=html`<div class="card an-conc">
     <div class="an-conc-tit">¿Por qué cambió tu patrimonio?</div>
-    <div class="an-conc-txt">En ${nombreMes} tu patrimonio ${verbo} ${fmt(Math.abs(delta))}. ${
+    <div class="an-conc-txt">En ${nombreMes} tu patrimonio ${cambio}. ${
       c.explicado>=0?'Entró más de lo que salió':'Salió más de lo que entró'} (${fmt(Math.abs(c.explicado))}${c.rendimientos>0?', con '+fmt(c.rendimientos)+' de rendimientos':''}).</div>
     ${hayRaro?html`<div class="an-conc-raro">Quedan <b>${fmt(Math.abs(sin))}</b> sin explicar: revisa movimientos sin cuenta, préstamos y ajustes de ese mes.</div>`
       :html`<div class="an-conc-ok">Todo cuadra: ingresos y gastos explican el cambio.</div>`}
@@ -563,9 +595,9 @@ function renderConciliacion(){
 }
 
 /* ---- INGRESOS FIJOS ---- */
-let _ifEditId=null;
+export let _ifEditId=null;
 
-function renderIngresosFijos(){
+export function renderIngresosFijos(){
   const el=document.getElementById('an-ingresos-fijos-list');
   if(!el)return;
   const lista=S.ingresosFijos||[];
@@ -589,34 +621,34 @@ function renderIngresosFijos(){
   // `.join()` lo coacciona a string vía su propio `toString()`, sin volver
   // a escapar nada — misma coerción implícita ya validada para innerHTML.
   const mes=mesActual();
-  el.innerHTML=lista.map(ing=>{
-    const desdeLabel=ing.desde?html`<span class="an-desde">desde ${ing.desde}${ing.dia?' · día '+ing.dia:''}</span>`:(ing.dia?html`<span class="an-desde">día ${ing.dia}</span>`:'');
+  el.innerHTML=lista.map(ingreso=>{
+    const desdeLabel=ingreso.desde?html`<span class="an-desde">desde ${ingreso.desde}${ingreso.dia?' · día '+ingreso.dia:''}</span>`:(ingreso.dia?html`<span class="an-desde">día ${ingreso.dia}</span>`:'');
     // Estado del mes en curso: un ingreso fijo solo suma cuando se registra su cobro.
-    const est=ingresoFijoEstadoMes(ing,mes);
+    const est=ingresoFijoEstadoMes(ingreso,mes);
     const estadoHtml=est.cobrado>0
       ?html`<span class="an-ing-estado an-ing-estado-ok">Cobrado este mes · ${fmt(est.cobrado)}</span>`
       :(est.esperado?html`<span class="an-ing-estado an-ing-estado-pend">Sin cobrar este mes</span>`:'');
-    const recientes=cobrosDeIngresoFijo(ing).slice().sort((x,y)=>String(y.fecha||'').localeCompare(String(x.fecha||''))).slice(0,3);
+    const recientes=cobrosDeIngresoFijo(ingreso).slice().sort((x,y)=>String(y.fecha||'').localeCompare(String(x.fecha||''))).slice(0,3);
     const cobrosHtml=recientes.length?html`<div class="an-cobros">${raw(recientes.map(c=>html`<div class="an-cobro-fila">
         <span class="an-cobro-txt">${c.fecha||''} · cubre ${cobroMesTexto(c.mesCubre)}${cobroFuentesDe(c).length?' · '+cobroFuentesDe(c).map(f=>fuenteLabel(f)).join(', '):''}</span>
         <span class="an-cobro-acc"><span class="an-cobro-monto">+${fmt(c.monto||0)}</span>
-          <button type="button" ${raw(Events.attr('analisis:eliminarCobro', ing.id, c.id))} class="an-btn-icono an-t-muted" title="Borrar este cobro" aria-label="Borrar este cobro">
+          <button type="button" ${raw(Events.attr('analisis:eliminarCobro', ingreso.id, c.id))} class="an-btn-icono an-t-muted" title="Borrar este cobro" aria-label="Borrar este cobro">
             <svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button></span>
       </div>`).join(''))}</div>`:'';
     return html`<div class="an-ing-bloque">
       <div class="row an-ing-row">
         <div class="an-col-2">
-          <span class="an-nom-13">${ing.nombre||'Sin nombre'}</span>
+          <span class="an-nom-13">${ingreso.nombre||'Sin nombre'}</span>
           <span class="an-desde-fila">${raw(estadoHtml)}${desdeLabel}</span>
         </div>
         <div class="an-flex-10">
-          <span class="an-ing-monto">${fmt(ing.monto||0)}</span>
-          <button type="button" ${raw(Events.attr('analisis:cobrarIngresoFijo', ing.id))} class="btn-chip btn-chip-accent">Cobrar</button>
-          <button type="button" ${raw(Events.attr('analisis:editarIngresoFijo', ing.id))} class="an-btn-icono an-t-muted" aria-label="Editar">
+          <span class="an-ing-monto">${fmt(ingreso.monto||0)}</span>
+          <button type="button" ${raw(Events.attr('analisis:cobrarIngresoFijo', ingreso.id))} class="btn-chip btn-chip-accent">Cobrar</button>
+          <button type="button" ${raw(Events.attr('analisis:editarIngresoFijo', ingreso.id))} class="an-btn-icono an-t-muted" aria-label="Editar">
             <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           </button>
-          <button type="button" ${raw(Events.attr('analisis:eliminarIngresoFijo', ing.id))} class="an-btn-icono an-t-red" aria-label="Eliminar">
+          <button type="button" ${raw(Events.attr('analisis:eliminarIngresoFijo', ingreso.id))} class="an-btn-icono an-t-red" aria-label="Eliminar">
             <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
           </button>
         </div>
@@ -626,7 +658,7 @@ function renderIngresosFijos(){
   }).join('<div class="divider"></div>');
 }
 
-function abrirSheetIngresoFijo(id){
+export function abrirSheetIngresoFijo(id){
   _ifEditId=id||null;
   const titleEl=document.getElementById('ingreso-fijo-sheet-title');
   const nEl=document.getElementById('if_n');
@@ -636,13 +668,13 @@ function abrirSheetIngresoFijo(id){
   // Mes actual como default para "desde"
   const mesHoy=mesActual();
   if(_ifEditId){
-    const ing=(S.ingresosFijos||[]).find(x=>x.id===_ifEditId);
-    if(!ing)return;
+    const ingreso=(S.ingresosFijos||[]).find(x=>x.id===_ifEditId);
+    if(!ingreso)return;
     if(titleEl)titleEl.textContent='Editar ingreso fijo';
-    if(nEl)nEl.value=ing.nombre||'';
-    if(mEl)mEl.value=fmtInput(ing.monto||0);
-    if(dEl)dEl.value=ing.desde||mesHoy;
-    if(diaEl)diaEl.value=ing.dia?String(ing.dia):'';
+    if(nEl)nEl.value=ingreso.nombre||'';
+    if(mEl)mEl.value=fmtInput(ingreso.monto||0);
+    if(dEl)dEl.value=ingreso.desde||mesHoy;
+    if(diaEl)diaEl.value=ingreso.dia?String(ingreso.dia):'';
   } else {
     if(titleEl)titleEl.textContent='Ingreso fijo mensual';
     if(nEl)nEl.value='';
@@ -653,23 +685,23 @@ function abrirSheetIngresoFijo(id){
   openSheet('ingreso-fijo');
 }
 
-function editarIngresoFijo(id){ abrirSheetIngresoFijo(id); }
+export function editarIngresoFijo(id){ abrirSheetIngresoFijo(id); }
 
-async function eliminarIngresoFijo(id){
-  const ing=(S.ingresosFijos||[]).find(x=>x.id===id);
-  if(!ing)return;
-  const cobros=cobrosDeIngresoFijo(ing);
+export async function eliminarIngresoFijo(id){
+  const ingreso=(S.ingresosFijos||[]).find(x=>x.id===id);
+  if(!ingreso)return;
+  const cobros=cobrosDeIngresoFijo(ingreso);
   const aviso=cobros.length?' Se quitarán también sus '+cobros.length+(cobros.length===1?' cobro registrado':' cobros registrados')+(cobros.some(c=>cobroFuentesDe(c).length)?' y la plata que entró a tus cuentas se descontará.':'.'):'';
-  const ok=await confirmarEliminar({titulo:'Eliminar ingreso',objeto:'"'+ing.nombre+'"',detalle:aviso,irreversible:false});
+  const ok=await confirmarEliminar({titulo:'Eliminar ingreso',objeto:'"'+ingreso.nombre+'"',detalle:aviso,irreversible:false});
   if(!ok)return;
-  const _histAntes=medirPatrimonioParaHistorial();
+  const _historialAntes=medirPatrimonioParaHistorial();
   cobros.forEach(c=>{cobroRevertir(c);});
   S.ingresosFijos=(S.ingresosFijos||[]).filter(x=>x.id!==id);
-  cobros.forEach(c=>purgarEfectoEnHistorial(_histAntes,c));
+  cobros.forEach(c=>purgarEfectoEnHistorial(_historialAntes,c));
   save();refresh();renderAnalisis();
 }
 
-function guardarIngresoFijo(){
+export function guardarIngresoFijo(){
   const n=(document.getElementById('if_n').value||'').trim();
   const m=parseMoney(document.getElementById('if_m').value);
   const d=(document.getElementById('if_d').value||'').trim();
@@ -681,8 +713,8 @@ function guardarIngresoFijo(){
   if(dia!==null&&!(Number.isInteger(dia)&&dia>=1&&dia<=31)){toast('El día debe estar entre 1 y 31','err');return;}
   if(!S.ingresosFijos)S.ingresosFijos=[];
   if(_ifEditId){
-    const ing=S.ingresosFijos.find(x=>x.id===_ifEditId);
-    if(ing){ing.nombre=n;ing.monto=m;ing.desde=d||undefined;if(dia!==null)ing.dia=dia;else delete ing.dia;}
+    const ingreso=S.ingresosFijos.find(x=>x.id===_ifEditId);
+    if(ingreso){ingreso.nombre=n;ingreso.monto=m;ingreso.desde=d||undefined;if(dia!==null)ingreso.dia=dia;else delete ingreso.dia;}
   } else {
     const nuevo={id:uid(),nombre:n,monto:m,desde:d||undefined};
     if(dia!==null)nuevo.dia=dia;
@@ -696,8 +728,8 @@ function guardarIngresoFijo(){
 /* ---- COBRO DE UN INGRESO FIJO ----
    Reglas de negocio en js/core/cobros.js (cobroRegistrar / cobroBorrar). Acá solo la pantalla: leer el sheet, llamar a esas
    reglas y repintar. Mismo molde que «Registrar pago» de Mesada: monto, fecha en que te pagaron, destino (o dividir). */
-let _cbId=null;
-let cbSplitMode=false;
+export let _cbId=null;
+export let cbSplitMode=false;
 
 crearSplitWidget('cb',{
   simpleId:'cbModoSimple',splitId:'cbModoDividido',toggleId:'cbSplitToggle',rowsId:'cbSplitRows',
@@ -706,12 +738,12 @@ crearSplitWidget('cb',{
   onPreview:()=>actualizarCbPreview(),
 });
 
-function actualizarCbAvisoMes(){
+export function actualizarCbAvisoMes(){
   const el=document.getElementById('cbAvisoMes');
   if(el)el.textContent=cobroAvisoMes(document.getElementById('cbMes').value,document.getElementById('cbFecha').value);
 }
 
-function actualizarCbPreview(){
+export function actualizarCbPreview(){
   const prev=document.getElementById('cbPreview');
   if(!prev)return;
   const v=parseMoney(document.getElementById('cbMonto').value)||0;
@@ -726,10 +758,10 @@ function actualizarCbPreview(){
     else{prev.textContent=lineas+' · Todo distribuido';prev.style.color='var(--accent)';}
     return;
   }
-  const dest=document.getElementById('cbDestino').value;
-  if(dest){
-    const actual=getSaldoFuente(dest);
-    prev.textContent=fuenteLabel(dest)+': '+fmt(actual)+' + '+fmt(v)+' = '+fmt(actual+v);
+  const destino=document.getElementById('cbDestino').value;
+  if(destino){
+    const actual=getSaldoFuente(destino);
+    prev.textContent=fuenteLabel(destino)+': '+fmt(actual)+' + '+fmt(v)+' = '+fmt(actual+v);
     prev.style.color='var(--accent)';
   }else{
     prev.textContent=fmt(v)+' registrados';
@@ -737,12 +769,12 @@ function actualizarCbPreview(){
   }
 }
 
-function abrirCobroIngresoFijo(id){
-  const ing=(S.ingresosFijos||[]).find(x=>x.id===id);
-  if(!ing)return;
+export function abrirCobroIngresoFijo(id){
+  const ingreso=(S.ingresosFijos||[]).find(x=>x.id===id);
+  if(!ingreso)return;
   _cbId=id;
-  document.getElementById('cbTitle').textContent='Cobro · '+(ing.nombre||'Ingreso fijo');
-  setMoneyInput('cbMonto',ing.monto||0);
+  document.getElementById('cbTitle').textContent='Cobro · '+(ingreso.nombre||'Ingreso fijo');
+  setMoneyInput('cbMonto',ingreso.monto||0);
   document.getElementById('cbMes').value=mesActual();
   document.getElementById('cbFecha').value=hoy(); // valor por defecto: quien registra el cobro de otro día cambia la fecha
   document.getElementById('cbNota').value='';
@@ -755,7 +787,7 @@ function abrirCobroIngresoFijo(id){
   openSheet('cobro-ingreso');
 }
 
-function confirmarCobroIngresoFijo(){
+export function confirmarCobroIngresoFijo(){
   const r=cobroRegistrar({
     id:_cbId,
     mesCubre:document.getElementById('cbMes').value,
@@ -777,9 +809,9 @@ function confirmarCobroIngresoFijo(){
   toast('Cobro registrado');
 }
 
-async function eliminarCobroIngresoFijo(id,cobroId){
-  const ing=(S.ingresosFijos||[]).find(x=>x.id===id);
-  const c=ing&&cobrosDeIngresoFijo(ing).find(x=>x.id===cobroId);
+export async function eliminarCobroIngresoFijo(id,cobroId){
+  const ingreso=(S.ingresosFijos||[]).find(x=>x.id===id);
+  const c=ingreso&&cobrosDeIngresoFijo(ingreso).find(x=>x.id===cobroId);
   if(!c)return;
   // Protección por antigüedad (docs/proteccion-antiguedad-movimientos.md): solo si borrar mueve el saldo de alguna cuenta.
   const fuentes=cobroFuentesDe(c);
@@ -791,9 +823,9 @@ async function eliminarCobroIngresoFijo(id,cobroId){
       if(!await confirmarBorrarMovimientoViejo(nombre,c.monto||0,'baja'))return;
     }
   }else if(!await confirmarEliminar({titulo:'Borrar cobro',verbo:'Borrar',etiqueta:'Borrar',objeto:'este cobro de '+fmt(c.monto||0),detalle:'Dejará de contar como ingreso.',irreversible:false}))return;
-  const _histAntes=medirPatrimonioParaHistorial();
+  const _historialAntes=medirPatrimonioParaHistorial();
   cobroBorrar(id,cobroId);
-  purgarEfectoEnHistorial(_histAntes,c);
+  purgarEfectoEnHistorial(_historialAntes,c);
   save();refresh();renderAnalisis();
 }
 
@@ -803,7 +835,7 @@ async function eliminarCobroIngresoFijo(id,cobroId){
    window.abrirPresupuestos=... que tenía ahí ya no hace falta: acá es
    un <script src> clásico, así que la declaración de función ya cuelga
    de window por sí sola. */
-function abrirPresupuestos(){
+export function abrirPresupuestos(){
   if(!S.presupuestos) S.presupuestos = {};
   const cats = window.getCatsVar ? window.getCatsVar() : ['Alimentación','Transporte','Salud','Entretenimiento','Otro'];
   const lista = document.getElementById('presupuestos-lista');
@@ -838,7 +870,7 @@ function abrirPresupuestos(){
       if(!S.presupuestos) S.presupuestos = {};
       if(val > 0) S.presupuestos[cat] = val;
       else { delete S.presupuestos[cat]; this.value = ''; } // vacío o 0 = sin límite
-      if(window._fbSaveToCloud) window._fbSaveToCloud();
+      if(window._firebaseSaveToCloud) window._firebaseSaveToCloud();
       renderPresupuestos();
     });
   });
@@ -855,7 +887,7 @@ function abrirPresupuestos(){
   if(window.openSheet) window.openSheet('presupuestos');
 }
 
-function renderPresupuestos(){
+export function renderPresupuestos(){
   const el = document.getElementById('an-presupuestos');
   if(!el) return;
   // Registro persistente de avisos ya mostrados (cat+mes), NO se resetea en
@@ -891,8 +923,8 @@ function renderPresupuestos(){
   const ritmoDe = (gasto, limite) => Periodo.ritmoPresupuesto(gasto, limite, hoy());
   // La suma de los presupuestos no debería superar lo que ingresas de forma típica.
   const sumaPresup = cats.reduce((a,c)=>a+(presup[c]>0?presup[c]:0),0);
-  const ingTip = Periodo.ingresoPromedioPrevio(mes, 3).promedio;
-  const avisoSuma = ingTip>0 && sumaPresup>ingTip ? html`<div class="an-presup-ritmo an-t-amber">Tus presupuestos suman ${fmt(sumaPresup)}, más de lo que ingresas en un mes típico (${fmt(ingTip)}).</div>` : '';
+  const ingresoTip = Periodo.ingresoPromedioPrevio(mes, 3).promedio;
+  const avisoSuma = ingresoTip>0 && sumaPresup>ingresoTip ? html`<div class="an-presup-ritmo an-t-amber">Tus presupuestos suman ${fmt(sumaPresup)}, más de lo que ingresas en un mes típico (${fmt(ingresoTip)}).</div>` : '';
   el.innerHTML = html`${cats.map(cat => {
     const limite = presup[cat];
     const gasto = gastoCat[cat]||0;
@@ -937,7 +969,7 @@ Events.registerAll('analisis', {
 });
 
 /* ---- WIRING de controles que no son data-action simples ---- */
-const _btnGuardarIngresoFijo = document.getElementById('btn-guardar-ingreso-fijo');
+export const _btnGuardarIngresoFijo = document.getElementById('btn-guardar-ingreso-fijo');
 if (_btnGuardarIngresoFijo) _btnGuardarIngresoFijo.addEventListener('click', guardarIngresoFijo);
 
 // Controles estáticos del sheet «Registrar cobro» (los ids ya existen en index.html).
@@ -954,3 +986,6 @@ if (_btnGuardarIngresoFijo) _btnGuardarIngresoFijo.addEventListener('click', gua
 ].forEach(([id,evt,fn])=>{const el=document.getElementById(id);if(el)el.addEventListener(evt,fn);});
 
 Ui.pantalla('analisis', () => { if (typeof renderAnalisis === 'function') renderAnalisis(); }, { key: 'analisis-render' });
+
+// Puente global (js/core/puente.js): constantes y clases ya inicializadas, y variables que otros archivos leen por nombre.
+exponerGlobales({ _btnGuardarIngresoFijo });

@@ -1,0 +1,56 @@
+rules_version = '2';
+
+// Despliegue: npx firebase-tools deploy --only firestore:rules
+// Solo el dueño de `usuarios/{uid}/…`; todo lo demás queda denegado. Si cambia la forma de un documento
+// (un campo nuevo), hay que cambiarla aquí en el mismo commit o el guardado se rechaza.
+// El runner de notificaciones usa Admin SDK y se salta estas reglas.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function esDueno(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    // `payload` = estado gzip+base64; el tope deja margen bajo el límite de 1 MiB por documento.
+    function payloadValido(d) {
+      return d.payload is string && d.payload.size() > 0 && d.payload.size() < 950000;
+    }
+
+    // Leer y borrar sin limitar por nombre de documento: borrar la cuenta y limpiar respaldos consultan la colección
+    // entera, y Firestore rechaza una consulta cuya regla depende del id. La escritura sí se estrecha, abajo.
+    match /usuarios/{userId}/data/{docId} {
+      allow read, delete: if esDueno(userId);
+    }
+
+    // { payload, updatedAt, rev } (setDoc sin merge y tx.set: llega con exactamente estas claves).
+    match /usuarios/{userId}/data/finanzas {
+      allow create, update: if esDueno(userId)
+        && request.resource.data.keys().hasOnly(['payload', 'updatedAt', 'rev'])
+        && request.resource.data.keys().hasAll(['payload', 'updatedAt', 'rev'])
+        && payloadValido(request.resource.data)
+        && request.resource.data.rev is int;
+    }
+
+    // Respaldos en la nube: `respaldo-…` y el índice `respaldos-indice`.
+    match /usuarios/{userId}/data/{docId} {
+      allow create, update: if esDueno(userId) && (
+        (docId == 'respaldos-indice'
+          && request.resource.data.keys().hasOnly(['items'])
+          && request.resource.data.items is list
+          && request.resource.data.items.size() <= 100)
+        ||
+        (docId.matches('respaldo-.*')
+          && request.resource.data.keys().hasOnly(['payload', 'updatedAt', 'rev', 'respaldo'])
+          && payloadValido(request.resource.data))
+      );
+    }
+
+    // Tokens de notificaciones push: { fcmTokens: [..] }.
+    match /usuarios/{userId}/data/notificaciones {
+      allow create, update: if esDueno(userId)
+        && request.resource.data.keys().hasOnly(['fcmTokens'])
+        && request.resource.data.fcmTokens is list
+        && request.resource.data.fcmTokens.size() <= 50;
+    }
+  }
+}

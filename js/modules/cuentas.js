@@ -27,9 +27,29 @@
    sumarFuente()/descontarFuente()/ajustarSaldoCuenta() (puerta única del
    libro), getFuentes()/fuenteLabel()/getSaldoFuente(), S.cuentas,
    calcPatrimonioTotal(), _saldoEncargosEnCuenta(), FuentesFiltro, y
-   abrirDetalleMov()/eliminarMovimiento() (compartidos por toda la app;
+   abrirDetalleMovimiento()/eliminarMovimiento() (compartidos por toda la app;
    se registran como 'core:…' en movimientos.js).
    ═══════════════════════════════════════════════════════════════ */
+
+import { exponerGlobales, exponerVariables } from '../core/puente.js';
+import { CuentaPantallas, Fuente, Libro, Plata, TIPOS_CUENTA, _cuentasArr, _libroPata, cajitasDeCuenta, colorCuenta, colorLegible, cuentasTodas, descontarFuente, esCuentaAhorro, esCuentaFija, esFuenteCuenta, fuenteDeCuenta, fuenteLabel, getCuenta, getCuentaDeFuente, getFuentesSinTC, getSaldoFuente, nombreCuenta, poblarFuente, sumarFuente } from '../core/cuentas-fuentes.js';
+import { html, raw } from '../core/html-tag.js';
+import { ICONO_VACIO_CUENTAS, emptyInline, emptyState, filaMovimiento } from '../core/utilidades-ui.js';
+import { Events } from '../core/events.js';
+import { S, crearMovimientoApertura, escHtml, fmt, fmtSaldoSelector, hoy, uid } from '../core/estado.js';
+import { marcarColorSeleccionado } from '../core/color-picker.js';
+import { parseMoney, save } from '../core/persistencia.js';
+import { refresh } from '../core/refresh.js';
+import { closeSheet, openSheet } from '../core/navegacion.js';
+import { avisarNoSePuede, confirmarEliminar, dialogo, toast } from '../core/dialogos.js';
+import { ahorroTotal, getCajitaNombre } from '../core/nu-calc.js';
+import { Personas } from '../core/personas-core.js';
+import { Deudas } from '../core/calc-helpers.js';
+import { FuentesFiltro } from '../core/fuentes-filtro.js';
+import { Reordenable } from '../core/reordenable.js';
+import { Ui } from '../core/ui.js';
+// Puente global (js/core/puente.js): las funciones se hoistean, así que quedan en window desde el principio.
+exponerGlobales({ _reiniciarPantallasCuenta, abrirCuenta, volverSelector, renderArchivadas, abrirArchivadas, renderDetalleCuenta, _tituloCuentaHtml, _pintarAdministrarCuenta, _accionAdministrarCuenta, _renderDetalleSimple, getIconoData, renderIconoCustom, selColorNuevaCuenta, selIconoNuevaCuenta, selTipoNuevaCuenta, _mostrarTipoNuevaCuenta, ocultarInvitacionCuentas, alternarAhorroNuevaCuenta, _renderTiposNuevaCuenta, renderIconGrid, abrirNuevaCuenta, abrirOnboarding, crearCuenta, _descriptorDeCuenta, _descriptorCuenta, _cuentasSelector, _cuentaSelectorHtml, _activasEnOrden, moverCuenta, ordenarCuentas, _aplicarOrdenArrastre, alternarOrdenCuentas, moverCuentaUI, _cuentaOrdenHtml, renderSelectorCuentas, hexToRgb, _encargosConSaldoEn, _fuentesDeCuenta, cuentaSePuedeEliminar, _motivoNoArchivar, archivarCuenta, reactivarCuenta, eliminarCuenta, editarCuenta, _resetSheetNuevaCuenta, _showCuentasPanel, _abrirCuentaPorDefecto, _marcarCuentaActivaEnSelector, getMovimientosCuenta, _getMovimientosFilter, renderMovimientosFiltros, _movimientosOnSearch, _movimientosOnTipo, _movimientosOnFecha, _movimientosLimpiarFechas, _movimientosMas, _movimientosRefresh, _movimientosAplicarFiltro, renderMovimientosCuenta, abrirAgregarDinero, _aperturaToggleUI, registrarEntradaConApertura, registrarSalida, toggleAgregarDineroApertura, confirmarAgregarDinero, openSheet_agregarDineroMenu, actualizarAgregarDineroMenuSaldo, actualizarAgregarDineroMenuPreview, confirmarAgregarDineroMenu, getAperturaMovimiento, renderBannerApertura, abrirRegistrarApertura, abrirEditarApertura, confirmarEditarApertura, abrirRestarDinero, confirmarRestarDinero, _setBtnEstado, _setBtnTransferir, _motivoSinRetiro, actualizarBotonRetirar, actualizarBotonesTransferir, abrirTransferir, _trPodarSelect, _trOrigenCambio, _trDestinoCambio, validarTransferencia, actualizarTransfPreview, confirmarTransferir });
 
 /* ───────────────────────────────────────────────────────────────
    SECCIÓN: Selector de cuentas (Nequi / Nu / Efectivo / personalizada)
@@ -37,20 +57,20 @@
 /* ---- CUENTAS SELECTOR ---- */
 // Fuente de la cuenta abierta en el detalle: 'cuenta:ID' ('' si no hay ninguna). Una sola variable para todas las
 // cuentas; la leen el núcleo, navegacion.js, movimientos.js y encargos.js (siempre con guard typeof: este archivo es lazy).
-let cuentaActual = '';
+export let cuentaActual = '';
 
 // Abre el detalle de una cuenta. `fuente` es 'cuenta:ID'. Las cuentas de ahorro tienen su propia pantalla (cajitas, tasa, CDTs:
 // nu.js la registra en CuentaPantallas.ahorro); todas las demás comparten #cuentas-detalle-simple.
 // ── Libro (js/core/cuentas-fuentes.js) ─────────────────────────────────────────────────────────────────────────────────
-// _ogCta(ref, rev): cada sumar/descontarFuente deja en el libro { modulo:'cuentas', ref:<id del movimiento o de la transferencia> }. Con rev=true es una reversión (tipo 'reversion', mismo ref que lo que deshace).
-const _ogCta = Libro.origen('cuentas');
+// _origenLibroCta(ref, rev): cada sumar/descontarFuente deja en el libro { modulo:'cuentas', ref:<id del movimiento o de la transferencia> }. Con rev=true es una reversión (tipo 'reversion', mismo ref que lo que deshace).
+export const _origenLibroCta = Libro.origen('cuentas');
 
 // Al cambiar de cuenta o volver al selector, cada cuenta con pantalla propia (Nu) deja en blanco su estado interno.
-function _reiniciarPantallasCuenta() {
+export function _reiniciarPantallasCuenta() {
   Object.values(CuentaPantallas).forEach(p => { if (p.reiniciar) p.reiniciar(); });
 }
 
-function abrirCuenta(fuente) {
+export function abrirCuenta(fuente) {
   const d = _descriptorCuenta(fuente);
   if (!d) return; // cuenta ya borrada
   const pantalla = CuentaPantallas[d.tipo]; // clase de cuenta con pantalla propia (ahorro): su archivo la registra
@@ -63,19 +83,20 @@ function abrirCuenta(fuente) {
   document.getElementById('scrollArea').scrollTop = 0;
 }
 // Desde dónde se abrió el detalle: una cuenta archivada se abre desde la pantalla «Cuentas archivadas» y «volver» regresa allí.
-let _volverA = 'selector';
-function volverSelector() {
+export let _volverA = 'selector';
+export function volverSelector() {
   const aArchivadas = _volverA === 'archivadas' && _cuentasSelector({ archivadas: true }).length > 0;
   _volverA = 'selector';
   cuentaActual = '';
   _reiniciarPantallasCuenta();
   if (aArchivadas) { abrirArchivadas(); return; }
   _showCuentasPanel('cuentas-selector');
+  _abrirCuentaPorDefecto();
   document.getElementById('scrollArea').scrollTop = 0;
 }
 
 // Pantalla aparte con las cuentas archivadas (el selector solo muestra un botón con su cantidad, para no ver siempre lo que ya no se usa).
-function renderArchivadas() {
+export function renderArchivadas() {
   const el = document.getElementById('archivadas-lista');
   if (!el) return;
   const arch = _cuentasSelector({ archivadas: true });
@@ -83,7 +104,7 @@ function renderArchivadas() {
     ? html`<div class="cuentas-selector-grid">${arch.map(d => _cuentaSelectorHtml({ ...d, archivada: true }))}</div>`
     : emptyState(ICONO_VACIO_CUENTAS,'Sin cuentas archivadas','Las cuentas que dejes de usar y archives aparecerán aquí.');
 }
-function abrirArchivadas() {
+export function abrirArchivadas() {
   _volverA = 'selector';
   cuentaActual = '';
   renderArchivadas();
@@ -91,7 +112,7 @@ function abrirArchivadas() {
   const sa = document.getElementById('scrollArea'); if (sa) sa.scrollTop = 0;
 }
 
-function renderDetalleCuenta(fuente) {
+export function renderDetalleCuenta(fuente) {
   // Una clase de cuenta con pantalla propia (ahorro) se pinta a sí misma; las demás comparten el detalle simple.
   const d = _descriptorCuenta(fuente);
   if (!d) return;
@@ -102,16 +123,16 @@ function renderDetalleCuenta(fuente) {
 }
 // Título del header de cualquier detalle de cuenta: ícono + nombre, siempre desde el descriptor.
 // Lo usan el detalle simple (Nequi/Efectivo/personalizadas) y el de Nu (nu.js).
-function _tituloCuentaHtml(d) {
+export function _tituloCuentaHtml(d) {
   return html`<div class="cuenta-flex-8">${d.iconoHtml(28)}<span>${d.nombre}</span></div>`;
 }
 
 
 // Administración de la cuenta abierta (editar / archivar o reactivar / eliminar): la MISMA para todo tipo de cuenta. `ids` son los
 // ids de los botones de cada detalle (el simple y el de ahorro tienen los suyos).
-function _pintarAdministrarCuenta(d, ids) {
-  const cont = document.getElementById(ids.contenedor);
-  if (cont) cont.style.display = 'flex';
+export function _pintarAdministrarCuenta(d, ids) {
+  const contenedor = document.getElementById(ids.contenedor);
+  if (contenedor) contenedor.style.display = 'flex';
   const btnArch = document.getElementById(ids.archivar);
   if (btnArch) {
     // Archivar solo tiene sentido con historial (o ya archivada, para reactivar): sin movimientos se elimina.
@@ -126,7 +147,7 @@ function _pintarAdministrarCuenta(d, ids) {
     ? html`<div class="cuenta-archivada-banner"><span>Cuenta archivada: no aparece al elegir cuentas, pero su historial se conserva.</span><button type="button" class="btn btn-ghost" ${raw(Events.attr('cuentas:reactivarCuenta', d.id))}>Reactivar</button></div>`
     : '';
 }
-function _accionAdministrarCuenta(btnId) {
+export function _accionAdministrarCuenta(btnId) {
   const d = cuentaActual ? _descriptorCuenta(cuentaActual) : null;
   if (!d) return false;
   if (/^btn-editar-cuenta/.test(btnId)) editarCuenta(d.id);
@@ -138,12 +159,12 @@ function _accionAdministrarCuenta(btnId) {
 
 // Detalle de Nequi, Efectivo y cuentas personalizadas: misma pantalla, el descriptor de la
 // cuenta aporta nombre, color, etiqueta y saldo.
-function _renderDetalleSimple(fuente) {
+export function _renderDetalleSimple(fuente) {
   const d = _descriptorCuenta(fuente);
   if (!d) return;
-  const cont = document.getElementById('cuentas-detalle-simple');
-  cont.style.setProperty('--cuenta', d.color);
-  cont.style.setProperty('--cuenta-rgb', d.rgb);
+  const contenedor = document.getElementById('cuentas-detalle-simple');
+  contenedor.style.setProperty('--cuenta', d.color);
+  contenedor.style.setProperty('--cuenta-rgb', d.rgb);
   document.getElementById('det-cuenta-nombre').innerHTML = _tituloCuentaHtml(d);
   document.getElementById('det-cuenta-label').textContent = d.etiquetaDetalle;
   document.getElementById('det-cuenta-saldo').textContent = fmt(d.saldo());
@@ -151,15 +172,15 @@ function _renderDetalleSimple(fuente) {
   // Editar y archivar valen para toda cuenta; eliminar solo si nunca se usó (si ya tiene historia se archiva, no se borra).
   _pintarAdministrarCuenta(d, { contenedor: 'det-cuenta-acciones-custom', archivar: 'btn-archivar-cuenta', eliminar: 'btn-eliminar-cuenta-custom', banner: 'banner-archivada' });
   // Cuenta archivada: no se le mete ni se le saca plata; solo se consulta su historial o se reactiva.
-  const acciones = cont.querySelector('.cuenta-actions');
+  const acciones = contenedor.querySelector('.cuenta-actions');
   if (acciones) acciones.style.display = d.archivada ? 'none' : '';
   // Banner saldo inicial. El div es único (banner-apertura-cuenta), por eso el elId va explícito:
   // el default de renderBannerApertura armaría un id con el ':' de 'cuenta:ID'.
   renderBannerApertura(fuente, { elId: 'banner-apertura-cuenta' });
   // Encargos en esta cuenta
   if(typeof renderEncargosEnCuenta==='function') renderEncargosEnCuenta('det-cuenta-encargos', fuente);
-  // Movimientos. cuentaKey es la clave de los filtros y el valor que abrirDetalleMov() lee de data-cuenta-key: la propia fuente.
-  renderMovsCuenta('det-cuenta-movs', getMovimientosCuenta(fuente), d.color, d.cuentaKey, 'movs-filtros-cuenta');
+  // Movimientos. cuentaKey es la clave de los filtros y el valor que abrirDetalleMovimiento() lee de data-cuenta-key: la propia fuente.
+  renderMovimientosCuenta('det-cuenta-movs', getMovimientosCuenta(fuente), d.color, d.cuentaKey, 'movs-filtros-cuenta');
 }
 // renderEncargosEnCuenta() y abrirEncargoDesdeCuenta() migradas a js/modules/encargos.js (ver docs/encargos.md).
 
@@ -170,7 +191,7 @@ function _renderDetalleSimple(fuente) {
 // CATÁLOGO DE CUENTAS: cada entrada es a la vez el ícono y el PRESET de una cuenta (nombre, color y `tipo` sugeridos: ver TIPOS_CUENTA
 // en el núcleo). Elegir «Nu» crea una cuenta de ahorro; «Nequi» una billetera; «Efectivo» una de efectivo. Un banco nuevo se
 // agrega acá con una línea; «Otra» deja todo libre. Ninguna cuenta viene creada: el usuario parte de este catálogo.
-const ICONOS_CUENTA = [
+export const ICONOS_CUENTA = [
   { id:'nequi',    label:'Nequi',       color:'#ff4da6', tipo:'billetera', svg:`<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20.5 23.3" width="20" height="13"><path d="M19.7 0h-3.4c-.5 0-.8.4-.8.8v13.5c0 .3-.4.4-.5.1L7.1.4C7 .2 6.7 0 6.5 0H.8C.4 0 0 .4 0 .8v21.7c0 .5.4.8.8.8h3.4c.5 0 .8-.4.8-.8v-14c0-.3.4-.4.5-.1L13.6 23c.1.2.4.4.6.4h5.4c.5 0 .8-.4.8-.8V.8c0-.5-.4-.8-.8-.8Z" fill="currentColor"/></svg>` },
   { id:'nu',       label:'Nu',          color:'#c060f0', tipo:'ahorro', svg:`<svg aria-hidden="true" viewBox="0 -0.5 1366 750.5" xmlns="http://www.w3.org/2000/svg" width="22" height="12"><g fill="currentColor"><path d="M235.8 70.7C105.6 70.7 0 176.3 0 306.5v421.2h180.9V235.3c0-63.9 25.4-121.9 66.7-164.3-3.9-.2-7.8-.3-11.8-.3zM416.8-.5C350.5-.5 290.5 26.9 247.7 71c124.7 6.2 224 109.3 224 235.5v421.2h180.9V235.3C652.6 105.1 547-.5 416.8-.5zM1130.2 678.8c130.2 0 235.8-105.6 235.8-235.8V21.8h-180.9v492.4c0 63.9-25.4 121.9-66.7 164.3 3.9.2 7.8.3 11.8.3zM949.2 750c66.3 0 126.3-27.4 169.1-71.5-124.7-6.2-224-109.3-224-235.5V21.8H713.4v492.4C713.4 644.4 819 750 949.2 750z"/></g></svg>` },
   { id:'bancolombia', label:'Bancolombia', color:'#FDDA24', tipo:'banco', svg:`<svg aria-hidden="true" viewBox="0 0 1587 1591" width="20" height="20" xmlns="http://www.w3.org/2000/svg"><path d="M229.5 275.5c-9.9-38.6 14.1-82.1 52.9-94.3C580.8 94.7 878.6 38.6 1186.8.6c33.7-3.6 66.5 18.2 78.7 51.6 28.6 78.5 42.7 117.9 70.7 196.8 13.4 37.5-6.4 74.9-42.6 79.7-315.3 46.7-621 110.9-925.9 204.7-37.2 12.4-73.8-6.4-83.2-42.9-22.2-86.2-33.2-129.2-55-215m1353.4 448.6c11.9 36.9-4 72.5-35.1 77.6-490.6 78.8-968.9 210.6-1421.4 417.9-36.4 17.7-73.2-.5-80.9-39.9-17.8-92.4-26.6-138.3-44.1-230.5-6.8-36.1 12.8-77 45.2-92.4C492.2 659.7 962 540.5 1444.5 479c31.8-4.2 63.9 19.4 75.7 54.7 25.5 75.9 38 114 62.7 190.4m-4 516.1c10.7 34.9-3.5 68.9-32.4 75.9-301 73-595.5 164.3-887.1 268.7-41.7 15.8-86.9-4.8-97.9-45.1-23.5-85.8-35.2-128.6-58.3-214.2-9.7-35.9 11.1-74.9 48.1-88.5 291.7-100.2 586.2-178.9 887.4-244.3 33.3-7 68.2 17.6 80.2 55.4 24.4 76.7 36.3 115.1 60 192.1" fill="currentColor"/></svg>` },
@@ -183,11 +204,11 @@ const ICONOS_CUENTA = [
   { id:'otro',     label:'Otra',        color:'#888880', tipo:'banco', svg:`<svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/><circle cx="7" cy="15" r="1.2" fill="currentColor" stroke="none"/><path d="M12 15h5"/></svg>` },
 ];
 
-function getIconoData(iconoId){
+export function getIconoData(iconoId){
   return ICONOS_CUENTA.find(x=>x.id===iconoId)||ICONOS_CUENTA[ICONOS_CUENTA.length-1];
 }
 
-function renderIconoCustom(c, size=30){
+export function renderIconoCustom(c, size=30){
   const icono=getIconoData(c.icono);
   const hex=colorLegible(c.color||icono.color||'#60b0f0');
   const hexRgb=hexToRgb(hex);
@@ -201,35 +222,35 @@ function renderIconoCustom(c, size=30){
   return html`<div class="cuenta-ico-box cuenta-ico-box-ini" style="width:${size}px;height:${size}px;border-radius:${Math.round(size*.28)}px;background:rgba(${hexRgb},.18);font-size:${Math.round(size*.38)}px;color:${hex};">${iniciales}</div>`;
 }
 
-let _ncColorSel='#60b0f0';
-let _ncIconoSel='otro';
+export let _nuevaCuentaColorSel='#60b0f0';
+export let _nuevaCuentaIconoSel='otro';
 
-function selColorNC(color){
-  _ncColorSel=color;
+export function selColorNuevaCuenta(color){
+  _nuevaCuentaColorSel=color;
   marcarColorSeleccionado('.nc-color-opt', color); // js/core/color-picker.js
 }
 
-function selIconoNC(iconoId){
+export function selIconoNuevaCuenta(iconoId){
   // Elegir un banco/app del catálogo es elegir un PRESET: fija su color, su clase de cuenta y, si el nombre está vacío o todavía es el
   // sugerido por el preset anterior, su nombre. Todo se puede cambiar después antes de crear.
-  _ncIconoSel=iconoId;
+  _nuevaCuentaIconoSel=iconoId;
   const icono=getIconoData(iconoId);
-  selColorNC(icono.color);
+  selColorNuevaCuenta(icono.color);
   const ni=document.getElementById('nc_nombre');
-  if(ni&&!_ncModoEdicion&&(!(ni.value||'').trim()||ni.dataset.auto==='1')){
+  if(ni&&!_nuevaCuentaModoEdicion&&(!(ni.value||'').trim()||ni.dataset.auto==='1')){
     ni.value=iconoId==='otro'?'':(icono.nombre||icono.label);
     ni.dataset.auto=iconoId==='otro'?'0':'1';
   }
-  if(!_ncModoEdicion){selTipoNC(icono.tipo||'banco');_mostrarTipoNC();}
+  if(!_nuevaCuentaModoEdicion){selTipoNuevaCuenta(icono.tipo||'banco');_mostrarTipoNuevaCuenta();}
   renderIconGrid();
 }
 
 // Clase de cuenta que se está creando (ver TIPOS_CUENTA). La de ahorro no pide saldo inicial: su plata va en cajitas.
-let _ncTipoSel='banco';
-let _ncModoEdicion=false;
-function selTipoNC(tipo){
+export let _nuevaCuentaTipoSel='banco';
+export let _nuevaCuentaModoEdicion=false;
+export function selTipoNuevaCuenta(tipo){
   if(!TIPOS_CUENTA[tipo])tipo='banco';
-  _ncTipoSel=tipo;
+  _nuevaCuentaTipoSel=tipo;
   document.querySelectorAll('.nc-tipo-opt').forEach(el=>{
     const sel=el.dataset.tipo===tipo;
     el.classList.toggle('cuenta-tipo-sel',sel);
@@ -237,7 +258,7 @@ function selTipoNC(tipo){
   });
   const si=document.getElementById('nc_saldo');
   const igSaldo=si&&si.closest?si.closest('.ig'):null;
-  if(igSaldo)igSaldo.style.display=(tipo==='ahorro'||_ncModoEdicion)?'none':'';
+  if(igSaldo)igSaldo.style.display=(tipo==='ahorro'||_nuevaCuentaModoEdicion)?'none':'';
   const nota=document.getElementById('nc_tipo_nota');
   if(nota)nota.textContent=tipo==='ahorro'
     ?'Una cuenta de ahorro guarda su plata en cajitas que crecen con la tasa EA de la cuenta (y pueden tener CDTs). Las creas dentro de la cuenta.'
@@ -246,49 +267,49 @@ function selTipoNC(tipo){
 
 // El interruptor de ahorro solo se muestra cuando el preset no define ya cómo se comporta la cuenta: con «Otra» o con un banco genérico
 // (p. ej. Bancolombia, que puede ser corriente o de ahorros). Nu (ahorro), Nequi (billetera) y Efectivo ya traen su tipo.
-function _mostrarTipoNC(){
+export function _mostrarTipoNuevaCuenta(){
   const tipos=document.getElementById('nc-tipos');
   const bloque=tipos&&tipos.closest?tipos.closest('.ig'):null;
   if(!bloque||!bloque.style)return;
-  const ic=getIconoData(_ncIconoSel);
-  bloque.style.display=(_ncModoEdicion||!(_ncIconoSel==='otro'||(ic&&ic.tipo==='banco')))?'none':'';
+  const ic=getIconoData(_nuevaCuentaIconoSel);
+  bloque.style.display=(_nuevaCuentaModoEdicion||!(_nuevaCuentaIconoSel==='otro'||(ic&&ic.tipo==='banco')))?'none':'';
 }
-function ocultarInvitacionCuentas(){S.invitacionCuentasOculta=true;save();refresh();}
-function alternarAhorroNC(){selTipoNC(_ncTipoSel==='ahorro'?'banco':'ahorro');}
-function _renderTiposNC(){
+export function ocultarInvitacionCuentas(){S.invitacionCuentasOculta=true;save();refresh();}
+export function alternarAhorroNuevaCuenta(){selTipoNuevaCuenta(_nuevaCuentaTipoSel==='ahorro'?'banco':'ahorro');}
+export function _renderTiposNuevaCuenta(){
   const wrap=document.getElementById('nc-tipos');
   if(!wrap)return;
   // Un solo interruptor: la ÚNICA diferencia real entre cuentas es si guardan su plata en cajitas con tasa EA (ahorro). Banco y billetera
   // se comportan igual, así que no se le pide eso a la persona; el preset del catálogo ya trae el tipo correcto.
-  wrap.innerHTML=html`<button type="button" class="nc-tipo-opt cuenta-tipo-opt" data-tipo="ahorro" aria-pressed="false" ${raw(Events.attr('cuentas:alternarAhorroNC'))}>Es una cuenta de ahorro (cajitas con tasa EA)</button>`;
+  wrap.innerHTML=html`<button type="button" class="nc-tipo-opt cuenta-tipo-opt" data-tipo="ahorro" aria-pressed="false" ${raw(Events.attr('cuentas:alternarAhorroNuevaCuenta'))}>Es una cuenta de ahorro (cajitas con tasa EA)</button>`;
 }
-function renderIconGrid(){
+export function renderIconGrid(){
   const grid=document.getElementById('nc-icon-grid');
   if(!grid)return;
-  grid.innerHTML=html`${ICONOS_CUENTA.filter(ic=>_ncModoEdicion||ic.tipo!=='efectivo').map(ic=>{
-    const sel=ic.id===_ncIconoSel;
+  grid.innerHTML=html`${ICONOS_CUENTA.filter(ic=>_nuevaCuentaModoEdicion||ic.tipo!=='efectivo').map(ic=>{
+    const sel=ic.id===_nuevaCuentaIconoSel;
     const hexRgb=hexToRgb(colorLegible(ic.color));
-    return html`<div class="nc-icon-opt cuenta-ico-op${sel?' cuenta-ico-op-sel':''}" data-icono="${ic.id}" ${raw(Events.attr('cuentas:selIconoNC', ic.id))}
+    return html`<div class="nc-icon-opt cuenta-ico-op${sel?' cuenta-ico-op-sel':''}" data-icono="${ic.id}" ${raw(Events.attr('cuentas:selIconoNuevaCuenta', ic.id))}
       style="background:${sel?`rgba(${hexRgb},.18)`:'var(--bg3)'};">
       <div class="cuenta-ico-op-svg" style="color:${colorLegible(ic.color)};">${raw(ic.svg)}</div>
       <div class="cuenta-ico-op-label">${ic.label}</div>
     </div>`;
   })}`;
 }
-function abrirNuevaCuenta(){
+export function abrirNuevaCuenta(){
   // El sheet también sirve para editar una cuenta (editarCuenta). Cerrarlo tocando el fondo no pasa por "Cancelar" (único que lo
   // reiniciaba), así que se reinicia acá: si no, "Nueva cuenta" podía quedar en modo edición y guardar renombrando la cuenta anterior.
   _resetSheetNuevaCuenta();
   const primera=!cuentasTodas().some(c=>!esCuentaFija(c));
   const titulo=document.querySelector('#sheet-nueva-cuenta .sheet-title');
   if(titulo)titulo.textContent=primera?'Agrega tu primera cuenta':'Nueva cuenta';
-  _ncIconoSel='otro';
-  _ncColorSel='#888880';
-  _renderTiposNC();
-  selTipoNC('banco');
-  _mostrarTipoNC();
+  _nuevaCuentaIconoSel='otro';
+  _nuevaCuentaColorSel='#888880';
+  _renderTiposNuevaCuenta();
+  selTipoNuevaCuenta('banco');
+  _mostrarTipoNuevaCuenta();
   renderIconGrid();
-  marcarColorSeleccionado('.nc-color-opt', _ncColorSel); // js/core/color-picker.js
+  marcarColorSeleccionado('.nc-color-opt', _nuevaCuentaColorSel); // js/core/color-picker.js
   const ni=document.getElementById('nc_nombre');
   const si=document.getElementById('nc_saldo');
   if(ni){ni.value='';ni.dataset.auto='0';}
@@ -297,24 +318,24 @@ function abrirNuevaCuenta(){
 }
 
 // Primer uso: la app no trae cuentas. Desde Inicio (o donde falte una cuenta) se abre este mismo sheet.
-function abrirOnboarding(){ abrirNuevaCuenta(); }
-async function crearCuenta(){
+export function abrirOnboarding(){ abrirNuevaCuenta(); }
+export async function crearCuenta(){
   const nombre=(document.getElementById('nc_nombre').value||'').trim();
   if(!nombre){toast('Escribe un nombre para la cuenta','err');return;}
   if(cuentasTodas().some(c=>(c.nombre||'').trim().toLowerCase()===nombre.toLowerCase())){
     toast('Ya tienes una cuenta llamada "'+nombre+'". Usa otro nombre (puede ser archivada: míralo en Archivadas).','err',5000);return;
   }
-  const tipo=_ncTipoSel;
+  const tipo=_nuevaCuentaTipoSel;
   const esAhorro=tipo==='ahorro';
   const saldo=esAhorro?0:(parseMoney(document.getElementById('nc_saldo').value)||0);
-  const nueva={id:uid(),tipo,nombre,icono:_ncIconoSel,color:_ncColorSel,movimientos:[],...(esAhorro?{tasaEA:null,historialTasas:[]}:{saldo})};
+  const nueva={id:uid(),tipo,nombre,icono:_nuevaCuentaIconoSel,color:_nuevaCuentaColorSel,movimientos:[],...(esAhorro?{tasaEA:null,historialTasas:[]}:{})};
   const fuente=fuenteDeCuenta(nueva.id);
   // El saldo inicial es un movimiento de apertura en S.movimientos con `fuente` y su entrada en el libro.
-  const movApertura=saldo>0?crearMovimientoApertura(saldo,hoy(),'Saldo inicial'):null;
-  if(movApertura){movApertura.fuente=fuente;if(!S.movimientos)S.movimientos=[];S.movimientos.push(movApertura);}
+  const movimientoApertura=saldo>0?crearMovimientoApertura(saldo,hoy(),'Saldo inicial'):null;
+  if(movimientoApertura){movimientoApertura.fuente=fuente;if(!S.movimientos)S.movimientos=[];S.movimientos.push(movimientoApertura);}
   const eraLaPrimera=!cuentasTodas().some(c=>!esCuentaFija(c));
-  _cuentasArr().push(nueva);
-  if(movApertura)_libroPata(fuente,saldo,{tipo:'apertura',desc:'Saldo inicial',origen:{modulo:'cuentas',ref:movApertura.id}});
+  _cuentasArr().push(nueva);Libro.hidratar(S);
+  if(movimientoApertura)_libroPata(fuente,saldo,{tipo:'apertura',desc:'Saldo inicial',origen:{modulo:'cuentas',ref:movimientoApertura.id}});
   save();refresh();
   closeSheet('nueva-cuenta');
   toast(`Cuenta "${nombre}" creada`,'ok');
@@ -333,7 +354,7 @@ async function crearCuenta(){
    Agregar una clase de cuenta nueva es agregarla a TIPOS_CUENTA (js/core/cuentas-fuentes.js) y, si necesita pantalla propia, registrarla en
    CuentaPantallas. El formato del saldo del selector vive en fmtSaldoSelector() (el núcleo) y el estilo en .cuenta-card /
    .cuenta-hero (styles.css). */
-function _descriptorDeCuenta(c){
+export function _descriptorDeCuenta(c){
   const hex=colorCuenta(c);
   const info=TIPOS_CUENTA[c.tipo]||TIPOS_CUENTA.banco;
   const ahorro=esCuentaAhorro(c);
@@ -344,22 +365,22 @@ function _descriptorDeCuenta(c){
 }
 
 // Descriptor de una cuenta por su fuente; null si no existe (p. ej. ya eliminada).
-function _descriptorCuenta(fuente){
+export function _descriptorCuenta(fuente){
   const c=getCuentaDeFuente(fuente);
   return c?_descriptorDeCuenta(c):null;
 }
 
 // Cuentas del selector: activas por defecto; con archivadas:true, las archivadas.
-function _cuentasSelector(opts){
+export function _cuentasSelector(opts){
   const arch=!!(opts&&opts.archivadas);
   return cuentasTodas().filter(c=>!!c.archivada===arch).map(_descriptorDeCuenta);
 }
 
-function _cuentaSelectorHtml(d){
+export function _cuentaSelectorHtml(d){
   const vars='--cuenta:'+d.color+';--cuenta-rgb:'+d.rgb;
   const flecha=(cls,pts)=>html`<svg aria-hidden="true" class="${cls}" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><polyline points="${pts}"/></svg>`;
   if(d.estilo==='tarjeta'){
-    return html`<div class="cuenta-card${d.archivada?' cuenta-card-archivada':''}" data-fuente="${d.fuente}" style="${vars}">
+    return html`<div class="cuenta-card${d.archivada?' cuenta-card-archivada':''}${d.fuente===cuentaActual?' cuenta-card-activa':''}" data-fuente="${d.fuente}" style="${vars}">
       <div class="cuenta-card-head">
         ${d.iconoHtml(34)}
         <span class="cuenta-card-nombre">${d.nombre}</span>
@@ -375,10 +396,10 @@ function _cuentaSelectorHtml(d){
    El orden es el del arreglo S.cuentas (nada está «fijado» arriba: Efectivo solo aparece primero porque se crea primero). Lo siguen el
    selector, las fichas de Inicio y las listas de cuentas. «Ordenar» deja mover cada cuenta una posición con ‹ ›; las archivadas
    conservan su sitio y se saltan. */
-let _ordenandoCuentas=false;
-function _activasEnOrden(){return cuentasTodas().filter(c=>!c.archivada);}
+export let _ordenandoCuentas=false;
+export function _activasEnOrden(){return cuentasTodas().filter(c=>!c.archivada);}
 // Mueve la cuenta `id` una posición (dir −1 = antes, +1 = después) entre las activas. Devuelve true si cambió algo.
-function moverCuenta(id,dir){
+export function moverCuenta(id,dir){
   const arr=cuentasTodas();
   const idx=arr.map((c,i)=>c.archivada?-1:i).filter(i=>i>=0);
   const p=idx.findIndex(i=>arr[i].id===id);
@@ -392,7 +413,7 @@ function moverCuenta(id,dir){
 // Aplica un orden completo de las cuentas ACTIVAS (ids en el orden nuevo): ocupan los mismos sitios del arreglo que tenían las activas, de
 // modo que las archivadas no se mueven. Devuelve true si algo cambió. Ids desconocidos o repetidos se ignoran; las activas que falten en
 // la lista conservan su orden relativo al final.
-function ordenarCuentas(ids){
+export function ordenarCuentas(ids){
   const arr=cuentasTodas();
   const activas=arr.filter(c=>!c.archivada);
   const vistos=new Set();
@@ -405,15 +426,15 @@ function ordenarCuentas(ids){
   save();
   return true;
 }
-function _aplicarOrdenArrastre(ids){
+export function _aplicarOrdenArrastre(ids){
   if(ordenarCuentas(ids))refresh();
 }
-function alternarOrdenCuentas(){
+export function alternarOrdenCuentas(){
   _ordenandoCuentas=!_ordenandoCuentas;
   renderSelectorCuentas();
 }
 // Mueve y repinta con animación (las fichas se deslizan a su sitio nuevo) dejando el foco en el mismo botón para seguir moviendo.
-function moverCuentaUI(id,dir){
+export function moverCuentaUI(id,dir){
   const lista=document.getElementById('selector-cuentas-lista');
   const antes=new Map();
   if(lista)lista.querySelectorAll('[data-cuenta-id]').forEach(n=>antes.set(n.dataset.cuentaId,n.getBoundingClientRect()));
@@ -434,7 +455,7 @@ function moverCuentaUI(id,dir){
   if(btn&&btn.focus)btn.focus({preventScroll:true});
 }
 
-function _cuentaOrdenHtml(d,pos,total){
+export function _cuentaOrdenHtml(d,pos,total){
   const vars='--cuenta:'+d.color+';--cuenta-rgb:'+d.rgb;
   return html`<div class="cuenta-card cuenta-card-ord" data-cuenta-id="${d.id}" style="${vars}">
     <button type="button" class="cuenta-ord-grip" aria-label="Reordenar ${d.nombre}: posición ${pos} de ${total}. Arrastra, o usa las flechas del teclado." title="Arrastra para mover">
@@ -449,7 +470,7 @@ function _cuentaOrdenHtml(d,pos,total){
   </div>`;
 }
 
-function renderSelectorCuentas(){
+export function renderSelectorCuentas(){
   const el=document.getElementById('selector-cuentas-lista');
   if(!el)return;
   const cuentas=_cuentasSelector();
@@ -470,7 +491,7 @@ function renderSelectorCuentas(){
   const tarjetas=cuentas;
   el.innerHTML=html`${tarjetas.length?html`<div class="cuentas-selector-grid">${tarjetas.map(d=>_cuentaSelectorHtml(d))}</div>`:''}${archivadas.length?html`<button type="button" class="btn-cuentas-archivadas" ${raw(Events.attr('cuentas:abrirArchivadas'))}>Cuentas archivadas (${archivadas.length})<svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg></button>`:''}`;
 }
-function hexToRgb(hex){
+export function hexToRgb(hex){
   if(!hex||hex.length<7)return'96,176,240';
   const r=parseInt(hex.slice(1,3),16);
   const g=parseInt(hex.slice(3,5),16);
@@ -485,34 +506,34 @@ function hexToRgb(hex){
 // #cuentas-detalle-simple al final de este archivo).
 // Se elimina la función completa en vez de dejarla como código muerto sin
 // llamador (mismo criterio que en configuracion.js, ver su nota de cabecera
-// sobre leerArchivoImport/import-validado.js).
+// sobre leerArchivoImport/validación del archivo).
 
 // Plata de encargos guardada en una fuente (o en varias): [{nombre, saldo}] de los encargos con saldo positivo ahí.
-function _encargosConSaldoEn(fuentes){
+export function _encargosConSaldoEn(fuentes){
   const claves=new Set(fuentes);
   const out=[];
-  (S.encargos||[]).forEach(enc=>{
+  (S.encargos||[]).forEach(encargo=>{
     const map={};
-    if(enc.saldoInicial>0){const k=enc.cuentaInicial||'__sin__';map[k]=(map[k]||0)+enc.saldoInicial;}
-    (enc.movimientos||[]).forEach(m=>{
+    if(encargo.saldoInicial>0){const k=encargo.cuentaInicial||'__sin__';map[k]=(map[k]||0)+encargo.saldoInicial;}
+    (encargo.movimientos||[]).forEach(m=>{
       const k=m.cuenta||'__sin__';
       map[k]=(map[k]||0)+(m.tipo==='entrada'?m.monto:-m.monto);
     });
     let saldo=0;
     Object.entries(map).forEach(([k,v])=>{if(claves.has(k))saldo+=v;});
-    if(saldo>0)out.push({nombre:enc.nombre,saldo});
+    if(saldo>0)out.push({nombre:Personas.nombre(encargo.personaId),saldo});
   });
   return out;
 }
 
 // Fuentes que guardan plata de esta cuenta: ella misma o, si es de ahorro, sus cajitas.
-function _fuentesDeCuenta(c){
+export function _fuentesDeCuenta(c){
   return esCuentaAhorro(c)?cajitasDeCuenta(c.id).map(x=>'cajita:'+x.id):[fuenteDeCuenta(c.id)];
 }
 
 // ¿Se puede BORRAR del todo? Solo una cuenta que nunca se usó (creada por error): sin entradas en el libro y, si es de ahorro, sin
 // cajitas. Cualquier otra se archiva: así el historial de gastos, préstamos y encargos que la mencionan nunca queda apuntando a nada.
-function cuentaSePuedeEliminar(id){
+export function cuentaSePuedeEliminar(id){
   const c=getCuenta(id);
   if(!c||esCuentaFija(c))return false;
   const fuentes=new Set(_fuentesDeCuenta(c));
@@ -532,19 +553,19 @@ function cuentaSePuedeEliminar(id){
 }
 
 // Por qué no se puede archivar (texto para el usuario), o '' si se puede.
-function _motivoNoArchivar(c){
+export function _motivoNoArchivar(c){
   if(esCuentaFija(c))return 'Efectivo es una cuenta permanente: no se archiva ni se elimina (sí puedes renombrarla).';
   if(cuentaSePuedeEliminar(c.id))return 'La cuenta "'+c.nombre+'" no tiene movimientos: no hace falta archivarla, puedes eliminarla.';
   const total=esCuentaAhorro(c)?ahorroTotal(c.id):(c.saldo||0);
   if(Math.abs(total)>=0.01)return 'Primero deja "'+c.nombre+'" en cero: mueve el saldo a otra cuenta (botón «Mover a otra cuenta»). Disponible: '+fmt(total)+'.';
-  const enc=_encargosConSaldoEn(_fuentesDeCuenta(c));
-  if(enc.length)return 'La cuenta "'+c.nombre+'" tiene plata de encargos guardada aquí:\n\n'+enc.map(e=>'• '+e.nombre+': '+fmt(e.saldo)).join('\n')+'\n\nPrimero devuelve o mueve ese dinero desde cada encargo.';
+  const encargo=_encargosConSaldoEn(_fuentesDeCuenta(c));
+  if(encargo.length)return 'La cuenta "'+c.nombre+'" tiene plata de encargos guardada aquí:\n\n'+encargo.map(e=>'• '+e.nombre+': '+fmt(e.saldo)).join('\n')+'\n\nPrimero devuelve o mueve ese dinero desde cada encargo.';
   const cdts=cajitasDeCuenta(c.id).reduce((a,x)=>a+(x.cdts||[]).length,0);
   if(cdts)return 'La cuenta "'+c.nombre+'" tiene '+cdts+' CDT sin cobrar. Cóbralos o libéralos primero.';
   return '';
 }
 
-async function archivarCuenta(id){
+export async function archivarCuenta(id){
   const c=getCuenta(id);
   if(!c||c.archivada)return;
   const motivo=_motivoNoArchivar(c);
@@ -558,7 +579,7 @@ async function archivarCuenta(id){
   if(window.logCambio)logCambio('Archivaste cuenta "'+c.nombre+'"','',0,'editar');
 }
 
-function reactivarCuenta(id){
+export function reactivarCuenta(id){
   const c=getCuenta(id);
   if(!c||!c.archivada)return;
   delete c.archivada;
@@ -568,7 +589,7 @@ function reactivarCuenta(id){
   toast(`Cuenta "${c.nombre}" reactivada`,'ok');
 }
 
-async function eliminarCuenta(id){
+export async function eliminarCuenta(id){
   const c=getCuenta(id);
   if(!c)return;
   if(!cuentaSePuedeEliminar(id)){
@@ -583,18 +604,18 @@ async function eliminarCuenta(id){
   toast(`Cuenta "${c.nombre}" eliminada`,'ok');
 }
 /* ---- Editar cuenta personalizada ---- */
-function editarCuenta(id){
+export function editarCuenta(id){
   const c=getCuenta(id);
   if(!c)return;
   // Rellenar el sheet reutilizando el mismo form de nueva cuenta
-  _ncModoEdicion=true;
+  _nuevaCuentaModoEdicion=true;
   const ni=document.getElementById('nc_nombre');
   if(ni){ni.value=c.nombre;ni.dataset.auto='0';}
   // Saldo y tipo no se editan aquí (el saldo se maneja con depósitos/retiros; cambiar el tipo cambiaría lo que la cuenta sabe hacer)
-  _ncIconoSel=c.icono||'otro';
-  _ncColorSel=c.color||'#60b0f0';
-  _renderTiposNC();
-  selTipoNC(c.tipo);
+  _nuevaCuentaIconoSel=c.icono||'otro';
+  _nuevaCuentaColorSel=c.color||'#60b0f0';
+  _renderTiposNuevaCuenta();
+  selTipoNuevaCuenta(c.tipo);
   // En edición el tipo no se cambia: se oculta el bloque entero (rótulo incluido). Efectivo deja solo una nota.
   const tipos=document.getElementById('nc-tipos');
   if(tipos)tipos.style.display='none';
@@ -604,7 +625,7 @@ function editarCuenta(id){
   if(rotuloTipo)rotuloTipo.style.display=esCuentaFija(c)?'none':'';
   const notaTipo=document.getElementById('nc_tipo_nota');
   if(notaTipo)notaTipo.textContent=esCuentaFija(c)?'Es tu cuenta de efectivo: permanente (no se archiva ni se elimina). Nombre, color e ícono los defines tú.':'';
-  marcarColorSeleccionado('.nc-color-opt', _ncColorSel); // js/core/color-picker.js
+  marcarColorSeleccionado('.nc-color-opt', _nuevaCuentaColorSel); // js/core/color-picker.js
   // Se vuelve a dibujar el grid (así marca SU ícono; antes se dejaba el que hubiera quedado marcado de la última vez)
   renderIconGrid();
   const titulo=document.querySelector('#sheet-nueva-cuenta .sheet-title');
@@ -622,8 +643,8 @@ function editarCuenta(id){
         toast('Ya tienes otra cuenta llamada "'+nombre+'"','err');return;
       }
       cc.nombre=nombre;
-      cc.icono=_ncIconoSel;
-      cc.color=_ncColorSel;
+      cc.icono=_nuevaCuentaIconoSel;
+      cc.color=_nuevaCuentaColorSel;
       save();refresh();
       closeSheet('nueva-cuenta');
       // Volver a abrir la cuenta con datos actualizados
@@ -636,8 +657,8 @@ function editarCuenta(id){
   }
   openSheet('nueva-cuenta');
 }
-function _resetSheetNuevaCuenta(){
-  _ncModoEdicion=false;
+export function _resetSheetNuevaCuenta(){
+  _nuevaCuentaModoEdicion=false;
   const titulo=document.querySelector('#sheet-nueva-cuenta .sheet-title');
   if(titulo) titulo.textContent='Nueva cuenta';
   const btnCrear=document.getElementById('btn-crear-cuenta-custom');
@@ -647,7 +668,7 @@ function _resetSheetNuevaCuenta(){
     btnCrear.onclick=crearCuenta;
   }
   const si=document.getElementById('nc_saldo');
-  if(si&&si.closest('.ig')) si.closest('.ig').style.display=_ncTipoSel==='ahorro'?'none':'';
+  if(si&&si.closest('.ig')) si.closest('.ig').style.display=_nuevaCuentaTipoSel==='ahorro'?'none':'';
   const tipos=document.getElementById('nc-tipos');
   if(tipos)tipos.style.display='';
   const bloqueTipo=tipos&&tipos.closest&&tipos.closest('.ig');
@@ -655,13 +676,46 @@ function _resetSheetNuevaCuenta(){
 }
 /* ---- FIN CUENTAS PERSONALIZADAS ---- */
 
-function _showCuentasPanel(panelId){
+export function _showCuentasPanel(panelId){
   // Los paneles de cada cuenta con pantalla propia (Nu) los aporta su registro en CuentaPantallas.
   const panels=['cuentas-selector','cuentas-archivadas','cuentas-detalle-simple'].concat(...Object.values(CuentaPantallas).map(p=>p.paneles||[]));
   panels.forEach(id=>{
     const el=document.getElementById(id);
-    if(el) el.style.display = id===panelId ? '' : 'none';
+    if(el) el.classList.toggle('panel-activo', id===panelId);
   });
+  // El panel activo también queda en la pantalla: en PC (css/pc.css) decide si se ve la columna de movimientos.
+  const pantalla=document.getElementById('screen-cuentas');
+  if(pantalla) pantalla.dataset.panelActivo=panelId;
+  _seleccionAutomatica=false; // cualquier cambio de panel es de la persona; solo _abrirCuentaPorDefecto() lo vuelve a marcar
+  _marcarCuentaActivaEnSelector();
+}
+
+// ── PC (≥900 px): la lista y el detalle van lado a lado, así que siempre hay una cuenta abierta ─────────────────────────────
+// Al entrar a Cuentas (o al volver al «selector») se abre la primera cuenta activa. Esa apertura es automática: si la ventana se
+// achica a celular sin que la persona haya elegido otra cosa, se vuelve al selector en vez de dejar un detalle que no abrió.
+// Todo cambio de panel hecho por la persona (otra cuenta, una cajita, archivadas…) borra la marca (_showCuentasPanel).
+export const _consultaPcCuentas = typeof window.matchMedia === 'function' ? window.matchMedia('(min-width: 900px)') : null;
+export let _seleccionAutomatica = false;
+export function _abrirCuentaPorDefecto() {
+  if (!_consultaPcCuentas || !_consultaPcCuentas.matches) return;
+  const pantalla = document.getElementById('screen-cuentas');
+  if (!pantalla || pantalla.dataset.panelActivo !== 'cuentas-selector') return;
+  const primera = _activasEnOrden()[0];
+  if (!primera) return; // sin cuentas: la columna central queda vacía y la lista trae «Agregar cuenta»
+  abrirCuenta(fuenteDeCuenta(primera.id));
+  if (pantalla.dataset.panelActivo !== 'cuentas-selector') _seleccionAutomatica = true; // abrirCuenta no abre si su pantalla propia aún no cargó
+}
+// Resalta en la lista la cuenta abierta (la lista se vuelve a pintar a menudo: también lo hace _cuentaSelectorHtml).
+export function _marcarCuentaActivaEnSelector() {
+  document.querySelectorAll('#selector-cuentas-lista [data-fuente]').forEach(el => el.classList.toggle('cuenta-card-activa', !!cuentaActual && el.dataset.fuente === cuentaActual));
+}
+if (_consultaPcCuentas) {
+  const alCambiarModo = e => {
+    if (e.matches) { const p = document.getElementById('screen-cuentas'); if (p && p.classList.contains('active')) _abrirCuentaPorDefecto(); }
+    else if (_seleccionAutomatica) volverSelector();
+  };
+  if (_consultaPcCuentas.addEventListener) _consultaPcCuentas.addEventListener('change', alCambiarModo);
+  else if (_consultaPcCuentas.addListener) _consultaPcCuentas.addListener(alCambiarModo);
 }
 
 /* ───────────────────────────────────────────────────────────────
@@ -682,15 +736,15 @@ function _showCuentasPanel(panelId){
 // Todas las cuentas se leen igual: una salida manual es siempre 'salida_manual' (desde 2026-10-18 ya no existe el
 // tipo 'egreso' de las personalizadas: su borrado hacía lo mismo que el de 'salida_manual') y, sin descripción,
 // los textos son 'Ingreso' / 'Retiro'.
-// Cada fila lleva `_movId` (id del registro de origen); ordenado por fecha desc y luego por id desc.
-function getMovimientosCuenta(tipo) {
+// Cada fila lleva `_movimientoId` (id del registro de origen); ordenado por fecha desc y luego por id desc.
+export function getMovimientosCuenta(tipo) {
   const cuentaDeLaPantalla = getCuentaDeFuente(tipo);
   const cajitasDeLaCuenta = esCuentaAhorro(cuentaDeLaPantalla) ? new Set(cajitasDeCuenta(cuentaDeLaPantalla.id).map(c => 'cajita:' + c.id)) : null;
   const coincide = cajitasDeLaCuenta ? (f => !!f && cajitasDeLaCuenta.has(f)) : (f => f === tipo);
   const tipoSalidaManual = 'salida_manual';
   const textoEntrada = 'Ingreso';
   const textoSalida = 'Retiro';
-  const movs = [];
+  const movimientos = [];
   let _idx = 0;
 
   // S.movimientos: entradas/salidas manuales, aperturas, intercambios de Encargos, espejos.
@@ -730,20 +784,20 @@ function getMovimientosCuenta(tipo) {
       if (esApertura) { _origen = 'Saldo inicial'; }
       else if (m._esIntercambioEncargo) {
         _origen = 'Encargos · Intercambio';
-        const hermano = (S.movimientos || []).find(x => x._esIntercambioEncargo && x._encMovId === m._encMovId && x.id !== m.id);
+        const hermano = (S.movimientos || []).find(x => x._esIntercambioEncargo && x._encargoMovimientoId === m._encargoMovimientoId && x.id !== m.id);
         if (hermano) _otrasCuentas = [{ fuente: hermano.fuente, monto: hermano._intercambioSalida ? -hermano.monto : +hermano.monto }];
       }
       else if (esTransferencia) { _origen = 'Cuentas · Movimiento manual'; if (m._fuenteDestino) _otrasCuentas = [{ fuente: m._fuenteDestino, monto: esIntercambioSalida ? +m.monto : -m.monto }]; }
-      else if (m._esReposicionCP) { _origen = 'Plata comprometida'; }
-      else if (m._encMovId || /encargo/i.test(m.desc || '')) { _origen = 'Encargos'; }
+      else if (m._esReposicionPlataComprometida) { _origen = 'Plata comprometida'; }
+      else if (m._encargoMovimientoId || /encargo/i.test(m.desc || '')) { _origen = 'Encargos'; }
       else if (m._secundario && m._origenSeccion) { _origen = m._origenSeccion; }
       else { _origen = 'Cuentas · Movimiento manual'; }
       if (otrasDelAbono) _otrasCuentas = otrasDelAbono;
-      movs.push({
+      movimientos.push({
         tipo: tipoDisplay, fecha: m.fecha,
         desc: m.desc || (esApertura ? 'Saldo inicial' : esEntrada ? textoEntrada : esTransferencia ? 'Intercambio' : textoSalida),
-        monto: montoDisplay, fuente: m.fuente, _idx: _idx++, _movId: m.id, _fuenteOrigen: m.fuente, _fuenteDestino: m._fuenteDestino || '',
-        _origen, _otrasCuentas, _secundario: !!m._secundario, _origenSeccion: m._origenSeccion || '', _alcOculto: false
+        monto: montoDisplay, fuente: m.fuente, _idx: _idx++, _movimientoId: m.id, _fuenteOrigen: m.fuente, _fuenteDestino: m._fuenteDestino || '',
+        _origen, _otrasCuentas, _secundario: !!m._secundario, _origenSeccion: m._origenSeccion || '', _alcanciaOculto: false
       });
     });
   };
@@ -751,21 +805,21 @@ function getMovimientosCuenta(tipo) {
   desdeMovimientos();
 
   // Gastos variables pagados desde esta cuenta. Los depósitos a la alcancía se muestran como fila
-  // visible con el monto oculto (`_alcOculto`).
+  // visible con el monto oculto (`_alcanciaOculto`).
   (S.gastosVar || []).forEach(g => {
     // Gasto dividido entre varias cuentas: `g.fuente` queda vacío (ver addGastoVar en gastos.js) y cada parte salió de su cuenta,
     // así que cada cuenta muestra SU parte (con las otras cuentas en el detalle). Antes no coincidía con ninguna y no se veía en ninguna.
     if (!g.fuente && g.splits && g.splits.length) {
-      g.splits.forEach(sp => {
-        if (!sp.fuente || !sp.monto || !coincide(sp.fuente)) return;
-        const otras = g.splits.filter(o => o !== sp && o.fuente).map(o => ({ fuente: o.fuente, monto: -o.monto }));
-        movs.push({ tipo: 'gasto', fecha: g.fecha, desc: g.desc, monto: -sp.monto, cat: g.cat, fuente: sp.fuente, nota: g.nota, _idx: _idx++, _movId: g.id, _fuenteOrigen: sp.fuente, _origen: 'Gastos', _otrasCuentas: otras.length ? otras : null, _secundario: false, _origenSeccion: '', _alcOculto: false });
+      g.splits.forEach(spotify => {
+        if (!spotify.fuente || !spotify.monto || !coincide(spotify.fuente)) return;
+        const otras = g.splits.filter(o => o !== spotify && o.fuente).map(o => ({ fuente: o.fuente, monto: -o.monto }));
+        movimientos.push({ tipo: 'gasto', fecha: g.fecha, desc: g.desc, monto: -spotify.monto, cat: g.cat, fuente: spotify.fuente, nota: g.nota, _idx: _idx++, _movimientoId: g.id, _fuenteOrigen: spotify.fuente, _origen: 'Gastos', _otrasCuentas: otras.length ? otras : null, _secundario: false, _origenSeccion: '', _alcanciaOculto: false });
       });
       return;
     }
     if (!coincide(g.fuente)) return;
     const _origen = g._secundario && g._origenSeccion ? g._origenSeccion : g.esPagoGastoFijo ? 'Gastos fijos' : g._esPagoTC ? 'Tarjeta de crédito' : g._esExtraPrestamo ? 'Préstamos' : /encargo/i.test(g.nota || '') ? 'Encargos' : 'Gastos';
-    movs.push({ tipo: 'gasto', fecha: g.fecha, desc: g.desc, monto: -g.monto, cat: g.cat, fuente: g.fuente, nota: g.nota, _idx: _idx++, _movId: g.id, _fuenteOrigen: g.fuente, _origen, _otrasCuentas: null, _secundario: !!g._secundario, _origenSeccion: g._origenSeccion || '', _alcOculto: false });
+    movimientos.push({ tipo: 'gasto', fecha: g.fecha, desc: g.desc, monto: -g.monto, cat: g.cat, fuente: g.fuente, nota: g.nota, _idx: _idx++, _movimientoId: g.id, _fuenteOrigen: g.fuente, _origen, _otrasCuentas: null, _secundario: !!g._secundario, _origenSeccion: g._origenSeccion || '', _alcanciaOculto: false });
   });
 
   // Préstamos dados desde esta cuenta (incluye los divididos entre varias cuentas).
@@ -773,42 +827,42 @@ function getMovimientosCuenta(tipo) {
     (d.movimientos || []).forEach(m => {
       const matchFuente = coincide(m.fuente);
       if (m.tipo === 'prestamo' && (matchFuente || (m.fuentes && m.fuentes.length))) {
-        const _origenP = 'Préstamos · ' + d.nombre;
+        const _origenP = 'Préstamos · ' + Personas.nombre(d.personaId);
         if (matchFuente) {
           const otrasFuentesSplit = (m.fuentes || []).filter(f => f.fuente !== m.fuente).map(f => ({ fuente: f.fuente, monto: -f.monto }));
-          movs.push({ tipo: 'prestamo', fecha: m.fecha, desc: 'Préstamo a ' + d.nombre, monto: -m.monto, nota: m.nota, fuente: m.fuente, _idx: _idx++, _movId: m.id, _fuenteOrigen: m.fuente, _origen: _origenP, _otrasCuentas: otrasFuentesSplit.length ? otrasFuentesSplit : null });
+          movimientos.push({ tipo: 'prestamo', fecha: m.fecha, desc: 'Préstamo a ' + Personas.nombre(d.personaId), monto: -m.monto, nota: m.nota, fuente: m.fuente, _idx: _idx++, _movimientoId: m.id, _fuenteOrigen: m.fuente, _origen: _origenP, _otrasCuentas: otrasFuentesSplit.length ? otrasFuentesSplit : null });
         }
         (m.fuentes || []).forEach(f => {
           if (coincide(f.fuente) && f.monto) {
             const otras = (m.fuentes || []).filter(f2 => f2.fuente !== f.fuente).map(f2 => ({ fuente: f2.fuente, monto: -f2.monto }));
             if (m.fuente) otras.push({ fuente: m.fuente, monto: -m.monto });
-            movs.push({ tipo: 'prestamo', fecha: m.fecha, desc: 'Préstamo a ' + d.nombre, monto: -f.monto, nota: m.nota, fuente: f.fuente, _idx: _idx++, _movId: m.id, _fuenteOrigen: f.fuente, _origen: _origenP, _otrasCuentas: otras.length ? otras : null });
+            movimientos.push({ tipo: 'prestamo', fecha: m.fecha, desc: 'Préstamo a ' + Personas.nombre(d.personaId), monto: -f.monto, nota: m.nota, fuente: f.fuente, _idx: _idx++, _movimientoId: m.id, _fuenteOrigen: f.fuente, _origen: _origenP, _otrasCuentas: otras.length ? otras : null });
           }
         });
       }
     });
   });
 
-  // NOTA (2026-08-30): no hay un bloque "Mesadas recibidas en esta cuenta": duplicaba cada pago de
+  // NOTA: no hay un bloque "Mesadas recibidas en esta cuenta": duplicaba cada pago de
   // mesada con un movimiento fantasma sin candado. mesada.js ya genera el espejo real vía
   // _registrarMovSecundarioMesada() (en S.movimientos con _secundario:true), que desdeMovimientos()
-  // recorre. No volver a sintetizar el pago desde S.mesadas. Ver CHANGELOG.md#mesada.
+  // recorre. No volver a sintetizar el pago desde S.mesadas. Ver changelog/mesada.md.
 
   // Cobros de Spotify a personas (los pagos del plan ya están en gastosVar) + abonos posteriores de lo
   // pendiente, cada uno como su propia fila. Cada abono puede haber ido a una cuenta distinta a la del
   // cobro original, así que se filtra por su propio `destino`, no por `h.fuente`.
   (S.spotify.historial || []).forEach(h => {
     if (h.tipo === 'pago') return;
-    // h.monto acumula el cobro original + los abonos ya recibidos (confirmarSpResolverPendiente): hay que
+    // h.monto acumula el cobro original + los abonos ya recibidos (confirmarSpotifyResolverPendiente): hay que
     // restar los abonos para no contar la misma plata dos veces (una acá, otra en su propia fila).
-    const historialPendTotal = (h.pendienteHistorial || []).reduce((a, ab) => a + (ab.monto || 0), 0);
+    const historialPendTotal = (h.pendienteHistorial || []).reduce((a, abono) => a + (abono.monto || 0), 0);
     const montoOriginalCobro = Math.max(0, (h.monto || 0) - historialPendTotal);
     if (coincide(h.fuente)) {
-      movs.push({ tipo: 'ingreso', fecha: h.fecha, desc: 'Cobro Spotify (' + h.nombre + ')', monto: +montoOriginalCobro, fuente: h.fuente, _idx: _idx++, _movId: h.id, _origen: 'Spotify', _otrasCuentas: null, _secundario: true, _origenSeccion: 'Spotify' });
+      movimientos.push({ tipo: 'ingreso', fecha: h.fecha, desc: 'Cobro Spotify (' + h.nombre + ')', monto: +montoOriginalCobro, fuente: h.fuente, _idx: _idx++, _movimientoId: h.id, _origen: 'Spotify', _otrasCuentas: null, _secundario: true, _origenSeccion: 'Spotify' });
     }
-    (h.pendienteHistorial || []).forEach(ab => {
-      if (!coincide(ab.destino)) return;
-      movs.push({ tipo: 'ingreso', fecha: ab.fecha, desc: 'Abono pendiente Spotify (' + h.nombre + ')', monto: +ab.monto, fuente: ab.destino, _idx: _idx++, _movId: ab.id, _origen: 'Spotify', _otrasCuentas: null, _secundario: true, _origenSeccion: 'Spotify' });
+    (h.pendienteHistorial || []).forEach(abono => {
+      if (!coincide(abono.destino)) return;
+      movimientos.push({ tipo: 'ingreso', fecha: abono.fecha, desc: 'Abono pendiente Spotify (' + h.nombre + ')', monto: +abono.monto, fuente: abono.destino, _idx: _idx++, _movimientoId: abono.id, _origen: 'Spotify', _otrasCuentas: null, _secundario: true, _origenSeccion: 'Spotify' });
     });
   });
 
@@ -816,22 +870,22 @@ function getMovimientosCuenta(tipo) {
   // como origen (ninguna cuenta real se llama 'alcancia'): fila visible, monto oculto, sin "otras
   // cuentas" (la alcancía no es una cuenta navegable). Ver docs/alcancia.md §3.
   (S.transferencias || []).forEach(t => {
-    const esAlc = t.destino === 'alcancia';
+    const esAlcancia = t.destino === 'alcancia';
     if (coincide(t.origen)) {
-      movs.push({
-        tipo: esAlc ? 'alcancia' : 'transferencia',
+      movimientos.push({
+        tipo: esAlcancia ? 'alcancia' : 'transferencia',
         fecha: t.fecha,
-        desc: esAlc ? (t.desc || 'Depósito en alcancía') : 'Transferencia a ' + fuenteLabel(t.destino),
+        desc: esAlcancia ? (t.desc || 'Depósito en alcancía') : 'Transferencia a ' + fuenteLabel(t.destino),
         monto: -t.monto, nota: t.nota, fuente: t.origen,
-        _idx: _idx++, _movId: t.id, _fuenteOrigen: t.origen, _fuenteDestino: t.destino,
-        _origen: esAlc ? 'Alcancía' : 'Cuentas · Transferencia',
-        _otrasCuentas: esAlc ? null : [{ fuente: t.destino, monto: +t.monto }],
-        _secundario: esAlc || !!t._secundario, _origenSeccion: esAlc ? 'Alcancía' : '',
-        _alcOculto: esAlc
+        _idx: _idx++, _movimientoId: t.id, _fuenteOrigen: t.origen, _fuenteDestino: t.destino,
+        _origen: esAlcancia ? 'Alcancía' : 'Cuentas · Transferencia',
+        _otrasCuentas: esAlcancia ? null : [{ fuente: t.destino, monto: +t.monto }],
+        _secundario: esAlcancia || !!t._secundario, _origenSeccion: esAlcancia ? 'Alcancía' : '',
+        _alcanciaOculto: esAlcancia
       });
     }
     if (coincide(t.destino)) {
-      movs.push({ tipo: 'transferencia', fecha: t.fecha, desc: 'Transferencia desde ' + fuenteLabel(t.origen), monto: +t.monto, nota: t.nota, fuente: t.destino, _idx: _idx++, _movId: t.id, _fuenteOrigen: t.origen, _fuenteDestino: t.destino, _origen: 'Cuentas · Transferencia', _otrasCuentas: [{ fuente: t.origen, monto: -t.monto }] });
+      movimientos.push({ tipo: 'transferencia', fecha: t.fecha, desc: 'Transferencia desde ' + fuenteLabel(t.origen), monto: +t.monto, nota: t.nota, fuente: t.destino, _idx: _idx++, _movimientoId: t.id, _fuenteOrigen: t.origen, _fuenteDestino: t.destino, _origen: 'Cuentas · Transferencia', _otrasCuentas: [{ fuente: t.origen, monto: -t.monto }] });
     }
   });
 
@@ -840,54 +894,56 @@ function getMovimientosCuenta(tipo) {
   Libro.entradasVisibles().forEach(l => {
     if (!coincide(l.cuenta)) return;
     const etiqueta = l.tipo === 'rendimiento' ? 'Intereses' : l.tipo === 'cdt' ? 'CDT' : l.tipo === 'apertura' ? 'Saldo inicial' : 'Ajuste';
-    movs.push({
+    movimientos.push({
       tipo: l.tipo === 'apertura' ? 'apertura' : l.monto > 0 ? 'ingreso' : tipoSalidaManual,
-      fecha: l.fecha, desc: l.desc || etiqueta, monto: l.monto, fuente: l.cuenta, _idx: _idx++, _movId: l.id,
+      fecha: l.fecha, desc: l.desc || etiqueta, monto: l.monto, fuente: l.cuenta, _idx: _idx++, _movimientoId: l.id,
       _fuenteOrigen: l.cuenta, _fuenteDestino: '', _origen: 'Libro · ' + etiqueta, _otrasCuentas: null,
-      _secundario: true, _origenSeccion: etiqueta, _alcOculto: false
+      _secundario: true, _origenSeccion: etiqueta, _alcanciaOculto: false
     });
   });
 
-  // Orden: fecha desc y luego por creación desc (_movId empieza con Date.now().toString(36), así que
+  // Orden: fecha desc y luego por creación desc (_movimientoId empieza con Date.now().toString(36), así que
   // comparar el id en texto da el orden de inserción). Sin id en alguno, va primero el que sí tiene
   // (timestamp confiable); si ninguno tiene, por orden de recolección.
-  movs.sort((a, b) => {
+  movimientos.sort((a, b) => {
     const dateCmp = (b.fecha || '').localeCompare(a.fecha || '');
     if (dateCmp !== 0) return dateCmp;
-    const aId = a._movId || '';
-    const bId = b._movId || '';
+    const aId = a._movimientoId || '';
+    const bId = b._movimientoId || '';
     if (aId && bId) return bId.localeCompare(aId);
     if (aId) return -1;
     if (bId) return 1;
     return (b._idx || 0) - (a._idx || 0);
   });
-  return movs;
+  return movimientos;
 }
 
 /* ───────────────────────────────────────────────────────────────
    SECCIÓN: Motor de filtros de movimientos (búsqueda / tipo / fechas)
    ─────────────────────────────────────────────────────────────── */
-const _movsFilters = {}; // { cuentaKey: { q:'', tipo:'todos', desde:'', hasta:'' } }
+// `limite`: cuántas filas se pintan (paginación «Mostrar más»). Con 5 años de datos una cuenta llega a ~7.000 filas y pintarlas todas
+// (≈ 17 nodos por fila → 120.000 nodos) tardaba ~300 ms en un PC; en un celular, varios segundos. Cualquier cambio de filtro vuelve a la primera página.
+export const MOVIMIENTOS_PAGINA = 100;
+export const _movimientosFilters = {}; // { cuentaKey: { q:'', tipo:'todos', desde:'', hasta:'', limite: MOVIMIENTOS_PAGINA } }
 
-function _getMovsFilter(cuentaKey) {
-  if (!_movsFilters[cuentaKey]) _movsFilters[cuentaKey] = { q: '', tipo: 'todos', desde: '', hasta: '' };
-  return _movsFilters[cuentaKey];
+export function _getMovimientosFilter(cuentaKey) {
+  if (!_movimientosFilters[cuentaKey]) _movimientosFilters[cuentaKey] = { q: '', tipo: 'todos', desde: '', hasta: '', limite: MOVIMIENTOS_PAGINA };
+  return _movimientosFilters[cuentaKey];
 }
 
-function renderMovsFiltros(elId, cuentaKey, movs, accentColor) {
+export function renderMovimientosFiltros(elId, cuentaKey, movimientos, accentColor) {
   const wrap = document.getElementById(elId);
   if (!wrap) return;
-  const f = _getMovsFilter(cuentaKey);
+  const f = _getMovimientosFilter(cuentaKey);
 
   // Tipos presentes en los movimientos
-  const tiposPresentes = new Set(movs.map(m => m.tipo));
+  const tiposPresentes = new Set(movimientos.map(m => m.tipo));
   const tiposConfig = [
     { val: 'todos', label: 'Todos' },
     { val: 'ingreso', label: 'Ingreso' },
     { val: 'salida_manual', label: 'Retiro' },
     { val: 'gasto', label: 'Gasto' },
     { val: 'transferencia', label: 'Transferencia' },
-    { val: 'mesada', label: 'Mesada' },
     { val: 'prestamo', label: 'Préstamo' },
     { val: 'abono', label: 'Abono' },
     { val: 'alcancia', label: 'Alcancía' },
@@ -899,62 +955,67 @@ function renderMovsFiltros(elId, cuentaKey, movs, accentColor) {
       <input type="text" class="movs-search-input" placeholder="Buscar movimiento..." value="${f.q}">
     </div>
     <div class="movs-tipo-chips">
-      ${tiposConfig.map(t => html`<div class="movs-chip${f.tipo===t.val?' active':''}" ${raw(Events.attr('cuentas:movsOnTipo', t.val, cuentaKey))}>${t.label}</div>`)}
+      ${tiposConfig.map(t => html`<div class="movs-chip${f.tipo===t.val?' active':''}" ${raw(Events.attr('cuentas:movimientosOnTipo', t.val, cuentaKey))}>${t.label}</div>`)}
     </div>
     <div class="movs-fecha-row">
       <span class="movs-fecha-label">Desde</span>
       <input type="date" class="movs-fecha-desde" value="${f.desde}">
       <span class="movs-fecha-label">Hasta</span>
       <input type="date" class="movs-fecha-hasta" value="${f.hasta}">
-      ${(f.desde||f.hasta)?html`<button ${raw(Events.attr('cuentas:movsLimpiarFechas', cuentaKey))} class="cuenta-movs-limpiar">Limpiar fechas</button>`:''}
+      ${(f.desde||f.hasta)?html`<button ${raw(Events.attr('cuentas:movimientosLimpiarFechas', cuentaKey))} class="cuenta-movs-limpiar">Limpiar fechas</button>`:''}
     </div>
   `;
   // Reemplaza los oninput/onchange inline (CSP los bloquea). Delegado,
   // enganchado una sola vez por wrap. El wrap de la cuenta simple
   // (movs-filtros-cuenta) lo comparten Nequi, Efectivo y las personalizadas, así que su
-  // cuentaKey cambia entre renders: los listeners leen wrap._movsKey (se actualiza en cada
+  // cuentaKey cambia entre renders: los listeners leen wrap._movimientosKey (se actualiza en cada
   // render) en vez de cerrar sobre cuentaKey — igual que el bug de `items` en
   // renderAttencion() (Inicio), cerrar sobre un valor que cambia dejaría filtrando la cuenta
   // equivocada.
-  wrap._movsKey = cuentaKey;
-  if(!wrap._movsFiltrosHooked){
-    wrap._movsFiltrosHooked = true;
+  wrap._movimientosKey = cuentaKey;
+  if(!wrap._movimientosFiltrosHooked){
+    wrap._movimientosFiltrosHooked = true;
     wrap.addEventListener('input', (e)=>{
-      if(e.target.classList.contains('movs-search-input')) _movsOnSearch(e.target, wrap._movsKey);
+      if(e.target.classList.contains('movs-search-input')) _movimientosOnSearch(e.target, wrap._movimientosKey);
     });
     wrap.addEventListener('change', (e)=>{
-      if(e.target.classList.contains('movs-fecha-desde')) _movsOnFecha('desde', e.target.value, wrap._movsKey);
-      else if(e.target.classList.contains('movs-fecha-hasta')) _movsOnFecha('hasta', e.target.value, wrap._movsKey);
+      if(e.target.classList.contains('movs-fecha-desde')) _movimientosOnFecha('desde', e.target.value, wrap._movimientosKey);
+      else if(e.target.classList.contains('movs-fecha-hasta')) _movimientosOnFecha('hasta', e.target.value, wrap._movimientosKey);
     });
   }
 }
 
-function _movsOnSearch(input, cuentaKey) {
-  _getMovsFilter(cuentaKey).q = input.value;
-  _movsRefresh(cuentaKey);
+export function _movimientosOnSearch(input, cuentaKey) {
+  const f = _getMovimientosFilter(cuentaKey); f.q = input.value; f.limite = MOVIMIENTOS_PAGINA;
+  _movimientosRefresh(cuentaKey);
 }
-function _movsOnTipo(tipo, cuentaKey) {
-  _getMovsFilter(cuentaKey).tipo = tipo;
-  _movsRefresh(cuentaKey);
+export function _movimientosOnTipo(tipo, cuentaKey) {
+  const f = _getMovimientosFilter(cuentaKey); f.tipo = tipo; f.limite = MOVIMIENTOS_PAGINA;
+  _movimientosRefresh(cuentaKey);
 }
-function _movsOnFecha(campo, val, cuentaKey) {
-  _getMovsFilter(cuentaKey)[campo] = val;
-  _movsRefresh(cuentaKey);
+export function _movimientosOnFecha(campo, val, cuentaKey) {
+  const f = _getMovimientosFilter(cuentaKey); f[campo] = val; f.limite = MOVIMIENTOS_PAGINA;
+  _movimientosRefresh(cuentaKey);
 }
-function _movsLimpiarFechas(cuentaKey) {
-  const f = _getMovsFilter(cuentaKey);
-  f.desde = ''; f.hasta = '';
-  _movsRefresh(cuentaKey);
+export function _movimientosLimpiarFechas(cuentaKey) {
+  const f = _getMovimientosFilter(cuentaKey);
+  f.desde = ''; f.hasta = ''; f.limite = MOVIMIENTOS_PAGINA;
+  _movimientosRefresh(cuentaKey);
+}
+export function _movimientosMas(cuentaKey) {
+  const f = _getMovimientosFilter(cuentaKey);
+  f.limite = (f.limite || MOVIMIENTOS_PAGINA) + MOVIMIENTOS_PAGINA;
+  _movimientosRefresh(cuentaKey);
 }
 
-function _movsRefresh(cuentaKey) {
+export function _movimientosRefresh(cuentaKey) {
   // La clave de los filtros es la fuente de la cuenta ('cuenta:ID'): se vuelve a pintar su detalle.
   if (esFuenteCuenta(cuentaKey)) renderDetalleCuenta(cuentaKey);
 }
 
-function _movsAplicarFiltro(movs, cuentaKey) {
-  const f = _getMovsFilter(cuentaKey);
-  let res = movs;
+export function _movimientosAplicarFiltro(movimientos, cuentaKey) {
+  const f = _getMovimientosFilter(cuentaKey);
+  let res = movimientos;
   if (f.tipo && f.tipo !== 'todos') res = res.filter(m => m.tipo === f.tipo);
   if (f.q && f.q.trim()) {
     const q = f.q.trim().toLowerCase();
@@ -965,22 +1026,22 @@ function _movsAplicarFiltro(movs, cuentaKey) {
   return res;
 }
 
-function renderMovsCuenta(elId, movs, accentColor, cuentaKey, filtrosElIdExplicito) {
+export function renderMovimientosCuenta(elId, movimientos, accentColor, cuentaKey, filtrosElIdExplicito) {
   const el = document.getElementById(elId);
   if (!el) return;
 
   // Sin movimientos no hay nada que titular ni filtrar: el CSS oculta título y filtros del bloque y queda solo el estado vacío.
   const bloque = el.closest('.cuenta-movs-bloque');
-  if (bloque) bloque.classList.toggle('cuenta-movs-bloque-vacio', !movs.length);
+  if (bloque) bloque.classList.toggle('cuenta-movs-bloque-vacio', !movimientos.length);
 
   // Render filtros (aunque no haya movs: quedan ocultos por el bloque vacío, y listos cuando aparezca el primero)
   const filtrosElId = filtrosElIdExplicito || ('movs-filtros-' + (cuentaKey || ''));
-  if (cuentaKey) renderMovsFiltros(filtrosElId, cuentaKey, movs, accentColor);
+  if (cuentaKey) renderMovimientosFiltros(filtrosElId, cuentaKey, movimientos, accentColor);
 
   // Aplicar filtros
-  const filtrados = cuentaKey ? _movsAplicarFiltro(movs, cuentaKey) : movs;
+  const filtrados = cuentaKey ? _movimientosAplicarFiltro(movimientos, cuentaKey) : movimientos;
 
-  if (!movs.length) {
+  if (!movimientos.length) {
     el.innerHTML = emptyInline('No hay movimientos registrados en esta cuenta.');
     return;
   }
@@ -989,7 +1050,11 @@ function renderMovsCuenta(elId, movs, accentColor, cuentaKey, filtrosElIdExplici
     return;
   }
 
-  el.innerHTML = html`${filtrados.map(m => {
+  // Paginación: solo en el detalle de una cuenta (su refresco repinta con el nuevo límite); las demás vistas pintan todo como antes.
+  const paginar = !!cuentaKey && esFuenteCuenta(cuentaKey);
+  const visibles = paginar ? filtrados.slice(0, _getMovimientosFilter(cuentaKey).limite || MOVIMIENTOS_PAGINA) : filtrados;
+  const faltan = filtrados.length - visibles.length;
+  el.innerHTML = html`${visibles.map(m => {
     const esSalida = m.tipo === 'salida_manual' || m.tipo === 'gasto';
     const esApertura = m.tipo === 'apertura';
     const esPositivo = esApertura ? true : esSalida ? false : m.monto > 0;
@@ -997,44 +1062,44 @@ function renderMovsCuenta(elId, movs, accentColor, cuentaKey, filtrosElIdExplici
     const signo = esApertura ? '' : esPositivo ? '+' : '−';
     const tipoLabel = { gasto: 'Gasto', ingreso: 'Ingreso', apertura: 'Apertura', prestamo: 'Préstamo', abono: 'Abono', alcancia: 'Alcancía', mesada: 'Mesada', transferencia: 'Transferencia', salida_manual: 'Retiro' }[m.tipo] || m.tipo;
     const bgLabel = esApertura ? 'bg-blue' : esPositivo ? 'bg-green' : m.tipo === 'gasto' || m.tipo === 'salida_manual' ? 'bg-red' : m.tipo === 'transferencia' ? 'bg-blue' : 'bg-amber';
-    const dataId = m._movId ? html`data-mov-id="${m._movId}"` : '';
-    const dataTipo = html`data-mov-tipo="${m.tipo}"`;
-    const dataFuente = m._fuenteOrigen ? html`data-mov-fuente="${m._fuenteOrigen}"` : '';
-    const dataDestino = m._fuenteDestino ? html`data-mov-destino="${m._fuenteDestino}"` : '';
-    const dataMonto = m._alcOculto ? '' : html`data-mov-monto="${Math.abs(m.monto)}"`; // fila de Alcancía: el monto no va ni al DOM
-    const dataFuenteReal = m.fuente ? html`data-mov-fuente-real="${m.fuente}"` : '';
-    const dataFecha = html`data-mov-fecha="${m.fecha}"`;
-    const dataOrigen = m._origen ? html`data-mov-origen="${m._origen}"` : '';
-    const dataOtras = m._otrasCuentas ? html`data-mov-otras="${JSON.stringify(m._otrasCuentas)}"` : '';
-    const esSecundarioHist = !!m._secundario;
-    const puedeEliminar = !!m._movId && !esSecundarioHist;
+    const dataId = m._movimientoId ? html`data-movimiento-id="${m._movimientoId}"` : '';
+    const dataTipo = html`data-movimiento-tipo="${m.tipo}"`;
+    const dataFuente = m._fuenteOrigen ? html`data-movimiento-fuente="${m._fuenteOrigen}"` : '';
+    const dataDestino = m._fuenteDestino ? html`data-movimiento-destino="${m._fuenteDestino}"` : '';
+    const dataMonto = m._alcanciaOculto ? '' : html`data-movimiento-monto="${Math.abs(m.monto)}"`; // fila de Alcancía: el monto no va ni al DOM
+    const dataFuenteReal = m.fuente ? html`data-movimiento-fuente-real="${m.fuente}"` : '';
+    const dataFecha = html`data-movimiento-fecha="${m.fecha}"`;
+    const dataOrigen = m._origen ? html`data-movimiento-origen="${m._origen}"` : '';
+    const dataOtras = m._otrasCuentas ? html`data-movimiento-otras="${JSON.stringify(m._otrasCuentas)}"` : '';
+    const esSecundarioHistorial = !!m._secundario;
+    const puedeEliminar = !!m._movimientoId && !esSecundarioHistorial;
     // Depósito a la alcancía: la fila se ve (para saber que salió/entró plata) pero el monto va
-    // oculto (tampoco se escribe data-mov-monto) y no abre el detalle, que mostraría monto y
+    // oculto (tampoco se escribe data-movimiento-monto) y no abre el detalle, que mostraría monto y
     // saldos antes/después. Sin botón eliminar (siempre _secundario). El Antes/Después de las
     // OTRAS filas no depende del DOM sino de getMovimientosCuenta(), que sí incluye estas filas.
-    const alcOculto = !!m._alcOculto;
-    const puedeVerDetalle = !!m.fuente && !alcOculto;
+    const alcanciaOculto = !!m._alcanciaOculto;
+    const puedeVerDetalle = !!m.fuente && !alcanciaOculto;
     return filaMovimiento({
       clase: puedeVerDetalle ? 'gasto-item-click' : '',
-      attrs: html`${dataId} ${dataTipo} ${dataFuente} ${dataDestino} ${dataMonto} ${dataFuenteReal} ${dataFecha} ${dataOrigen} ${dataOtras} ${puedeVerDetalle ? raw('data-cuenta-key="'+escHtml(cuentaKey)+'" data-action="core:abrirDetalleMov"') : ''}`,
+      attrs: html`${dataId} ${dataTipo} ${dataFuente} ${dataDestino} ${dataMonto} ${dataFuenteReal} ${dataFecha} ${dataOrigen} ${dataOtras} ${puedeVerDetalle ? raw('data-cuenta-key="'+escHtml(cuentaKey)+'" data-action="core:abrirDetalleMovimiento"') : ''}`,
       nombreClase: 'row-name gasto-nombre-fila',
       nombre: m.desc,
-      nombreExtra: esSecundarioHist ? html`<span class="cuenta-chip-auto"><svg aria-hidden="true" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>Automático</span>` : '',
+      nombreExtra: esSecundarioHistorial ? html`<span class="cuenta-chip-auto"><svg aria-hidden="true" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>Automático</span>` : '',
       sub: m.fecha || '—',
       subClase: 'cuenta-mov-fecha',
-      montoHtml: alcOculto
+      montoHtml: alcanciaOculto
                 ? html`<div title="Monto oculto — se ve dentro de Alcancía" class="cuenta-monto-oculto"><svg xmlns="http://www.w3.org/2000/svg" width="32" height="6" viewBox="0 0 32 6" fill="currentColor" role="img" aria-label="Monto oculto" class="cuenta-svg-block"><circle cx="2" cy="3" r="2"/><circle cx="11.3333" cy="3" r="2"/><circle cx="20.6667" cy="3" r="2"/><circle cx="30" cy="3" r="2"/></svg></div>`
                 : html`<div class="cuenta-monto ${claseMonto}">${signo} ${fmt(Math.abs(m.monto))}</div>`,
-      acciones: puedeEliminar ? html`<button type="button" class="btn-icon cuenta-btn-del" data-action="core:eliminarMovimiento" data-stop-propagation="true" title="Eliminar movimiento"><svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg></button>` : esSecundarioHist && m._movId ? html`<span title="Generado automáticamente — elimínalo desde ${m._origenSeccion||'la sección de origen'}" class="cuenta-mov-lock"><svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>` : '',
+      acciones: puedeEliminar ? html`<button type="button" class="btn-icon cuenta-btn-del" data-action="core:eliminarMovimiento" data-stop-propagation="true" title="Eliminar movimiento"><svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg></button>` : esSecundarioHistorial && m._movimientoId ? html`<span title="Generado automáticamente — elimínalo desde ${m._origenSeccion||'la sección de origen'}" class="cuenta-mov-lock"><svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>` : '',
       meta: html`
-        ${alcOculto ? '' : html`<span class="badge badge-xs ${bgLabel}">${tipoLabel}</span>`}
-        ${(m._alcOculto || m._origen === 'Alcancía oculta') ? html`<span class="badge badge-xs cuenta-badge-alc"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ico-inline"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> Alcancía</span>` : ''}
+        ${alcanciaOculto ? '' : html`<span class="badge badge-xs ${bgLabel}">${tipoLabel}</span>`}
+        ${(m._alcanciaOculto || m._origen === 'Alcancía oculta') ? html`<span class="badge badge-xs cuenta-badge-alc"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ico-inline"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> Alcancía</span>` : ''}
         ${(()=>{ const cn=getCajitaNombre(m.fuente); return cn?html`<span class="badge badge-xs bg-nu">${cn}</span>`:''; })()}
         ${m.cat ? html`<span class="badge badge-xs bg-blue">${m.cat}</span>` : ''}
         ${m.nota ? html`<span class="cuenta-mov-nota">${m.nota}</span>` : ''}
         ${m.tipo === 'transferencia' && m._fuenteDestino ? html`<span class="cuenta-transf-destino"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" class="cuenta-transf-ico"><path fill-rule="evenodd" d="M1 11.5a.5.5 0 0 0 .5.5h11.793l-3.147 3.146a.5.5 0 0 0 .708.708l4-4a.5.5 0 0 0 0-.708l-4-4a.5.5 0 0 0-.708.708L13.293 11H1.5a.5.5 0 0 0-.5.5zm14-7a.5.5 0 0 1-.5.5H2.707l3.147 3.146a.5.5 0 1 1-.708.708l-4-4a.5.5 0 0 1 0-.708l4-4a.5.5 0 1 1 .708.708L2.707 4H14.5a.5.5 0 0 1 .5.5z"/></svg> ${fuenteLabel(m._fuenteDestino||m._fuenteOrigen)}</span>` : ''}`
     });
-  })}`;
+  })}${faltan > 0 ? html`<button type="button" ${raw(Events.attr('cuentas:movimientosMas', cuentaKey))} class="cuenta-movs-limpiar">Mostrar más (${faltan} restantes)</button>` : ''}`;
 }
 
 /* ───────────────────────────────────────────────────────────────
@@ -1042,31 +1107,31 @@ function renderMovsCuenta(elId, movs, accentColor, cuentaKey, filtrosElIdExplici
    entró-salió plata en Nu / transferir entre cuentas
    ─────────────────────────────────────────────────────────────── */
 /* ---- AGREGAR DINERO ---- */
-let adFuente='';
+export let agregarDineroFuente='';
 
-function abrirAgregarDinero(fuente,nombre){
+export function abrirAgregarDinero(fuente,nombre){
   save();
-  adFuente=fuente;
+  agregarDineroFuente=fuente;
   const label=nombre||fuenteLabel(fuente);
-  document.getElementById('adTitle').textContent='Agregar a '+label;
+  document.getElementById('agregarDineroTitle').textContent='Agregar a '+label;
   const actual=getSaldoFuente(fuente);
-  document.getElementById('adSaldoActual').textContent=fmt(actual);
-  document.getElementById('adMonto').value='';
-  document.getElementById('adDesc').value='';
-  document.getElementById('adFecha').value=hoy();
-  const _xa=document.getElementById('adEsExtra'); if(_xa)_xa.checked=false;
-  const adNotaEl=document.getElementById('adNota');
-  if(adNotaEl)adNotaEl.value='';
-  document.getElementById('adPreview').textContent='';
+  document.getElementById('agregarDineroSaldoActual').textContent=fmt(actual);
+  document.getElementById('agregarDineroMonto').value='';
+  document.getElementById('agregarDineroDesc').value='';
+  document.getElementById('agregarDineroFecha').value=hoy();
+  const _xa=document.getElementById('agregarDineroEsExtra'); if(_xa)_xa.checked=false;
+  const agregarDineroNotaEl=document.getElementById('agregarDineroNota');
+  if(agregarDineroNotaEl)agregarDineroNotaEl.value='';
+  document.getElementById('agregarDineroPreview').textContent='';
   // Reset apertura toggle
-  const chk=document.getElementById('adEsApertura');
-  if(chk){chk.checked=false;}
-  const lbl=document.getElementById('adDescLabel');
+  const checkbox=document.getElementById('agregarDineroEsApertura');
+  if(checkbox){checkbox.checked=false;}
+  const lbl=document.getElementById('agregarDineroDescLabel');
   if(lbl)lbl.innerHTML='¿De dónde viene esta plata? <span class="c-red">*</span>';
-  const inp=document.getElementById('adDesc');
+  const inp=document.getElementById('agregarDineroDesc');
   if(inp)inp.placeholder='Ej: Mesada, regalo, venta, sueldo...';
   openSheet('agregar-dinero');
-  focusSheetField('adDesc');
+  focusSheetField('agregarDineroDesc');
 }
 
 /* ---- SALDO INICIAL / APERTURA — núcleo reutilizable ----
@@ -1076,17 +1141,17 @@ function abrirAgregarDinero(fuente,nombre){
      1) _aperturaToggleUI(ids)   -> maneja el cambio de label/placeholder al marcar/desmarcar
      2) registrarEntradaConApertura(...) -> aplica el saldo + crea el movimiento correcto
    Así, agregar un nuevo sheet con este patrón es solo: poner el wrap HTML
-   (copiando el de adAperturaWrap), darle ids propios, y llamar estas 2 funciones. */
+   (copiando el de agregarDineroAperturaWrap), darle ids propios, y llamar estas 2 funciones. */
 
-function _aperturaToggleUI(ids){
-  // ids = {chk, lbl, inp, notaPlaceholder, descPlaceholder}
-  const chk=document.getElementById(ids.chk);
-  if(!chk)return;
+export function _aperturaToggleUI(ids){
+  // ids = {checkbox, lbl, inp, notaPlaceholder, descPlaceholder}
+  const checkbox=document.getElementById(ids.checkbox);
+  if(!checkbox)return;
   const lbl=ids.lbl?document.getElementById(ids.lbl):null;
   const inp=ids.inp?document.getElementById(ids.inp):null;
   const notaPh=ids.notaPlaceholder||'Ej: Ahorros de varios meses...';
   const descPh=ids.descPlaceholder||'Ej: Mesada, regalo, venta, sueldo...';
-  if(chk.checked){
+  if(checkbox.checked){
     if(lbl)lbl.innerHTML='Nota opcional <span class="cuenta-nota-opc">(ej: ahorros de varios meses)</span>';
     if(inp)inp.placeholder=notaPh;
   } else {
@@ -1095,28 +1160,28 @@ function _aperturaToggleUI(ids){
   }
 }
 
-function registrarEntradaConApertura(fuente,monto,fecha,desc,esApertura,nota,extraordinario){
+export function registrarEntradaConApertura(fuente,monto,fecha,desc,esApertura,nota,extraordinario){
   // Aplica el monto a la fuente y registra el movimiento con el tipo correcto.
   // Devuelve la descripción final (por si el caller la necesita para toasts/log).
   // `nota` es opcional — ver auditoria-tecnica.md / guia-estilo-sheets.md
-  // (2026-08-22): el campo Nota de estos sheets existía en el HTML desde antes
+  //: el campo Nota de estos sheets existía en el HTML desde antes
   // pero nunca se leía ni se guardaba en el movimiento.
   if(!S.movimientos)S.movimientos=[];
-  let mov;
+  let movimiento;
   if(esApertura){
-    mov=crearMovimientoApertura(monto,fecha,desc);
-    mov.fuente=fuente;
+    movimiento=crearMovimientoApertura(monto,fecha,desc);
+    movimiento.fuente=fuente;
   } else {
-    mov={id:uid(),tipo:'entrada',clase:'ingreso',fuente,monto,fecha,desc:desc||''};
+    movimiento={id:uid(),tipo:'entrada',clase:'ingreso',fuente,monto,fecha,desc:desc||''};
   }
-  if(nota)mov.nota=nota;
-  if(extraordinario&&!esApertura)mov.extraordinario=true;
-  S.movimientos.push(mov);
-  sumarFuente(fuente,monto,_ogCta(mov.id)); // el saldo se aplica una vez creado el movimiento, para que el libro apunte a su id
-  return mov.desc;
+  if(nota)movimiento.nota=nota;
+  if(extraordinario&&!esApertura)movimiento.extraordinario=true;
+  S.movimientos.push(movimiento);
+  sumarFuente(fuente,monto,_origenLibroCta(movimiento.id)); // el saldo se aplica una vez creado el movimiento, para que el libro apunte a su id
+  return movimiento.desc;
 }
 
-function registrarSalida(fuente,monto,fecha,desc,nota){
+export function registrarSalida(fuente,monto,fecha,desc,nota){
   // Simétrico a registrarEntradaConApertura: descuenta de la fuente y registra
   // el movimiento de salida manual. Cualquier sheet que reste dinero de una
   // fuente (cuenta, cajita, etc.) debe usar esto en vez de reimplementar
@@ -1125,93 +1190,93 @@ function registrarSalida(fuente,monto,fecha,desc,nota){
   if(!S.movimientos)S.movimientos=[];
   // clase 'gasto': plata que sale del patrimonio sin pasar por un gasto registrado (simétrico a sumar dinero = ingreso;
   // en la práctica se usa para cuadrar la diferencia entre lo registrado y lo real). Cuenta en Periodo.gastosDelMes.
-  const mov={id:uid(),tipo:'salida_manual',clase:'gasto',fuente,monto,fecha,desc:desc||''};
-  if(nota)mov.nota=nota;
-  S.movimientos.push(mov);
-  descontarFuente(fuente,monto,_ogCta(mov.id));
-  return mov.desc;
+  const movimiento={id:uid(),tipo:'salida_manual',clase:'gasto',fuente,monto,fecha,desc:desc||''};
+  if(nota)movimiento.nota=nota;
+  S.movimientos.push(movimiento);
+  descontarFuente(fuente,monto,_origenLibroCta(movimiento.id));
+  return movimiento.desc;
 }
 
-function toggleAdApertura(){
-  _aperturaToggleUI({chk:'adEsApertura',lbl:'adDescLabel',inp:'adDesc'});
+export function toggleAgregarDineroApertura(){
+  _aperturaToggleUI({checkbox:'agregarDineroEsApertura',lbl:'agregarDineroDescLabel',inp:'agregarDineroDesc'});
 }
 
 document.addEventListener('input',function(e){
-  if(e.target.id==='adMonto'){
+  if(e.target.id==='agregarDineroMonto'){
     const v=parseMoney(e.target.value)||0;
-    const actual=getSaldoFuente(adFuente);
-    const prev=document.getElementById('adPreview');
+    const actual=getSaldoFuente(agregarDineroFuente);
+    const prev=document.getElementById('agregarDineroPreview');
     if(v>0){prev.textContent=fmt(actual)+' + '+fmt(v)+' = '+fmt(actual+v);prev.style.color='var(--accent)';}
     else{prev.textContent='';}
   }
 });
 
-function confirmarAgregarDinero(){
-  const v=parseMoney(document.getElementById('adMonto').value)||0;
-  const desc=document.getElementById('adDesc').value.trim();
-  const fecha=document.getElementById('adFecha').value||hoy();
-  const nota=document.getElementById('adNota')?.value.trim()||'';
-  const esApertura=document.getElementById('adEsApertura')?.checked||false;
+export function confirmarAgregarDinero(){
+  const v=parseMoney(document.getElementById('agregarDineroMonto').value)||0;
+  const desc=document.getElementById('agregarDineroDesc').value.trim();
+  const fecha=document.getElementById('agregarDineroFecha').value||hoy();
+  const nota=document.getElementById('agregarDineroNota')?.value.trim()||'';
+  const esApertura=document.getElementById('agregarDineroEsApertura')?.checked||false;
   if(!esApertura&&!desc){toast('Describe de dónde viene esta plata','err');return;}
   if(!v){toast('Ingresa un monto válido','err');return;}
-  if(!adFuente)return;
+  if(!agregarDineroFuente)return;
   // Los intereses de una cajita se materializan solos al sumar (sumarFuente, js/core/cuentas-fuentes.js).
-  const descFinal=registrarEntradaConApertura(adFuente,v,fecha,desc,esApertura,nota,document.getElementById('adEsExtra')?.checked||false);
+  const descFinal=registrarEntradaConApertura(agregarDineroFuente,v,fecha,desc,esApertura,nota,document.getElementById('agregarDineroEsExtra')?.checked||false);
   save();
   closeSheet('agregar-dinero');
   refresh();
-  if(window.logCambio){const _fLabel=fuenteLabel(adFuente);const _accion=esApertura?'Saldo inicial en '+_fLabel:'Agregaste dinero en '+_fLabel;const _cjId=adFuente&&Fuente.esCajita(adFuente)?adFuente.split(':')[1]:null;logCambio(_accion,descFinal||'',v,'ingreso',_cjId);}
-  adFuente='';
+  if(window.logCambio){const _fLabel=fuenteLabel(agregarDineroFuente);const _accion=esApertura?'Saldo inicial en '+_fLabel:'Agregaste dinero en '+_fLabel;const _cjId=agregarDineroFuente&&Fuente.esCajita(agregarDineroFuente)?agregarDineroFuente.split(':')[1]:null;logCambio(_accion,descFinal||'',v,'ingreso',_cjId);}
+  agregarDineroFuente='';
 toast(fmt(v) + (esApertura?' registrado como saldo inicial':' agregado — ' + descFinal), 'ok');
 }
 
-function openSheet_adMenu(){
-  poblarFuente('adMenuDest');
+export function openSheet_agregarDineroMenu(){
+  poblarFuente('agregarDineroMenuDestino');
   // Replace options with all accounts including all cajitas (sin tarjetas de crédito — no son destino válido)
-  const sel=document.getElementById('adMenuDest');
+  const sel=document.getElementById('agregarDineroMenuDestino');
   const fuentes=getFuentesSinTC();
   sel.innerHTML=html`${fuentes.map(f=>html`<option value="${f.val}">${f.label}</option>`)}`;
-  actualizarAdMenuSaldo();
-  document.getElementById('adMenuMonto').value='';
-  document.getElementById('adMenuDesc').value='';
-  document.getElementById('adMenuFecha').value=hoy();
-  const _xm=document.getElementById('adMenuEsExtra'); if(_xm)_xm.checked=false;
-  const adMenuNotaEl=document.getElementById('adMenuNota');
-  if(adMenuNotaEl)adMenuNotaEl.value='';
-  document.getElementById('adMenuPreview').textContent='';
+  actualizarAgregarDineroMenuSaldo();
+  document.getElementById('agregarDineroMenuMonto').value='';
+  document.getElementById('agregarDineroMenuDesc').value='';
+  document.getElementById('agregarDineroMenuFecha').value=hoy();
+  const _xm=document.getElementById('agregarDineroMenuEsExtra'); if(_xm)_xm.checked=false;
+  const agregarDineroMenuNotaEl=document.getElementById('agregarDineroMenuNota');
+  if(agregarDineroMenuNotaEl)agregarDineroMenuNotaEl.value='';
+  document.getElementById('agregarDineroMenuPreview').textContent='';
 }
 
-function actualizarAdMenuSaldo(){
-  const fuente=document.getElementById('adMenuDest').value;
+export function actualizarAgregarDineroMenuSaldo(){
+  const fuente=document.getElementById('agregarDineroMenuDestino').value;
   const actual=getSaldoFuente(fuente);
-  document.getElementById('adMenuSaldo').textContent='Saldo actual: '+fmt(actual);
-  actualizarAdMenuPreview();
+  document.getElementById('agregarDineroMenuSaldo').textContent='Saldo actual: '+fmt(actual);
+  actualizarAgregarDineroMenuPreview();
 }
 
-function actualizarAdMenuPreview(){
-  const fuente=document.getElementById('adMenuDest').value;
-  const v=parseMoney(document.getElementById('adMenuMonto').value)||0;
+export function actualizarAgregarDineroMenuPreview(){
+  const fuente=document.getElementById('agregarDineroMenuDestino').value;
+  const v=parseMoney(document.getElementById('agregarDineroMenuMonto').value)||0;
   const actual=getSaldoFuente(fuente);
-  const prev=document.getElementById('adMenuPreview');
+  const prev=document.getElementById('agregarDineroMenuPreview');
   if(v>0){prev.textContent=fmt(actual)+' + '+fmt(v)+' = '+fmt(actual+v);prev.style.color='var(--accent)';}
   else{prev.textContent='';}
 }
 
-function confirmarAgregarDineroMenu(){
-  const fuente=document.getElementById('adMenuDest').value;
-  const v=parseMoney(document.getElementById('adMenuMonto').value)||0;
-  const desc=document.getElementById('adMenuDesc').value.trim();
-  const fecha=document.getElementById('adMenuFecha').value||hoy();
-  const nota=document.getElementById('adMenuNota')?.value.trim()||'';
+export function confirmarAgregarDineroMenu(){
+  const fuente=document.getElementById('agregarDineroMenuDestino').value;
+  const v=parseMoney(document.getElementById('agregarDineroMenuMonto').value)||0;
+  const desc=document.getElementById('agregarDineroMenuDesc').value.trim();
+  const fecha=document.getElementById('agregarDineroMenuFecha').value||hoy();
+  const nota=document.getElementById('agregarDineroMenuNota')?.value.trim()||'';
   if(!desc){toast('Describe de dónde viene esta plata','err');return;}
   if(!v||!fuente)return;
   // Registrar movimiento de entrada
   if(!S.movimientos)S.movimientos=[];
-  const _movAdMenu={id:uid(),tipo:'entrada',clase:'ingreso',fuente,monto:v,fecha,desc};
-  if(nota)_movAdMenu.nota=nota;
-  if(document.getElementById('adMenuEsExtra')?.checked)_movAdMenu.extraordinario=true;
-  S.movimientos.push(_movAdMenu);
-  sumarFuente(fuente,v,_ogCta(_movAdMenu.id));
+  const _movimientoAgregarDineroMenu={id:uid(),tipo:'entrada',clase:'ingreso',fuente,monto:v,fecha,desc};
+  if(nota)_movimientoAgregarDineroMenu.nota=nota;
+  if(document.getElementById('agregarDineroMenuEsExtra')?.checked)_movimientoAgregarDineroMenu.extraordinario=true;
+  S.movimientos.push(_movimientoAgregarDineroMenu);
+  sumarFuente(fuente,v,_origenLibroCta(_movimientoAgregarDineroMenu.id));
   save();
   closeSheet('agregar-dinero-menu');
   refresh();
@@ -1221,16 +1286,16 @@ function confirmarAgregarDineroMenu(){
 
 
 /* ---- SALDO INICIAL / APERTURA ---- */
-let _eaFuente=''; // fuente de la cuenta cuyo saldo inicial se corrige
+export let _eaFuente=''; // fuente de la cuenta cuyo saldo inicial se corrige
 
-function getAperturaMov(fuente){
+export function getAperturaMovimiento(fuente){
   // Busca el movimiento de apertura de S.movimientos de la cuenta
   // (registrado desde el banner "Registrar saldo inicial" o desde el toggle
   // del sheet "Agregar dinero").
   return (S.movimientos||[]).find(m=>m.fuente===fuente&&m.tipo==='apertura');
 }
 
-function renderBannerApertura(fuente,opts){
+export function renderBannerApertura(fuente,opts){
   // opts.elId: id explícito del contenedor. Necesario para 'cuenta:ID' — el
   // default 'banner-apertura-'+fuente le metería el ':' del id de la cuenta
   // al id del elemento, y de todas formas la pantalla de cuenta es una sola
@@ -1243,13 +1308,13 @@ function renderBannerApertura(fuente,opts){
   // las cuentas" pero renderBannerApertura() no lo estaba chequeando —
   // se agrega acá, aplicando parejo a todas las cuentas.
   if(S.modulos?.corregirSaldo===false){el.innerHTML='';return;}
-  const mov=getAperturaMov(fuente);
-  if(mov){
+  const movimiento=getAperturaMovimiento(fuente);
+  if(movimiento){
     // Ya tiene saldo inicial — mostrar chip con valor y botón editar discreto
     el.innerHTML=html`<div class="cuenta-apertura">
       <div>
         <div class="cuenta-apertura-lbl">Saldo inicial registrado</div>
-        <div class="cuenta-apertura-monto">${fmt(mov.monto)}</div>
+        <div class="cuenta-apertura-monto">${fmt(movimiento.monto)}</div>
       </div>
       <button type="button" ${raw(Events.attr('cuentas:abrirEditarApertura', fuente))} class="cuenta-apertura-corregir">Corregir</button>
     </div>`;
@@ -1265,24 +1330,24 @@ function renderBannerApertura(fuente,opts){
   }
 }
 
-function abrirRegistrarApertura(fuente){
+export function abrirRegistrarApertura(fuente){
   // Abre el sheet normal de agregar dinero con el toggle de apertura ya marcado.
   const nombre=typeof fuenteLabel==='function'?fuenteLabel(fuente):fuente;
   abrirAgregarDinero(fuente, nombre);
   // Forzar toggle activo después de que abra
   setTimeout(()=>{
-    const chk=document.getElementById('adEsApertura');
-    if(chk&&!chk.checked){
-      chk.checked=true;
-      toggleAdApertura();
+    const checkbox=document.getElementById('agregarDineroEsApertura');
+    if(checkbox&&!checkbox.checked){
+      checkbox.checked=true;
+      toggleAgregarDineroApertura();
     }
   },120);
 }
 
-function abrirEditarApertura(fuente){
+export function abrirEditarApertura(fuente){
   _eaFuente=fuente;
-  const mov=getAperturaMov(fuente);
-  const actual=mov?mov.monto:0;
+  const movimiento=getAperturaMovimiento(fuente);
+  const actual=movimiento?movimiento.monto:0;
   const nombre=typeof fuenteLabel==='function'?fuenteLabel(fuente):fuente;
   document.getElementById('eaTitle').textContent='Corregir saldo inicial · '+nombre;
   document.getElementById('eaSaldoActual').textContent=fmt(actual);
@@ -1292,30 +1357,30 @@ function abrirEditarApertura(fuente){
   focusSheetField('eaMonto');
 }
 
-function confirmarEditarApertura(){
+export function confirmarEditarApertura(){
   const nuevo=parseMoney(document.getElementById('eaMonto').value)||0;
   if(!nuevo){toast('Ingresa el nuevo saldo inicial','err');return;}
-  const mov=getAperturaMov(_eaFuente);
-  const anterior=mov?mov.monto:0;
+  const movimiento=getAperturaMovimiento(_eaFuente);
+  const anterior=movimiento?movimiento.monto:0;
   const diff=nuevo-anterior;
   if(diff===0){toast('El valor es igual al actual','err');return;}
   // Ajustar saldo de la cuenta por la diferencia
-  if(diff>0) sumarFuente(_eaFuente,diff,_ogCta(mov?mov.id:'apertura:'+_eaFuente));
-  else descontarFuente(_eaFuente,Math.abs(diff),_ogCta(mov?mov.id:'apertura:'+_eaFuente,true));
+  if(diff>0) sumarFuente(_eaFuente,diff,_origenLibroCta(movimiento?movimiento.id:'apertura:'+_eaFuente));
+  else descontarFuente(_eaFuente,Math.abs(diff),_origenLibroCta(movimiento?movimiento.id:'apertura:'+_eaFuente,true));
   // Actualizar o crear el movimiento de apertura
-  if(mov){
-    mov.monto=nuevo;
+  if(movimiento){
+    movimiento.monto=nuevo;
     // No cambiamos mov.fecha (preserva la fecha original de creación de la cuenta),
     // pero registramos cuándo y por cuánto se ajustó: snapshotPatrimonio() usa esto
     // para que el cambio de patrimonio de HOY (el día de la corrección) también se
     // reste del cálculo de tendencia, igual que una apertura nueva.
-    mov._ajustes=mov._ajustes||[];
-    mov._ajustes.push({fecha:hoy(),monto:diff});
+    movimiento._ajustes=movimiento._ajustes||[];
+    movimiento._ajustes.push({fecha:hoy(),monto:diff});
   } else {
     if(!S.movimientos)S.movimientos=[];
-    const movNuevo=crearMovimientoApertura(nuevo,hoy(),'Saldo inicial');
-    movNuevo.fuente=_eaFuente;
-    S.movimientos.push(movNuevo);
+    const movimientoNuevo=crearMovimientoApertura(nuevo,hoy(),'Saldo inicial');
+    movimientoNuevo.fuente=_eaFuente;
+    S.movimientos.push(movimientoNuevo);
   }
   save();refresh();
   closeSheet('editar-apertura');
@@ -1324,8 +1389,8 @@ function confirmarEditarApertura(){
 
 document.addEventListener('input',function(e){
   if(e.target.id==='eaMonto'){
-    const mov=getAperturaMov(_eaFuente);
-    const anterior=mov?mov.monto:0;
+    const movimiento=getAperturaMovimiento(_eaFuente);
+    const anterior=movimiento?movimiento.monto:0;
     const nuevo=parseMoney(e.target.value)||0;
     const prev=document.getElementById('eaPreview');
     if(nuevo>0){
@@ -1338,9 +1403,9 @@ document.addEventListener('input',function(e){
 });
 
 /* ---- RESTAR DINERO ---- */
-let rdFuente='';
+export let rdFuente='';
 
-function abrirRestarDinero(fuente,nombre){
+export function abrirRestarDinero(fuente,nombre){
   const motivo=_motivoSinRetiro(fuente);
   if(motivo){toast(motivo,'err',3500);return;}
   save();
@@ -1372,7 +1437,7 @@ document.addEventListener('input',function(e){
   }
 });
 
-function confirmarRestarDinero(){
+export function confirmarRestarDinero(){
   const v=parseMoney(document.getElementById('rdMonto').value)||0;
   const desc=document.getElementById('rdDesc').value.trim();
   const fecha=document.getElementById('rdFecha').value||hoy();
@@ -1380,7 +1445,7 @@ function confirmarRestarDinero(){
   if(!desc){toast('Describe en qué se gastó o a dónde fue','err');return;}
   if(!v){toast('Ingresa un monto válido','err');return;}
   if(!rdFuente)return;
-  // Guarda de saldo (2026-10-05). descontarFuente() recorta el saldo en 0, pero registrarSalida()
+  // Guarda de saldo. descontarFuente() recorta el saldo en 0, pero registrarSalida()
   // guarda el movimiento con el monto COMPLETO: restar más de lo que hay dejaba el saldo en 0 y el
   // historial diciendo que salió más plata de la que había, y al borrar ese movimiento
   // (sumarFuente(monto)) la cuenta recibía de más. Misma regla que Transferir: se compara en centavos.
@@ -1401,7 +1466,7 @@ function confirmarRestarDinero(){
    la cuenta (renderDetalleCuenta / detalle de cuenta personalizada / de
    cajita), que es también lo que corre tras cada save()+refresh(). */
 // Estado de cualquier botón de acción: deshabilitado (y con el motivo como título) o activo.
-function _setBtnEstado(btn, ok, motivo) {
+export function _setBtnEstado(btn, ok, motivo) {
   if (!btn) return;
   btn.disabled = !ok;
   btn.setAttribute('aria-disabled', ok ? 'false' : 'true');
@@ -1410,25 +1475,25 @@ function _setBtnEstado(btn, ok, motivo) {
   btn.title = ok ? '' : (motivo || '');
 }
 
-function _setBtnTransferir(btn, ok) {
+export function _setBtnTransferir(btn, ok) {
   _setBtnEstado(btn, ok, 'Necesitas al menos ' + fmt(FuentesFiltro.MIN.GENERAL) + ' en esta cuenta para moverla');
 }
 
 /* ---- Retirar dinero: solo con saldo ----
    Nequi, Efectivo, cuentas personalizadas (y cajitas) no pueden retirar con saldo 0: el botón sale deshabilitado y
    abrirRestarDinero() lo vuelve a comprobar. confirmarRestarDinero() sigue validando el monto contra el saldo. */
-const _MIN_RETIRO = 0.01; // cualquier saldo positivo (se compara en centavos, como el resto de FuentesFiltro)
+export const _MIN_RETIRO = 0.01; // cualquier saldo positivo (se compara en centavos, como el resto de FuentesFiltro)
 
-function _motivoSinRetiro(fuente) {
+export function _motivoSinRetiro(fuente) {
   return FuentesFiltro.puedeMover(fuente, _MIN_RETIRO) ? '' : 'No hay saldo para retirar en esta cuenta.';
 }
 
-function actualizarBotonRetirar(btn, fuente) {
+export function actualizarBotonRetirar(btn, fuente) {
   const motivo = _motivoSinRetiro(fuente);
   _setBtnEstado(btn, !motivo, motivo);
 }
 
-function actualizarBotonesTransferir() {
+export function actualizarBotonesTransferir() {
   // Cuenta simple abierta (todas menos las de ahorro, que tienen pantalla propia): un solo botón compartido
   const fuenteSimple = cuentaActual;
   if (fuenteSimple && !esCuentaAhorro(getCuentaDeFuente(fuenteSimple))) _setBtnTransferir(document.getElementById('btn-transferir-cuenta-det'), FuentesFiltro.puedeMover(fuenteSimple));
@@ -1437,7 +1502,7 @@ function actualizarBotonesTransferir() {
 }
 
 /* ---- TRANSFERIR ENTRE CUENTAS ---- */
-function abrirTransferir(origenSugerido) {
+export function abrirTransferir(origenSugerido) {
   // Populate both selects (sin tarjetas de crédito — no son cuentas líquidas)
   const fuentes = getFuentesSinTC();
   // El origen solo lista cuentas con saldo >= $1,00 (FuentesFiltro, js/core/fuentes-filtro.js):
@@ -1477,7 +1542,7 @@ function abrirTransferir(origenSugerido) {
 // excluir, cae a la primera opción que quede. Mismo patrón que
 // splitActualizarOpciones() (js/core/split.js) para las filas de Dividir,
 // aplicado acá a los dos selects fijos de Transferir en vez de N filas.
-function _trPodarSelect(selId, fuentes, valExcluir) {
+export function _trPodarSelect(selId, fuentes, valExcluir) {
   const sel = document.getElementById(selId);
   if (!sel) return;
   const valorActual = sel.value;
@@ -1488,23 +1553,23 @@ function _trPodarSelect(selId, fuentes, valExcluir) {
 }
 
 // Al cambiar el origen, el destino no puede seguir ofreciendo esa cuenta.
-function _trOrigenCambio() {
+export function _trOrigenCambio() {
   _trPodarSelect('tr_destino', getFuentesSinTC(), document.getElementById('tr_origen').value);
   actualizarTransfPreview();
 }
 // Al cambiar el destino, el origen (ya limitado a cuentas con saldo, ver
 // FuentesFiltro.PRESET.SALIDA) tampoco puede seguir ofreciendo esa cuenta.
-function _trDestinoCambio() {
+export function _trDestinoCambio() {
   const fuentesOrigen = FuentesFiltro.filtrar(getFuentesSinTC(), FuentesFiltro.PRESET.SALIDA);
   _trPodarSelect('tr_origen', fuentesOrigen, document.getElementById('tr_destino').value);
   actualizarTransfPreview();
 }
 
 // ── Validación de Transferir — UNA sola función, sin DOM ─────────────────────
-// Reglas (2026-09-28, "plata real"): solo entre cajitas de una cuenta de ahorro se pueden mover
+// Reglas: solo entre cajitas de una cuenta de ahorro se pueden mover
 // centavos. Si el origen o el destino es una cuenta normal, el monto tiene que ser un número entero
 // de pesos. Si una cuenta de EFECTIVO participa, el mínimo es $50 (la moneda más pequeña que existe).
-// 2026-10-04: pasó de validar solo el monto (_trValidarMonto) a validar TODA la
+// pasó de validar solo el monto (_trValidarMonto) a validar TODA la
 // transferencia, para que la vista previa y la confirmación digan lo mismo y
 // la regla se pueda probar sin abrir el sheet (tests/transferir.test.js).
 //
@@ -1519,8 +1584,8 @@ function _trDestinoCambio() {
 //     vista previa puede validar la forma antes de leer saldos).
 // El orden de las comprobaciones es parte del contrato: lo que se avisa primero
 // es lo que el usuario debe corregir primero.
-const TR_MIN_EFECTIVO = 50;
-function validarTransferencia({ origen, destino, monto, saldoOrigen, etiquetaOrigen } = {}) {
+export const TR_MIN_EFECTIVO = 50;
+export function validarTransferencia({ origen, destino, monto, saldoOrigen, etiquetaOrigen } = {}) {
   const fallo = (codigo, mensaje) => ({ ok: false, codigo, mensaje });
   if (!origen || !destino) return fallo('falta_cuenta', 'Elige origen y destino');
   if (origen === destino) return fallo('mismo', 'El origen y destino deben ser diferentes');
@@ -1550,7 +1615,7 @@ function validarTransferencia({ origen, destino, monto, saldoOrigen, etiquetaOri
   return { ok: true };
 }
 
-function actualizarTransfPreview() {
+export function actualizarTransfPreview() {
   const origen = document.getElementById('tr_origen').value;
   const destino = document.getElementById('tr_destino').value;
   const monto = parseMoney(document.getElementById('tr_monto').value) || 0;
@@ -1584,7 +1649,7 @@ function actualizarTransfPreview() {
   }
 }
 
-function confirmarTransferir() {
+export function confirmarTransferir() {
   const origen = document.getElementById('tr_origen').value;
   const destino = document.getElementById('tr_destino').value;
   const monto = parseMoney(document.getElementById('tr_monto').value) || 0;
@@ -1598,8 +1663,8 @@ function confirmarTransferir() {
   // Perform transfer
   const _trId = uid();
   // Plata.transferir valida ambos lados ANTES de tocar saldos (cuenta que ya no existe, archivada, de ahorro…): o se mueve todo o nada.
-  const _mov = Plata.transferir(origen, destino, monto, { og: _ogCta(_trId) });
-  if (!_mov.ok) { toast(_mov.motivo, 'err', 3500); return; }
+  const _movimiento = Plata.transferir(origen, destino, monto, { origenLibro: _origenLibroCta(_trId) });
+  if (!_movimiento.ok) { toast(_movimiento.motivo, 'err', 3500); return; }
 
   // Save transfer record
   if (!S.transferencias) S.transferencias = [];
@@ -1625,19 +1690,19 @@ function confirmarTransferir() {
    ═══════════════════════════════════════════════════════════════ */
 Events.registerAll('cuentas', {
   // Crear / editar / archivar cuentas
-  selIconoNC,
-  selTipoNC,
-  alternarAhorroNC,
+  selIconoNuevaCuenta: selIconoNuevaCuenta,
+  alternarAhorroNuevaCuenta: alternarAhorroNuevaCuenta,
   ocultarInvitacionCuentas,
   abrirArchivadas,
   alternarOrdenCuentas,
-  selColorNC,
+  selColorNuevaCuenta: selColorNuevaCuenta,
   abrirOnboarding,
   reactivarCuenta,
   resetSheetNuevaCuenta: _resetSheetNuevaCuenta,
   // Motor de filtros de movimientos
-  movsOnTipo: _movsOnTipo,
-  movsLimpiarFechas: _movsLimpiarFechas,
+  movimientosOnTipo: _movimientosOnTipo,
+  movimientosLimpiarFechas: _movimientosLimpiarFechas,
+  movimientosMas: _movimientosMas,
   // Saldo inicial / apertura
   abrirEditarApertura,
   abrirRegistrarApertura,
@@ -1658,32 +1723,32 @@ Events.registerAll('cuentas', {
    ─────────────────────────────────────────────────────────────── */
 
 // --- Crear / editar cuentas ---
-const btnAgregarCuentaCustom = document.getElementById('btn-agregar-cuenta-custom');
+export const btnAgregarCuentaCustom = document.getElementById('btn-agregar-cuenta-custom');
 if (btnAgregarCuentaCustom) btnAgregarCuentaCustom.addEventListener('click', abrirNuevaCuenta);
 // Si el usuario escribe su propio nombre, el preset deja de sobrescribirlo al cambiar de banco.
-const _ncNombreInput = document.getElementById('nc_nombre');
-if (_ncNombreInput) _ncNombreInput.addEventListener('input', () => { _ncNombreInput.dataset.auto = '0'; });
-const btnCrearCuentaCustom = document.getElementById('btn-crear-cuenta-custom');
+export const _nuevaCuentaNombreInput = document.getElementById('nc_nombre');
+if (_nuevaCuentaNombreInput) _nuevaCuentaNombreInput.addEventListener('input', () => { _nuevaCuentaNombreInput.dataset.auto = '0'; });
+export const btnCrearCuentaCustom = document.getElementById('btn-crear-cuenta-custom');
 if (btnCrearCuentaCustom) btnCrearCuentaCustom.onclick = crearCuenta;
 
 // --- Agregar / restar dinero, editar apertura, transferir (confirmación) ---
-const btnAdConf = document.getElementById('btn-confirmar-agregar-dinero');
-if (btnAdConf) btnAdConf.addEventListener('click', confirmarAgregarDinero);
-const btnAdMenuConf = document.getElementById('btn-confirmar-agregar-dinero-menu');
-if (btnAdMenuConf) btnAdMenuConf.addEventListener('click', confirmarAgregarDineroMenu);
-const btnRdConf = document.getElementById('btn-confirmar-restar');
+export const btnAgregarDineroConf = document.getElementById('btn-confirmar-agregar-dinero');
+if (btnAgregarDineroConf) btnAgregarDineroConf.addEventListener('click', confirmarAgregarDinero);
+export const btnAgregarDineroMenuConf = document.getElementById('btn-confirmar-agregar-dinero-menu');
+if (btnAgregarDineroMenuConf) btnAgregarDineroMenuConf.addEventListener('click', confirmarAgregarDineroMenu);
+export const btnRdConf = document.getElementById('btn-confirmar-restar');
 if (btnRdConf) btnRdConf.addEventListener('click', confirmarRestarDinero);
-const btnEaConf = document.getElementById('btn-confirmar-editar-apertura');
+export const btnEaConf = document.getElementById('btn-confirmar-editar-apertura');
 if (btnEaConf) btnEaConf.addEventListener('click', confirmarEditarApertura);
-const btnTrConf = document.getElementById('btn-confirmar-transferir');
+export const btnTrConf = document.getElementById('btn-confirmar-transferir');
 if (btnTrConf) btnTrConf.addEventListener('click', confirmarTransferir);
-const btnSwitchTr = document.getElementById('btn-switch-to-transferir');
+export const btnSwitchTr = document.getElementById('btn-switch-to-transferir');
 if (btnSwitchTr) btnSwitchTr.addEventListener('click', () => { closeSheet('agregar-dinero-menu'); abrirTransferir(); });
 
 // --- Selector de cuentas (tarjetas de screen-cuentas + botón "volver") ---
 // Un solo listener delegado para todas las cuentas del selector (el contenido se
 // reescribe en cada renderSelectorCuentas(), el contenedor no).
-const _selectorCuentasLista = document.getElementById('selector-cuentas-lista');
+export const _selectorCuentasLista = document.getElementById('selector-cuentas-lista');
 if (_selectorCuentasLista) _selectorCuentasLista.addEventListener('click', e => {
   const item = e.target.closest('[data-fuente]');
   if (item) abrirCuenta(item.dataset.fuente);
@@ -1697,12 +1762,12 @@ if (_selectorCuentasLista && typeof Reordenable !== 'undefined' && typeof Reorde
   onOrden: _aplicarOrdenArrastre,
   onTeclado: moverCuentaUI,
 });
-const _archivadasLista = document.getElementById('archivadas-lista');
+export const _archivadasLista = document.getElementById('archivadas-lista');
 if (_archivadasLista) _archivadasLista.addEventListener('click', e => {
   const item = e.target.closest('[data-fuente]');
   if (item) abrirCuenta(item.dataset.fuente);
 });
-const _volverDeArchivadas = document.getElementById('btn-volver-archivadas');
+export const _volverDeArchivadas = document.getElementById('btn-volver-archivadas');
 if (_volverDeArchivadas) _volverDeArchivadas.addEventListener('click', () => { _volverA = 'selector'; volverSelector(); });
 document.querySelectorAll('.btn-volver-selector').forEach(btn => {
   btn.addEventListener('click', volverSelector);
@@ -1710,8 +1775,8 @@ document.querySelectorAll('.btn-volver-selector').forEach(btn => {
 
 // --- Cuenta simple (Nequi / Efectivo / personalizada): un listener delegado para todos los
 // botones del detalle; la cuenta es la que esté abierta (cuentaActual) ---
-const _detalleSimple = document.getElementById('cuentas-detalle-simple');
-const _detalleAhorro = document.getElementById('cuentas-detalle-nu');
+export const _detalleSimple = document.getElementById('cuentas-detalle-simple');
+export const _detalleAhorro = document.getElementById('cuentas-detalle-nu');
 if (_detalleAhorro) _detalleAhorro.addEventListener('click', e => {
   const btn = e.target.closest('button[id]');
   if (btn) _accionAdministrarCuenta(btn.id);
@@ -1728,51 +1793,56 @@ if (_detalleSimple) _detalleSimple.addEventListener('click', e => {
 });
 
 // --- Agregar dinero (menú combinado, selector de cuenta destino) ---
-const adMenuDest = document.getElementById('adMenuDest');
-if (adMenuDest) adMenuDest.addEventListener('change', actualizarAdMenuSaldo);
-const adMenuMonto = document.getElementById('adMenuMonto');
-if (adMenuMonto) adMenuMonto.addEventListener('input', actualizarAdMenuPreview);
+export const agregarDineroMenuDestino = document.getElementById('agregarDineroMenuDestino');
+if (agregarDineroMenuDestino) agregarDineroMenuDestino.addEventListener('change', actualizarAgregarDineroMenuSaldo);
+export const agregarDineroMenuMonto = document.getElementById('agregarDineroMenuMonto');
+if (agregarDineroMenuMonto) agregarDineroMenuMonto.addEventListener('input', actualizarAgregarDineroMenuPreview);
 
 // --- Transferir: selects y monto (preview en vivo + exclusión mutua origen/destino) ---
-const trOrigen = document.getElementById('tr_origen');
+export const trOrigen = document.getElementById('tr_origen');
 if (trOrigen) trOrigen.addEventListener('change', _trOrigenCambio);
-const trDestino = document.getElementById('tr_destino');
+export const trDestino = document.getElementById('tr_destino');
 if (trDestino) trDestino.addEventListener('change', _trDestinoCambio);
-const trMonto = document.getElementById('tr_monto');
+export const trMonto = document.getElementById('tr_monto');
 if (trMonto) trMonto.addEventListener('input', actualizarTransfPreview);
 
 /* ---- WIRING de controles que no son data-action simples ----
-   El wrapper de "toggle apertura" (adAperturaWrap/nuMovAperturaWrap) usa
+   El wrapper de "toggle apertura" (agregarDineroAperturaWrap/nuMovimientoAperturaWrap) usa
    el patrón label-click-delegado: clic en cualquier parte de la fila activa
    el checkbox, y el checkbox detiene la propagación para no re-disparar el
    clic del wrapper. Ninguno de los dos es una acción con argumentos — es
    mecánica de UI — así que se conecta directo con addEventListener, mismo
    criterio ya usado en configuracion.js para data-modulo/inputs de archivo,
    en vez de pasar por el despachador de data-action.
-   El 'change' de cada checkbox (antes onchange="toggleAdApertura()" /
-   onchange="_nuMovToggleApertura()" inline en el HTML; el de Nu vive en nu.js) se agrega acá mismo. */
-[['adAperturaWrap','adEsApertura',toggleAdApertura]].forEach(([wrapId,chkId,onChangeFn])=>{
+   El 'change' de cada checkbox (antes onchange="toggleAgregarDineroApertura()" /
+   onchange="_nuMovimientoToggleApertura()" inline en el HTML; el de Nu vive en nu.js) se agrega acá mismo. */
+[['agregarDineroAperturaWrap','agregarDineroEsApertura',toggleAgregarDineroApertura]].forEach(([wrapId,checkboxId,onChangeFn])=>{
   const wrap=document.getElementById(wrapId);
-  const chk=document.getElementById(chkId);
-  if(wrap&&chk){
-    wrap.addEventListener('click', () => chk.click());
-    chk.addEventListener('click', e => e.stopPropagation());
-    chk.addEventListener('change', onChangeFn);
+  const checkbox=document.getElementById(checkboxId);
+  if(wrap&&checkbox){
+    wrap.addEventListener('click', () => checkbox.click());
+    checkbox.addEventListener('click', e => e.stopPropagation());
+    checkbox.addEventListener('change', onChangeFn);
   }
 });
 
-// abrirDetalleMov() y eliminarMovimiento() son núcleo compartido por TODA
+// abrirDetalleMovimiento() y eliminarMovimiento() son núcleo compartido por TODA
 // la app (feed general de actividad, no solo cuentas) — quedaron en
-// index.html, y se registran ahí mismo como 'core:abrirDetalleMov' /
+// index.html, y se registran ahí mismo como 'core:abrirDetalleMovimiento' /
 // 'core:eliminarMovimiento'. No se registran acá para no hacer parecer
 // que este módulo es dueño de esas dos funciones.
 
 
 /* ── Ciclo de vida de la UI (antes ramas dentro de openSheet/showScreen, navegacion.js) ───────────────────── */
-Ui.hoja('agregar-dinero-menu', () => { save(); openSheet_adMenu(); }, { key: 'cuentas-menu-agregar' });
+Ui.hoja('agregar-dinero-menu', () => { save(); openSheet_agregarDineroMenu(); }, { key: 'cuentas-menu-agregar' });
 
 Ui.pantalla('cuentas', () => {
   // Reflejar cambios hechos en otras pantallas: la cuenta abierta y la lista (las cajitas de Nu las pinta nu.js).
   if (typeof renderDetalleCuenta === 'function' && typeof cuentaActual !== 'undefined' && cuentaActual) renderDetalleCuenta(cuentaActual);
   if (typeof renderSelectorCuentas === 'function') renderSelectorCuentas();
+  if (typeof _abrirCuentaPorDefecto === 'function') _abrirCuentaPorDefecto();
 }, { key: 'cuentas-render' });
+
+// Puente global (js/core/puente.js): constantes y clases ya inicializadas, y variables que otros archivos leen por nombre.
+exponerGlobales({ _origenLibroCta, ICONOS_CUENTA, _consultaPcCuentas, MOVIMIENTOS_PAGINA, _movimientosFilters, _MIN_RETIRO, TR_MIN_EFECTIVO, btnAgregarCuentaCustom, _nuevaCuentaNombreInput, btnCrearCuentaCustom, btnAgregarDineroConf, btnAgregarDineroMenuConf, btnRdConf, btnEaConf, btnTrConf, btnSwitchTr, _selectorCuentasLista, _archivadasLista, _volverDeArchivadas, _detalleSimple, _detalleAhorro, agregarDineroMenuDestino, agregarDineroMenuMonto, trOrigen, trDestino, trMonto });
+exponerVariables({ cuentaActual: [() => cuentaActual, v => { cuentaActual = v; }] });

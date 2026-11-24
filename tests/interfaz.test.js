@@ -1,4 +1,5 @@
 'use strict';
+const { htmlClasico } = require('./support/html-clasico');
 const { leerEstado, REL: PARTES_ESTADO, esParte } = require('./support/nucleo-estado');
 
 // tests/interfaz.test.js — Interfaz: estilos sin inline, innerHTML escapado, Refresh y filtros de Gastos.
@@ -26,7 +27,7 @@ const CONVERTIDOS = [
   { f: 'js/core/busqueda-global.js', prefijos: ['busqueda-'], permitidos: [/^(background|color):\$\{/] },
   { f: 'js/modules/configuracion.js', prefijos: ['cat-chip', 'cfg-tamano', 'cfg-wrapped', 'cfg-resp'], permitidos: [] },
   { f: 'js/modules/gastos.js', prefijos: ['gasto-', 'badge-xs', 'row-name-13'], permitidos: [] },
-  // inicio: solo queda el display:none del tooltip de la proyección, que JS conmuta (showTT)
+  // inicio: solo queda el display:none del tooltip de la proyección, que JS conmuta (showTooltip)
   { f: 'js/modules/inicio.js', prefijos: ['inicio-'], armadas: ['inicio-estado-', 'inicio-pilar-'], permitidos: ['display:none;'] },
   // sueltos de 1-6 estilos
   { f: 'js/modules/mesada.js', prefijos: ['badge-xs'], permitidos: [] },
@@ -53,7 +54,7 @@ const CONVERTIDOS = [
   { f: 'js/modules/alcancia.js', prefijos: ['alc-'], armadas: ['alc-c-', 'alc-dif-'], sinCss: ['alc-hist-chevron', 'alc-dep-monto'], permitidos: ['display:none;'] },
   // tarjetas: solo quedan los anchos de barra (porcentaje calculado) y el cursor del fragmento de atributos _tcAttrs (se inserta en etiquetas ajenas, no puede llevar class)
   { f: 'js/modules/tarjetas-credito.js', prefijos: ['tc-', 'badge-xs'], permitidos: [/^width:\$\{/, 'cursor:pointer;'] },
-  // encargos: quedan el display:none del avatar del selector de persona (JS lo conmuta) y el cursor del fragmento de atributos _encAttrs (se inserta en etiquetas ajenas)
+  // encargos: quedan el display:none del avatar del selector de persona (JS lo conmuta) y el cursor del fragmento de atributos _encargoAttrs (se inserta en etiquetas ajenas)
   { f: 'js/modules/encargos.js', prefijos: ['enc-'], permitidos: ['display:none;', 'cursor:pointer;', /^color:\$\{/] },
   // personas: quedan solo valores calculados — el ancho de las barras de progreso, el color elegido por el usuario para cada avatar (color/fondo/borde con ${color}) y el fondo de cada muestra de la paleta
   { f: 'js/modules/personas.js', prefijos: ['pe-'], permitidos: [/^width:\$\{/, /^(color|background):\$\{/] },
@@ -142,7 +143,7 @@ test('alcancia: las clases de color que arma el código (alc-c-X, alc-dif-X) exi
   ['alc-c-accent', 'alc-c-amber', 'alc-c-red', 'alc-c-text3', 'alc-dif-0', 'alc-dif-pos', 'alc-dif-neg'].forEach(c => assert.ok(new RegExp('\\.' + c + '(?![\\w-])').test(css), c));
   const src = leer('js/modules/alcancia.js');
   // los mapas de color que alimentan class=\"…\" son clases (el hint.style.color y el fill del SVG sí siguen usando var(--x), por CSSOM/atributo SVG)
-  for (const nombre of ['tipoColor', 'difColor', 'difMsgColor']) {
+  for (const nombre of ['tipoColor', 'diferencialColor', 'diferencialMsgColor']) {
     const linea = src.split('\n').find(l => l.includes('const ' + nombre));
     assert.ok(linea && !/var\(--/.test(linea), nombre);
   }
@@ -152,7 +153,7 @@ test('plata comprometida: las clases por tipo (cp-tbg-X, cp-tc-X) y los colores 
   const css = leer('css/styles.css'), src = leer('js/modules/plata-comprometida.js');
   ['reposicion', 'gasto', 'abono_deuda', 'otro'].forEach(t => ['cp-tbg-', 'cp-tc-'].forEach(p => {
     assert.ok(new RegExp('\\.' + p + t + '(?![\\w-])').test(css), p + t);
-    assert.ok(new RegExp("k:'" + t + "'").test(src), 'falta k:' + t + ' en _CP_TIPO_LABELS');
+    assert.ok(new RegExp("k:'" + t + "'").test(src), 'falta k:' + t + ' en _PLATA_COMPROMETIDA_TIPO_LABELS');
   }));
   ['cp-c-red', 'cp-c-amber', 'cp-c-text3'].forEach(c => assert.ok(new RegExp('\\.' + c + '(?![\\w-])').test(css), c));
   assert.doesNotMatch(src, /ti\.(bg|border|color)\b/, 'los colores por tipo son clases, no ti.bg/border/color');
@@ -167,7 +168,7 @@ test('index.html: cada clase ix-* con min-height tiene su regla :empty (reemplaz
 });
 
 test('index.html: el primer pintado (carga, login, PIN, toasts) conserva sus style="" porque styles.css es async', () => {
-  const html = leer('index.html');
+  const html = htmlClasico(leer('index.html'));
   assert.match(html, /<div[^>]*id="fb-loading-screen"[^>]*style="display:flex;?"|<div[^>]*style="display:flex;?"[^>]*id="fb-loading-screen"/);
   assert.match(html, /id="fb-loading-screen"/);
   // un style="" de más aquí es intencional: si alguien lo mueve a styles.css, la pantalla de carga se vería sin estilo hasta que llegue el CSS
@@ -190,7 +191,7 @@ test('alcancia: el margen inferior de la fila "Duración" solo existe cuando hay
 });
 
 test('index.html: #gv_fuente_hint conserva visibility:hidden inline (styles.css lo usa como selector de atributo)', () => {
-  assert.match(leer('index.html'), /id="gv_fuente_hint"[^>]*style="visibility:hidden;"|style="visibility:hidden;"[^>]*id="gv_fuente_hint"/);
+  assert.match(htmlClasico(leer('index.html')), /id="gv_fuente_hint"[^>]*style="visibility:hidden;"|style="visibility:hidden;"[^>]*id="gv_fuente_hint"/);
 });
 
 test('styles.css: un parser real (jsdom) lee tantas reglas como bloques de nivel superior (ninguna se pierde por un error de sintaxis)', { skip: (() => { try { require('jsdom'); return false; } catch { return 'jsdom no instalado'; } })() }, () => {
@@ -198,8 +199,8 @@ test('styles.css: un parser real (jsdom) lee tantas reglas como bloques de nivel
   const css = leer('css/styles.css');
   const limpio = css.replace(/\/\*[\s\S]*?\*\//g, '');
   let d = 0, bloques = 0; for (const c of limpio) { if (c === '{') { if (d === 0) bloques++; d++; } if (c === '}') d--; }
-  const st = new JSDOM('<style></style>').window.document.querySelector('style'); st.textContent = css;
-  assert.equal(st.sheet.cssRules.length, bloques);
+  const estadoActual = new JSDOM('<style></style>').window.document.querySelector('style'); estadoActual.textContent = css;
+  assert.equal(estadoActual.sheet.cssRules.length, bloques);
 });
 
 test('la app habla de tú en todo el texto (sin voseo) — index.html y js/', () => {
@@ -268,7 +269,7 @@ test('héroes: ::before/::after usan --hero-rgb y cada variante de color la rede
     assert.ok(/rgb\(var\(--hero-rgb\)\)/.test(r), pseudo + ' usa --hero-rgb');
     assert.ok(!/var\(--accent\)/.test(r), pseudo + ' no usa --accent fijo');
   }
-  const html = leer('index.html');
+  const html = htmlClasico(leer('index.html'));
   const variantes = new Set();
   for (const m of html.matchAll(/class="hero (hero-[a-z]+)[" ]/g)) variantes.add(m[1]);
   assert.ok(variantes.size >= 2, 'hay variantes de color en index.html');
@@ -288,14 +289,14 @@ test('eliminar cuenta: el botón de confirmar es rojo con una regla que gana a l
 // Mejora 9: en el detalle de TODA cuenta el orden es Encargos → Movimientos (título, filtros, lista en un solo bloque que se
 // oculta sin movimientos, dejando solo el estado vacío).
 test('detalle de cuenta: Encargos antes que el bloque de Movimientos, y el bloque se oculta sin movimientos', () => {
-  const html = leer('index.html');
-  for (const [enc, titulo] of [['det-cuenta-encargos', 'Movimientos registrados</div>'], ['det-nu-encargos', 'Movimientos de la cuenta</div>']]) {
-    const iEnc = html.indexOf('id="' + enc + '"'), iBloque = html.indexOf('class="cuenta-movs-bloque"', iEnc);
-    assert.ok(iEnc > 0 && iBloque > iEnc, enc + ' va antes de su bloque de movimientos');
+  const html = htmlClasico(leer('index.html'));
+  for (const [encargo, titulo] of [['det-cuenta-encargos', 'Movimientos registrados</div>'], ['det-nu-encargos', 'Movimientos de la cuenta</div>']]) {
+    const iEncargo = html.indexOf('id="' + encargo + '"'), iBloque = html.indexOf('class="cuenta-movs-bloque"', iEncargo);
+    assert.ok(iEncargo > 0 && iBloque > iEncargo, encargo + ' va antes de su bloque de movimientos');
     assert.ok(html.slice(iBloque, iBloque + 400).includes(titulo), 'el título vive dentro del bloque');
   }
   assert.ok(/\.cuenta-movs-bloque-vacio > \.sec-title[^{]*\{display:none/.test(CSS));
-  assert.ok(leer('js/modules/cuentas.js').includes("classList.toggle('cuenta-movs-bloque-vacio', !movs.length)"));
+  assert.ok(leer('js/modules/cuentas.js').includes("classList.toggle('cuenta-movs-bloque-vacio', !movimientos.length)"));
 });
 });
 

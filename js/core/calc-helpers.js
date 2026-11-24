@@ -16,17 +16,23 @@
 
    También aloja `Deudas` (capa de acceso a "Me deben"/"Yo debo" y sus saldos).
 
-   Este archivo carga de entrada (<script defer>, sin passar por
-   Loader), justo después del núcleo — ver orden de <script>
-   en index.html. mesada.js y tarjetas-credito.js YA NO definen estas
+   Este archivo carga de entrada (import en js/main.js, sin pasar por
+   Loader), justo después del núcleo. mesada.js y tarjetas-credito.js YA NO definen estas
    funciones: las usan como globales definidas acá. Por eso este
    archivo tiene que estar cargado ANTES que ellos (irrelevante en la
    práctica ya que son lazy y cargan mucho después, pero se respeta
    el mismo criterio de orden que el resto de la app).
    ═══════════════════════════════════════════════════════════════ */
 
+import { exponerGlobales, exponerVariables } from './puente.js';
+import { MC, S } from './estado.js';
+import { Periodo } from './periodo.js';
+import { _fechaSafe } from './dialogos.js';
+// Puente global (js/core/puente.js): las funciones se hoistean, así que quedan en window desde el principio.
+exponerGlobales({ _ensureMesadas, getMesadaData, _getCuotaAnio, _mesNombreDeKey, mesadaOrigenDeMovimientoEncargo, getTCById, tcCupoUsadoPct, tcCupoDisponible, getDeudorSaldo, getMiDeudaSaldo, totalPrestadoPendiente, totalMisDeudasPendiente, encargoSaldo, encargoComprometido, encargoLibre, spotifyPersonaPagadaVigente });
+
 /* ---- Mesada (antes en mesada.js) ---- */
-function _ensureMesadas(){
+export function _ensureMesadas(){
   if(!S.mesadas)S.mesadas={papa:{cuotas:{},pagos:{}},mama:{cuotas:{},pagos:{}}};
   ['papa','mama'].forEach(p=>{
     if(!S.mesadas[p])S.mesadas[p]={cuotas:{},pagos:{}};
@@ -35,19 +41,19 @@ function _ensureMesadas(){
   });
 }
 
-function getMesadaData(parent){
+export function getMesadaData(parent){
   _ensureMesadas();
   return S.mesadas[parent].pagos;
 }
 
-function _getCuotaAnio(parent,anio){
+export function _getCuotaAnio(parent,anio){
   _ensureMesadas();
   return Periodo.cuotaMesada(S.mesadas[parent].cuotas,anio);
 }
 
 // Formatea una clave "2026-4" → "Mayo 2026" (depende de MC, la lista de
 // nombres de mes definida en el núcleo de index.html — no de S).
-function _mesNombreDeKey(key){
+export function _mesNombreDeKey(key){
   const partes=String(key).split('-');
   const anio=partes[0];
   const mesIdx=parseInt(partes[1],10)||0;
@@ -59,29 +65,29 @@ function _mesNombreDeKey(key){
 // dejar borrar a mano una salida cuyo efecto vive en Mesada (cuenta destino + espejo): solo
 // Mesada sabe revertirla completa. No depende de marcas en el movimiento, así que también
 // reconoce las creadas antes de este cambio.
-function mesadaOrigenDeMovEncargo(movId){
-  if(!movId||!S.mesadas)return null;
+export function mesadaOrigenDeMovimientoEncargo(movimientoId){
+  if(!movimientoId||!S.mesadas)return null;
   for(const parent of ['papa','mama']){
     const pagos=(S.mesadas[parent]&&S.mesadas[parent].pagos)||{};
     for(const key of Object.keys(pagos)){
       const info=pagos[key];
-      if(info.origenEncargo&&info.origenEncargo.movId===movId)return {parent,key};
-      if((info.pendienteHistorial||[]).some(h=>h.origenEncargo&&h.origenEncargo.movId===movId))return {parent,key};
+      if(info.origenEncargo&&info.origenEncargo.movimientoId===movimientoId)return {parent,key};
+      if((info.pendienteHistorial||[]).some(h=>h.origenEncargo&&h.origenEncargo.movimientoId===movimientoId))return {parent,key};
     }
   }
   return null;
 }
 
 /* ---- Tarjetas de crédito (antes en tarjetas-credito.js) ---- */
-function getTCById(id){ return (S.tarjetasCredito||[]).find(x=>x.id===id); }
+export function getTCById(id){ return (S.tarjetasCredito||[]).find(x=>x.id===id); }
 
-function tcCupoUsadoPct(tc){
+export function tcCupoUsadoPct(tc){
   const cupo=tc.cupo||0;
   if(!cupo) return 0;
   return Math.min(100,((tc.deuda||0)/cupo)*100);
 }
 
-function tcCupoDisponible(tc){
+export function tcCupoDisponible(tc){
   return Math.max(0,(tc.cupo||0)-(tc.deuda||0));
 }
 
@@ -93,7 +99,7 @@ function tcCupoDisponible(tc){
 
    Dirección:  'favor'  = me deben (S.deudores)   — abre con 'prestamo'
                'contra' = yo debo (S.misDeudas)   — abre con 'recibido'
-   El resto de tipos ('abono', 'pago-completo', 'pago') reducen la deuda. Los
+   El resto de tipos ('abono', 'pago_completo', 'pago') reducen la deuda. Los
    nombres de tipo son disjuntos, así que el saldo no necesita saber la
    dirección: saldo = lo que abre − lo que reduce, en la propia dirección de
    esa deuda (positivo = queda algo pendiente).
@@ -102,7 +108,7 @@ function tcCupoDisponible(tc){
    "Necesita atención" y Personas la consultan sin esperar al módulo — antes
    el núcleo caía a 0 con guards typeof y tuvo que bloquear snapshots
    mientras prestado.js no cargaba (ver _patrimonioDependenciasListas). */
-const Deudas = (() => {
+export const Deudas = (() => {
   const COLECCION = { favor: 'deudores', contra: 'misDeudas' };
   const ABRE = { prestamo: true, recibido: true };
   return {
@@ -142,29 +148,36 @@ const Deudas = (() => {
 })();
 
 // Nombres históricos (los usan 8 archivos y los tests): delegan en Deudas.
-function getDeudorSaldo(d) { return Deudas.saldo(d); }
-function getMiDeudaSaldo(d) { return Deudas.saldo(d); }
-function totalPrestadoPendiente() { return Deudas.totalPendiente('favor'); }
-function totalMisDeudasPendiente() { return Deudas.totalPendiente('contra'); }
+export function getDeudorSaldo(d) { return Deudas.saldo(d); }
+export function getMiDeudaSaldo(d) { return Deudas.saldo(d); }
+export function totalPrestadoPendiente() { return Deudas.totalPendiente('favor'); }
+export function totalMisDeudasPendiente() { return Deudas.totalPendiente('contra'); }
+
+/* ---- Encargos: saldo, comprometido y libre — 2026-11-18 ----
+   Antes en encargos.js (lazy). Personas calcula la posición neta de una persona (personas-core.js) y el perfil muestra el saldo de sus
+   encargos sin esperar a que cargue el módulo: mismo motivo que Deudas y las funciones de Spotify de abajo. Son puras (solo el encargo). */
+export function encargoSaldo(encargo) {
+  return (encargo.movimientos||[]).reduce((a,m)=>{
+    return a + (m.tipo==='entrada'?m.monto:-m.monto);
+  }, encargo.saldoInicial||0);
+}
+
+// Cuánto del saldo ya tiene destino asignado vía partes comprometidas (sin usar todavía).
+export function encargoComprometido(encargo) {
+  return (encargo.partes||[]).filter(p=>!p.usada).reduce((a,p)=>a+(p.monto||0), 0);
+}
+
+// Lo que realmente se puede sacar del encargo ahora mismo: saldo total menos lo ya
+// comprometido. Nunca negativo — si el comprometido superó el saldo (p.ej. porque
+// una salida por fuera de "usar parte" lo redujo), no hay nada libre para sacar.
+export function encargoLibre(encargo) {
+  return Math.max(0, encargoSaldo(encargo) - encargoComprometido(encargo));
+}
 
 /* ---- Spotify (antes en spotify.js) — 2026-09-20 ----
    Mismo motivo: los avisos "Cobro Spotify de X vencido" de "Necesita
-   atención". spNombreDe usa getPersona() (personas.js, carga de entrada) con
-   guard typeof, así que no depende del orden de carga. */
-// Nombre a mostrar/guardar para un integrante de Spotify: si está vinculado a una
-// persona del sistema unificado, usa siempre su nombre ACTUAL (por si lo editaron
-// desde "Personas"); si no hay vínculo, o la persona ya no existe, usa el nombre
-// crudo guardado en el propio registro de Spotify.
-function spNombreDe(p){
-  if(!p)return '';
-  if(p.personaId){
-    const per=(typeof getPersona==='function')?getPersona(p.personaId):null;
-    if(per&&per.nombre)return per.nombre;
-  }
-  return p.nombre||'';
-}
-
-function spPersonaPagadaVigente(p){
+   atención". El nombre del integrante sale de Personas.nombre(p.personaId) (personas-core.js). */
+export function spotifyPersonaPagadaVigente(p){
   // Determina si el "Pagó" de esta persona sigue vigente para el ciclo actual.
   // Si ya llegó (o pasó) su fecha de próximo pago, el ciclo vencido ya terminó
   // y debe volver a mostrarse como "Pendiente" aunque el flag pagado siga en true.
@@ -174,3 +187,6 @@ function spPersonaPagadaVigente(p){
   const prox=_fechaSafe(p.proximoPago);
   return prox>hoy0;
 }
+
+// Puente global (js/core/puente.js): constantes y clases ya inicializadas, y variables que otros archivos leen por nombre.
+exponerGlobales({ Deudas });

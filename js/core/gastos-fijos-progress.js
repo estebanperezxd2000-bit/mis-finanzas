@@ -4,6 +4,11 @@
 // Se engancha a refresh() con Refresh.registrar() (js/core/refresh.js), no envolviendo la global.
 // Ver auditoria-tecnica.md #2/#4.
 
+import { exponerGlobales, exponerVariables } from './puente.js';
+import { S } from './estado.js';
+import { Fecha } from './fecha.js';
+import { Refresh } from './refresh.js';
+
 // ── 4. GASTOS FIJOS PROGRESS BAR ─────────────────────────────────────────────
 (function(){
   // Inject progress card into panel-fijo if not already there
@@ -18,7 +23,8 @@
     <div class="fijos-progress-bar"><div class="fijos-progress-fill" id="fijos-progress-fill"></div></div>
     <div class="fijos-progress-label" id="fijos-progress-label"></div>
   `;
-  panelFijo.insertBefore(progressCard, panelFijo.firstChild);
+  // Antes de la lista (no del título «Fijos mensuales» que se ve en PC): en celular el título está oculto y el orden visible no cambia.
+  panelFijo.insertBefore(progressCard, document.getElementById('gastosFijosList') || panelFijo.firstChild);
 
   function updateFijosProgress() {
     if(typeof S === 'undefined' || !S.gastosFijos) return;

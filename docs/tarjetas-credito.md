@@ -24,7 +24,7 @@ Llevar el registro de las tarjetas de crédito propias: cuánto cupo tiene cada 
 - **Un pago de TC (`_esPagoTC`) nunca cuenta como gasto real del mes; una compra de TC (`_esCompraTC`) sí.** El gasto real ya se contó cuando se hizo la compra — el pago solo mueve plata de una cuenta a saldar la deuda, no es un gasto nuevo. Esta exclusión vive centralizada en `_esGastoVarNoReal()`; un flag de exclusión nuevo se agrega ahí, no repetido pantalla por pantalla.
 - **La tarjeta no simula un banco real.** No se agregan fechas de corte, extractos ni pago mínimo — es una decisión de diseño explícita (ver §7), no un hueco por completar.
 - **Una compra siempre valida cupo disponible; un cargo especial nunca lo valida, a propósito.** Toda compra real (`confirmarCompraTC`, o el "Préstamo con TC" de Préstamos — ver más abajo) debe rechazarse si supera el cupo disponible de la tarjeta. El único camino que se salta esa validación deliberadamente es "Cargo especial" (`confirmarCargoEspecialTC`), porque ahí el monto no lo elige el usuario — lo impone el banco (interés, comisión) y por definición puede superar el cupo configurado. Si se agrega un cuarto camino para crear una "compra" en el futuro, hay que decidir explícitamente a cuál de los dos grupos pertenece — no asumir ninguno de los dos por defecto.
-- **"Préstamo con TC" (módulo Préstamos, `prestado.js`) es una compra real a efectos de cupo, no un cargo especial.** Aunque técnicamente se registra como un `tcMovimientos` tipo `'cargo_prestamo'` (igual que "Compra con TC" de Encargos, que tampoco valida cupo — ver `encargos.md`), acá sí importa la decisión de gasto del usuario: eligió comprar algo con su propia tarjeta para prestárselo a alguien. `confirmarPrestamoTC` valida `tc.cupo && tcCupoDisponible(tc) < montoTC` antes de guardar — usando `montoTC` (el valor real que carga la tarjeta si hay diferencial activo), no el monto que se le dijo al deudor. Corregido 2026-09-04 tras un bug real reportado por el usuario: la función nunca validaba cupo, ni con el monto normal ni con el "valor real" del diferencial (ver `CHANGELOG.md#prestado`).
+- **"Préstamo con TC" (módulo Préstamos, `prestado.js`) es una compra real a efectos de cupo, no un cargo especial.** Aunque técnicamente se registra como un `tcMovimientos` tipo `'cargo_prestamo'` (igual que "Compra con TC" de Encargos, que tampoco valida cupo — ver `encargos.md`), acá sí importa la decisión de gasto del usuario: eligió comprar algo con su propia tarjeta para prestárselo a alguien. `confirmarPrestamoTC` valida `tc.cupo && tcCupoDisponible(tc) < montoTC` antes de guardar — usando `montoTC` (el valor real que carga la tarjeta si hay diferencial activo), no el monto que se le dijo al deudor. Corregido 2026-09-04 tras un bug real reportado por el usuario: la función nunca validaba cupo, ni con el monto normal ni con el "valor real" del diferencial (ver `changelog/prestado.md`).
 
 ## 4. Modelo de datos
 
@@ -40,7 +40,7 @@ Cada tarjeta vive en `S.tarjetasCredito[]`:
   saldoInicial: {id, monto, fecha, nota, eliminado} | null,  // deuda que ya existía antes de usar la app
   compras: [{
     id, desc, cat, fecha, monto, nota, eliminado,
-    _esFavor, _desdeCP,      // opcionales: marca que esta compra es deuda ajena
+    _esFavor, _desdePlataComprometida,      // opcionales: marca que esta compra es deuda ajena
     _esCargoEspecial, _motivoCargo   // opcionales: cargo del banco (interés/comisión), no validó cupo — ver §2/§3
   }],
   pagos: [{id, monto, fecha, fuente, nota, eliminado}],
@@ -59,7 +59,7 @@ Aparte, `S.tcMovimientos[]` (compartido con Encargos y Préstamos, no exclusivo 
 
 ### Clase de los movimientos (2026-10-09)
 
-Desde 2026-10-09 todo movimiento de ingreso/gasto lleva `clase` (`ingreso` · `gasto` · `neutro` · `ajuste`), escrita al crearlo, y los totales del mes (`Periodo`) la leen en vez de deducirla de etiquetas. Ver `libro-de-movimientos.md` (el libro no clasifica: lo hace `clase`) y `CHANGELOG.md#infraestructura--seguridad`.
+Desde 2026-10-09 todo movimiento de ingreso/gasto lleva `clase` (`ingreso` · `gasto` · `neutro` · `ajuste`), escrita al crearlo, y los totales del mes (`Periodo`) la leen en vez de deducirla de etiquetas. Ver `libro-de-movimientos.md` (el libro no clasifica: lo hace `clase`) y `changelog/infraestructura-seguridad.md`.
 
 - Compra con TC (`_esCompraTC`, en `S.gastosVar`): `clase: 'gasto'`.
 - Pago de la tarjeta (`_esPagoTC`): `clase: 'neutro'` — cancela deuda, no es un gasto nuevo.
@@ -97,7 +97,7 @@ Botón "+ Cargo especial" dentro del detalle de la tarjeta (`abrirDetalleTCSheet
 - **No simular un banco real (sin corte, sin extracto, sin pago mínimo):** el objetivo del módulo es saber cuánto se debe y si alcanza para pagarlo, no replicar el ciclo de facturación de un banco — eso agregaría complejidad (fechas de corte, intereses, pago mínimo) sin aportar a las preguntas que este módulo existe para responder.
 - **Widgets de cobertura usan deuda total, no deuda propia:** decisión corregida explícitamente (ver `CHANGELOG.md`) tras confundir "¿me alcanza para pagar?" (pregunta que el banco hace sobre el 100% de la deuda) con "¿cuánta plata es realmente mía?" (pregunta de patrimonio, donde sí importa separar lo propio de lo ajeno).
 - **`tcMovimientos` (cargos de Encargos/Préstamos) vive fuera de `tc.compras`:** en vez de forzar a Encargos/Préstamos a empujar registros directo al array de compras de la tarjeta (acoplando su formato interno a otro módulo), se creó un tipo de registro aparte que Tarjetas de crédito solo consume para calcular deuda ajena e historial. Mantiene la frontera clara: quien genera el cargo es dueño de esa entrada.
-- **"Cargo especial" reutiliza `tc.compras` en vez de un array propio (`tc.ajustes` o similar):** se consideró un array separado, pero el 90% de la infraestructura necesaria (historial unificado en `abrirDetalleTCSheet`, borrado con protección por antigüedad, gasto espejo, `tcRecalcular`) ya existe para compras — duplicarla para una variante que solo cambia "¿valida cupo?" y "¿qué badge muestra?" hubiera sido código repetido sin necesidad. Se prefirió un flag (`_esCargoEspecial`) sobre el mismo modelo, mismo criterio que ya usa `_esFavor`/`_desdeCP` para "esta compra es deuda ajena".
+- **"Cargo especial" reutiliza `tc.compras` en vez de un array propio (`tc.ajustes` o similar):** se consideró un array separado, pero el 90% de la infraestructura necesaria (historial unificado en `abrirDetalleTCSheet`, borrado con protección por antigüedad, gasto espejo, `tcRecalcular`) ya existe para compras — duplicarla para una variante que solo cambia "¿valida cupo?" y "¿qué badge muestra?" hubiera sido código repetido sin necesidad. Se prefirió un flag (`_esCargoEspecial`) sobre el mismo modelo, mismo criterio que ya usa `_esFavor`/`_desdePlataComprometida` para "esta compra es deuda ajena".
 ## 8. Referencia de implementación
 
 **Nota:** `getTCById`, `tcCupoUsadoPct` y `tcCupoDisponible` se sacaron de este archivo a `js/core/calc-helpers.js` (Inicio las necesita sin cargar el módulo completo); `calcDeudaAjenaDeTarjeta` y `calcDeudaTcPropia` viven en `js/core/patrimonio.js`. Ambos siguen siendo globales que este módulo consume, no define.
@@ -120,7 +120,7 @@ Botón "+ Cargo especial" dentro del detalle de la tarjeta (`abrirDetalleTCSheet
 | `renderTCScreen` / `renderTCDashboard` | Pantalla completa de Tarjetas / resumen en Inicio |
 | `abrirCompraTC` / `confirmarCompraTC` | Sheet "Registrar compra en TC" (valida cupo, ver `CHANGELOG.md`) |
 | `abrirPagarTC` / `confirmarPagarTC` | Sheet "Pagar tarjeta" |
-| `abrirDetalleTCSheet` | Sheet de detalle: cobertura + historial completo (saldo inicial, compras, cargos, pagos) |
+| `abrirDetalleTCSheet` | Detalle de la tarjeta (ya no es hoja): cobertura + historial completo (saldo inicial, compras, cargos, pagos). PC: panel `#tc-detalle`; celular: pantalla propia con «volver» (`_tcCerrarDetalle`) |
 | `eliminarCompraTC` / `eliminarPagoTC` | Eliminar desde el detalle de la tarjeta (con confirmación) |
 | `getFuentesSinTC` vs. `poblarFuente(..., incluirTC)` | Listas de cuentas destino (sin TC) vs. origen (con TC), ver regla en §3 |
 | `getSaldoFuente` / `descontarFuente` / `sumarFuente` | Genéricas de todo el proyecto; su rama `tc:` es la interfaz que usa el resto de la app para tratar una tarjeta como "cuenta" de origen |

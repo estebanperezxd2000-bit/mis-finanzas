@@ -5,14 +5,16 @@
    Vive en js/core/ y no en js/modules/ porque es transversal por
    naturaleza: busca sobre S.gastosVar, S.gastosFijos, S.deudores,
    S.cajitas, S.cuentas, S.encargos, S.personas,
-   S.misDeudas, S.spotify.personas/S.spotify.historial y S.movimientos —
+   S.misDeudas, S.spotify.integrantes/S.spotify.historial y S.movimientos —
    no pertenece a un solo dominio.
+
+   Personas: UNA entrada por persona (con sus relaciones, que abren su perfil); Préstamos, Yo debo, Encargos y Spotify ya no se buscan por
+   nombre porque ese nombre es el de la persona (Personas.nombre, js/core/personas-core.js). Quedan sus movimientos y notas.
 
    Sin dependencia real de orden de carga: no llama a ninguna función
    de un módulo de dominio en el momento en que este script se parsea.
    Cada navegación a un módulo específico (abrirDeudor, abrirEncargoDetalle,
-   abrirCuenta, abrirMiDeuda, abrirDetalleCajita, abrirPerfilPersona,
-   spNombreDe, spPersonaPagadaVigente) se resuelve en tiempo de click vía
+   abrirCuenta, abrirMiDeuda, abrirDetalleCajita, abrirPerfilPersona) se resuelve en tiempo de click vía
    `typeof X === 'function'`, igual que ya hacía en index.html — por eso
    no hizo falta partir el archivo en dos ni reordenar ningún <script src>
    existente: se carga en el mismo punto donde antes vivía el IIFE.
@@ -21,6 +23,15 @@
    showScreen, cambiarTabPrestamos, window.fmt, window.calcC,
    window.getDeudorSaldo, window.getMiDeudaSaldo.
    ================================================================ */
+import { exponerGlobales, exponerVariables } from './puente.js';
+import { showScreen } from './navegacion.js';
+import { abrirPerfilPersona } from '../modules/personas.js';
+import { colorCuenta, cuentasTodas, esCuentaAhorro, esFuenteCuenta, fuenteDeCuenta, fuenteTexto } from './cuentas-fuentes.js';
+import { ahorroTotal } from './nu-calc.js';
+import { Personas } from './personas-core.js';
+import { Deudas, encargoSaldo } from './calc-helpers.js';
+import { escHtml } from './estado.js';
+
 (function(){
   /* ====================================================
      2. BÚSQUEDA GLOBAL
@@ -52,11 +63,6 @@
       setTimeout(() => {
         if (typeof abrirDetalleCajita === 'function') abrirDetalleCajita(r.navId);
       }, 80);
-    } else if (r.navTipo === 'deudor') {
-      showScreen('prestamos');
-      setTimeout(() => {
-        if (typeof abrirDeudor === 'function') abrirDeudor(r.navId);
-      }, 80);
     } else if (r.navTipo === 'encargo') {
       showScreen('encargos');
       setTimeout(() => {
@@ -68,13 +74,13 @@
       setTimeout(() => {
         if (typeof abrirMiDeuda === 'function') abrirMiDeuda(r.navId);
       }, 80);
-    } else if (r.navTipo === 'prestamo_mov') {
+    } else if (r.navTipo === 'prestamo_movimiento') {
       // Navegar al deudor dueño del préstamo
       showScreen('prestamos');
       setTimeout(() => {
         if (typeof abrirDeudor === 'function') abrirDeudor(r.navId);
       }, 80);
-    } else if (r.navTipo === 'encargo_mov') {
+    } else if (r.navTipo === 'encargo_movimiento') {
       showScreen('encargos');
       setTimeout(() => {
         if (typeof abrirEncargoDetalle === 'function') abrirEncargoDetalle(r.navId);
@@ -117,10 +123,9 @@
   function _busquedaIcono(navTipo, color) {
     const icons = {
       cajita: `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>`,
-      deudor: `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
-      prestamo_mov: `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`,
+      prestamo_movimiento: `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`,
       encargo: `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>`,
-      encargo_mov: `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>`,
+      encargo_movimiento: `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>`,
       cuenta: `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>`,
       gastos: `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>`,
       persona: `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
@@ -160,14 +165,6 @@
       }
     });
 
-    // Préstamos / deudores
-    Deudas.lista('favor').forEach(d => {
-      if((d.nombre||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes(q)){
-        const s = window.getDeudorSaldo ? window.getDeudorSaldo(d) : 0;
-        resultados.push({ tipo:'Persona prestada', desc:d.nombre, meta: 'Pendiente: ' + (window.fmt?window.fmt(s):''), color:'var(--blue)', navTipo:'deudor', navId:d.id });
-      }
-    });
-
     // Cajitas
     (S.cajitas||[]).forEach(c => {
       if((c.nombre||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes(q)){
@@ -186,13 +183,13 @@
 
     // Encargos
     (S.encargos||[]).forEach(e => {
-      if((e.nombre||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes(q) || (e.nota||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes(q)){
-        resultados.push({ tipo:'Encargo', desc:e.nombre||'Encargo', meta: window.fmt?window.fmt(e.saldo||0):'', color:'var(--blue)', navTipo:'encargo', navId:e.id });
+      if((e.nota||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes(q)){
+        resultados.push({ tipo:'Encargo', desc:e.nota, meta: Personas.nombre(e.personaId) + ' · ' + (window.fmt?window.fmt(encargoSaldo(e)):''), color:'var(--blue)', navTipo:'encargo', navId:e.id });
       }
       // Movimientos de encargos
       (e.movimientos||[]).forEach(m => {
         if((m.desc||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes(q)||(m.nota||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes(q)){
-          resultados.push({ tipo:'Mov. encargo', desc:(m.desc||e.nombre||'Encargo'), meta:(window.fmt?window.fmt(m.monto):'')+(m.fecha?' · '+m.fecha:''), color:'var(--blue)', navTipo:'encargo_mov', navId:e.id });
+          resultados.push({ tipo:'Mov. encargo', desc:(m.desc||e.nota||Personas.nombre(e.personaId)), meta:(window.fmt?window.fmt(m.monto):'')+(m.fecha?' · '+m.fecha:''), color:'var(--blue)', navTipo:'encargo_movimiento', navId:e.id });
         }
       });
     });
@@ -201,14 +198,14 @@
     Deudas.lista('favor').forEach(d => {
       (d.abonos||[]).forEach(a => {
         if((a.nota||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes(q)){
-          resultados.push({ tipo:'Abono · '+d.nombre, desc:a.nota||'Abono', meta:(window.fmt?window.fmt(a.monto):'')+(a.fecha?' · '+a.fecha:''), color:'var(--accent)', navTipo:'prestamo_mov', navId:d.id });
+          resultados.push({ tipo:'Abono · '+Personas.nombre(d.personaId), desc:a.nota||'Abono', meta:(window.fmt?window.fmt(a.monto):'')+(a.fecha?' · '+a.fecha:''), color:'var(--accent)', navTipo:'prestamo_movimiento', navId:d.id });
         }
       });
       // También buscar en movimientos unificados del deudor
       (d.movimientos||[]).forEach(m => {
         if((m.concepto||m.nota||m.desc||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes(q)){
-          const already = resultados.find(r => r.navTipo==='prestamo_mov' && r.navId===d.id && r.desc===(m.concepto||m.nota||m.desc||''));
-          if(!already) resultados.push({ tipo:'Mov. · '+d.nombre, desc:m.concepto||m.nota||m.desc||'Movimiento', meta:(window.fmt?window.fmt(m.monto):'')+(m.fecha?' · '+m.fecha:''), color:'var(--blue)', navTipo:'prestamo_mov', navId:d.id });
+          const already = resultados.find(r => r.navTipo==='prestamo_movimiento' && r.navId===d.id && r.desc===(m.concepto||m.nota||m.desc||''));
+          if(!already) resultados.push({ tipo:'Mov. · '+Personas.nombre(d.personaId), desc:m.concepto||m.nota||m.desc||'Movimiento', meta:(window.fmt?window.fmt(m.monto):'')+(m.fecha?' · '+m.fecha:''), color:'var(--blue)', navTipo:'prestamo_movimiento', navId:d.id });
         }
       });
     });
@@ -217,32 +214,23 @@
 
     // Personas
     (S.personas||[]).forEach(p => {
+      if(p.archivada) return; // las archivadas no salen en la búsqueda: se encuentran con «Ver archivadas» en Personas
       if((p.nombre||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes(q)||(p.alias||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes(q)||(p.notas||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes(q)){
-        resultados.push({ tipo:'Persona', desc:p.nombre, meta:(p.alias?'@'+p.alias+' · ':'')+(p.notas||'Sin notas'), color:p.color||'var(--blue)', navTipo:'persona', navId:p.id });
+        // Una sola entrada por persona; abre su perfil, que tiene una sección por relación (Préstamos, Encargos, Spotify, Le debo…).
+        const relaciones = Personas.relaciones(p.id).map(r => (r.resumen ? r.resumen.tag : r.etiqueta)).join(' · ');
+        resultados.push({ tipo:'Persona', desc:p.nombre, meta:[relaciones, p.alias ? '@'+p.alias : '', p.notas || ''].filter(Boolean).join(' · ') || 'Sin actividad', color:p.color||'var(--blue)', navTipo:'persona', navId:p.id });
       }
     });
 
     // Mis Deudas (Yo debo)
     Deudas.lista('contra').forEach(d => {
-      if((d.nombre||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes(q)){
-        const s = window.getMiDeudaSaldo ? window.getMiDeudaSaldo(d) : 0;
-        resultados.push({ tipo:'Yo debo', desc:d.nombre, meta:'Pendiente: '+(window.fmt?window.fmt(s):''), color:'var(--red)', navTipo:'mi-deuda', navId:d.id });
-      }
       (d.movimientos||[]).forEach(m => {
         if((m.nota||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes(q)){
-          resultados.push({ tipo:'Mov. · '+d.nombre, desc:m.nota||'Movimiento', meta:(window.fmt?window.fmt(m.monto):'')+(m.fecha?' · '+m.fecha:''), color:'var(--red)', navTipo:'mi-deuda', navId:d.id });
+          resultados.push({ tipo:'Mov. · '+Personas.nombre(d.personaId), desc:m.nota||'Movimiento', meta:(window.fmt?window.fmt(m.monto):'')+(m.fecha?' · '+m.fecha:''), color:'var(--red)', navTipo:'mi-deuda', navId:d.id });
         }
       });
     });
 
-    // Spotify — personas del plan
-    (S.spotify.personas||[]).forEach(p => {
-      const nombreActual = (typeof spNombreDe==='function') ? spNombreDe(p) : p.nombre;
-      if((nombreActual||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes(q)){
-        const estado = (typeof spPersonaPagadaVigente==='function') ? (spPersonaPagadaVigente(p)?'Al día':'Pendiente') : (p.pagado?'Al día':'Pendiente');
-        resultados.push({ tipo:'Spotify', desc:nombreActual, meta:(window.fmt?window.fmt(p.monto||0):'')+' / mes · '+estado, color:'#1db954', navTipo:'spotify', navId:null });
-      }
-    });
     // Spotify — historial de cobros y pagos
     (S.spotify.historial||[]).forEach(h => {
       const texto = h.tipo==='pago' ? 'Pago a Spotify' : 'Cobro de '+(h.nombre||'');
@@ -258,24 +246,24 @@
     // Los movimientos del destape (`_esAlcancia` en S.movimientos) NO se ocultan: el total ya se reveló al destapar.
     (S.movimientos||[]).forEach(m => {
       if((m.desc||m.nota||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes(q)){
-        const esAlcIngreso = !!m._esAlcanciaIngreso;
-        const fuente = (!esAlcIngreso && m.fuente) ? ' · '+fuenteTexto(m.fuente) : '';
-        const montoTxt = esAlcIngreso ? '' : (window.fmt?window.fmt(m.monto):'');
-        const restoMeta = esAlcIngreso ? ' · Ahorro · '+(m.fecha||'') : (m.fecha?' · '+m.fecha:'')+fuente;
+        const esAlcanciaIngreso = !!m._esAlcanciaIngreso;
+        const fuente = (!esAlcanciaIngreso && m.fuente) ? ' · '+fuenteTexto(m.fuente) : '';
+        const montoTxt = esAlcanciaIngreso ? '' : (window.fmt?window.fmt(m.monto):'');
+        const restoMeta = esAlcanciaIngreso ? ' · Ahorro · '+(m.fecha||'') : (m.fecha?' · '+m.fecha:'')+fuente;
         resultados.push({
-          tipo: esAlcIngreso ? 'Ahorro' : 'Movimiento',
+          tipo: esAlcanciaIngreso ? 'Ahorro' : 'Movimiento',
           desc: m.desc||m.nota||'Movimiento',
           meta: montoTxt+restoMeta,
-          metaHtml: esAlcIngreso ? _iconoOculto + escHtml(restoMeta) : null,
+          metaHtml: esAlcanciaIngreso ? _iconoOculto + escHtml(restoMeta) : null,
           color:'var(--accent)',
-          navTipo: esAlcIngreso ? 'alcancia' : (esFuenteCuenta(m.fuente) ? 'cuenta' : 'movimiento_general'),
-          navId: esAlcIngreso ? null : (m.fuente||null)
+          navTipo: esAlcanciaIngreso ? 'alcancia' : (esFuenteCuenta(m.fuente) ? 'cuenta' : 'movimiento_general'),
+          navId: esAlcanciaIngreso ? null : (m.fuente||null)
         });
       }
     });
 
     // Depósitos a la alcancía desde una cuenta real (S.transferencias, destino:'alcancia').
-    // Desde el 2026-09-27 viven acá en vez de en S.gastosVar (ver CHANGELOG.md#alcancia) —
+    // Desde el 2026-09-27 viven acá en vez de en S.gastosVar (ver CHANGELOG.md) —
     // mismo criterio de monto oculto que ya aplicaba antes del cambio (ver alcancia.md §3).
     (S.transferencias||[]).forEach(t => {
       if(t.destino !== 'alcancia') return;

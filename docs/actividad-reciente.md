@@ -38,7 +38,7 @@ Este módulo **no define ni escribe datos**. Lee estas partes de `S`:
 
 | Fuente en `S` | Qué produce | Qué se excluye |
 |---|---|---|
-| `S.movimientos[]` (Nequi, Efectivo, cajitas Nu, cuentas personalizadas vía `fuente`) | `ingreso` (`+`) si `tipo === 'entrada'`, si no `gasto` (`-`). Subtítulo: nombre de la cuenta. | `apertura`, `transferencia`, `_encMovId`, `_esAlcancia`, `_esAlcanciaIngreso`, descripciones que empiezan por "margen de encargo" / "margen encargo", y los espejos que un abono de "Me deben" señala con `_abonoDestinoMovId` o `destinos[]._movId` (ese abono sale en `S.deudores`) |
+| `S.movimientos[]` (Nequi, Efectivo, cajitas Nu, cuentas personalizadas vía `fuente`) | `ingreso` (`+`) si `tipo === 'entrada'`, si no `gasto` (`-`). Subtítulo: nombre de la cuenta. | `apertura`, `transferencia`, `_encargoMovimientoId`, `_esAlcancia`, `_esAlcanciaIngreso`, descripciones que empiezan por "margen de encargo" / "margen encargo", y los espejos que un abono de "Me deben" señala con `_abonoDestinoMovimientoId` o `destinos[]._movimientoId` (ese abono sale en `S.deudores`) |
 | `S.gastosVar[]` | `gasto` (`-`). Subtítulo: categoría. Si `esPagoGastoFijo`, muestra la insignia "Gasto fijo". | `_esAlcancia` y `_esPagoTC` (el pago de tarjeta ya sale como "Abono a deuda"). Sí se muestran `_esExtraPrestamo` y los gastos de compra con TC (`_esCompraTC`) |
 | `S.deudores[].movimientos[]` | `prestamo` (`-`, "Préstamo a X") o `abono` (`+`, "Abono de X"). | `_perdon` |
 | `S.spotify.historial[]` | `spotify` (`+`, "Cobro Spotify · nombre"). | Todo lo que no sea `tipo === 'cobro'` |
@@ -55,7 +55,7 @@ Campos que el feed asume opcionales: `fecha` (si falta, `0000-00-00` → agrupa 
 
 ### Clase de los movimientos (2026-10-09)
 
-Desde 2026-10-09 todo movimiento de ingreso/gasto lleva `clase` (`ingreso` · `gasto` · `neutro` · `ajuste`), escrita al crearlo, y los totales del mes (`Periodo`) la leen en vez de deducirla de etiquetas. Ver `libro-de-movimientos.md` (el libro no clasifica: lo hace `clase`) y `CHANGELOG.md#infraestructura--seguridad`.
+Desde 2026-10-09 todo movimiento de ingreso/gasto lleva `clase` (`ingreso` · `gasto` · `neutro` · `ajuste`), escrita al crearlo, y los totales del mes (`Periodo`) la leen en vez de deducirla de etiquetas. Ver `libro-de-movimientos.md` (el libro no clasifica: lo hace `clase`) y `changelog/infraestructura-seguridad.md`.
 
 El feed decide si un movimiento de encargo es un "ingreso real" que debe mostrarse (`esIngresoReal`) con la misma `clase` (`ingreso`) que usan los totales del mes, con las banderas antiguas (`_esExtraIngreso` / `_esDiferencialEncargo`) solo como respaldo para movimientos sin `clase`. Ya no mantiene su propia copia de la regla.
 
@@ -110,7 +110,7 @@ Carga lazy del módulo → render inmediato al final del archivo
 | Cobro de Spotify | No duplica: `spotify.js` no escribe en `S.movimientos`; el cobro vive solo en `S.spotify.historial`. El pago del ciclo sale una vez, como gasto "Spotify Premium". |
 | Cajitas Nu | No hay lista aparte: su historial vive en `S.movimientos` con `fuente: 'cajita:ID'` (no existe `cajita.historial`), así que lo que entra a una cajita sale por la primera fila de la tabla y con las mismas exclusiones. |
 | Mesada | No duplica: `mesada.js` solo escribe el espejo (`_mesadaEntrar`) y el feed no lee `S.mesadas`, así que sale una vez, como "Ingreso". |
-| Encargos | No duplica (`encargos.js` deja sus espejos en `S.movimientos` con `_encMovId`, que se filtra). Márgenes y `_esAbonoDeudor` también filtrados. |
+| Encargos | No duplica (`encargos.js` deja sus espejos en `S.movimientos` con `_encargoMovimientoId`, que se filtra). Márgenes y `_esAbonoDeudor` también filtrados. |
 | Alcancía | No duplica: sus espejos van a `S.movimientos` con `_esAlcancia` (filtrados) y su `historial` es el de `S.alcancia`, no el de una cajita. |
 
 **Criterio para el fix:** se descarta por caso, no con un filtro general. Ni `_secundario` ni `_esEntradaEspejoNoIngreso()` sirven como filtro del feed: la primera también marca filas que no tienen otra fuente (el gasto "Spotify Premium", el perdón, los espejos de "Yo debo") y la segunda responde "¿es ingreso nuevo?", no "¿ya lo cubre otra fuente?". Por eso el espejo de "Me deben" se oculta solo cuando un abono lo referencia por id: un espejo sin referencia (por ejemplo la propina) sigue visible. Si un módulo nuevo crea un espejo, hay que revisar acá qué fuente lo cubre.
@@ -144,7 +144,7 @@ Carga lazy del módulo → render inmediato al final del archivo
 | `_normSpotify(S)` | Cobros de `S.spotify.historial`. |
 | `_normEncargos(S)` | Movimientos de encargos (sin duplicados). |
 | `_normTC(S)` | Pagos de TC y avisos de corte. |
-| `_normCP(S)` | Plata comprometida recibida o pendiente. |
+| `_normPlataComprometida(S)` | Plata comprometida recibida o pendiente. |
 | `_labelFecha(f)` | "Hoy", "Ayer", "12 sep" o "Sin fecha". |
 | `ICONOS` | Diccionario de SVG + fondo por `tipo`. |
 | `MAX_ITEMS` | 50. |
@@ -162,4 +162,4 @@ Carga lazy del módulo → render inmediato al final del archivo
 - `window.logCambio`: sin llamadores en los archivos revisados.
 - Si algún día se agrega un acceso directo desde el nav o el menú "Más", hay que sumar su selector al listener de clic.
 
-**Sin verificar:** en navegador real, ni con `html\`\`` / `raw()` reales simulando payloads maliciosos (la migración se hizo sin `html-tag.js` a la vista; ver `CHANGELOG.md#actividad-reciente`).
+**Sin verificar:** en navegador real, ni con `html\`\`` / `raw()` reales simulando payloads maliciosos (la migración se hizo sin `html-tag.js` a la vista; ver `changelog/actividad-reciente.md`).

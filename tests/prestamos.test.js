@@ -1,4 +1,5 @@
 'use strict';
+const { htmlClasico } = require('./support/html-clasico');
 // tests/prestamos.test.js — Préstamos: Me deben / Yo debo, saldos de deudas, deudas sin cuenta y margen de "El valor era diferente".
 // Un archivo por sección de la app. Cada bloque `describe` es lo que antes era un archivo suelto.
 // Corre con:  node --test tests/prestamos.test.js   (o todo: npm test)
@@ -17,7 +18,7 @@ describe('medeben', () => {
 
   // "Me deben": registrar un movimiento se divide en _planMovimiento() (lee el formulario y valida, sin escribir;
   // necesita DOM, no se prueba acá) y _aplicarMovimiento(plan) (escribe, sin validaciones). Estos tests arman el plan
-  // a mano y comprueban el efecto financiero y que _revertirMovDeudor() lo deshace exacto.
+  // a mano y comprueban el efecto financiero y que _revertirMovimientoDeudor() lo deshace exacto.
   // Orden igual que index.html: core-state → cuenta-efectos → calc-helpers → módulo.
   function freshApp() {
     const ctx = loadApp([
@@ -44,40 +45,40 @@ describe('medeben', () => {
   }
   const saldo = (ctx, id) => ctx.S.cuentas.find((c) => c.id === String(id).replace('cuenta:', '')).saldo;
   const debe = (ctx) => ctx.getDeudorSaldo(ctx.S.deudores[0]);
-  const plan = (ctx, o) => Object.assign({ d: ctx.S.deudores[0], tipo: 'abono', fecha: '2026-10-02', nota: '', perdon: false, enc: null, destinos: null, destino: '', tieneExtra: false, extraMonto: 0, extPartes: [] }, o);
+  const plan = (ctx, o) => Object.assign({ d: ctx.S.deudores[0], tipo: 'abono', fecha: '2026-10-02', nota: '', perdon: false, encargo: null, destinos: null, destino: '', tieneExtra: false, extraMonto: 0, extPartes: [] }, o);
   function aplicar(ctx, o) { const p = plan(ctx, o); ctx._aplicarMovimiento(p); return ctx.S.deudores[0].movimientos[ctx.S.deudores[0].movimientos.length - 1]; }
-  function revertir(ctx, mov) { ctx._revertirMovDeudor(ctx.S.deudores[0], mov); }
+  function revertir(ctx, movimiento) { ctx._revertirMovimientoDeudor(ctx.S.deudores[0], movimiento); }
 
   test('Me deben — préstamo simple: sale de la cuenta, la deuda sube, el patrimonio queda igual; revertir lo deja como estaba', () => {
     const ctx = freshApp(); const p0 = ctx.calcPatrimonioTotal();
-    const mov = aplicar(ctx, { tipo: 'prestamo', monto: 30000, montoSalio: 30000, hayMargen: false, fuentes: null, fuente: 'cuenta:efectivo' });
+    const movimiento = aplicar(ctx, { tipo: 'prestamo', monto: 30000, montoSalio: 30000, hayMargen: false, fuentes: null, fuente: 'cuenta:efectivo' });
     assert.equal(saldo(ctx, 'cuenta:efectivo'), 70000);
     assert.equal(debe(ctx), 130000);
     assert.equal(ctx.calcPatrimonioTotal(), p0, 'prestar no cambia el patrimonio (activo ↓, plata prestada ↑)');
-    revertir(ctx, mov);
+    revertir(ctx, movimiento);
     assert.equal(saldo(ctx, 'cuenta:efectivo'), 100000);
     assert.equal(debe(ctx), 100000);
   });
 
   test('Me deben — préstamo dividido entre cuentas (una fila "ganancia" no descuenta ninguna cuenta)', () => {
     const ctx = freshApp();
-    const mov = aplicar(ctx, { tipo: 'prestamo', monto: 50000, montoSalio: 50000, hayMargen: false, fuente: '', fuentes: [{ fuente: 'cuenta:efectivo', monto: 20000 }, { fuente: 'cuenta:nequi', monto: 20000 }, { fuente: 'ganancia', monto: 10000 }] });
+    const movimiento = aplicar(ctx, { tipo: 'prestamo', monto: 50000, montoSalio: 50000, hayMargen: false, fuente: '', fuentes: [{ fuente: 'cuenta:efectivo', monto: 20000 }, { fuente: 'cuenta:nequi', monto: 20000 }, { fuente: 'ganancia', monto: 10000 }] });
     assert.equal(saldo(ctx, 'cuenta:efectivo'), 80000);
     assert.equal(saldo(ctx, 'cuenta:nequi'), 180000);
-    assert.equal(mov._gananciaVirtual, 10000);
-    revertir(ctx, mov);
+    assert.equal(movimiento._gananciaVirtual, 10000);
+    revertir(ctx, movimiento);
     assert.equal(saldo(ctx, 'cuenta:efectivo'), 100000);
     assert.equal(saldo(ctx, 'cuenta:nequi'), 200000);
   });
 
   test('Me deben — abono a una cuenta: la deuda baja, el patrimonio queda igual, y deja movimiento espejo en la cuenta', () => {
     const ctx = freshApp(); const p0 = ctx.calcPatrimonioTotal();
-    const mov = aplicar(ctx, { monto: 20000, destino: 'cuenta:nequi' });
+    const movimiento = aplicar(ctx, { monto: 20000, destino: 'cuenta:nequi' });
     assert.equal(saldo(ctx, 'cuenta:nequi'), 220000);
     assert.equal(debe(ctx), 80000);
     assert.equal(ctx.calcPatrimonioTotal(), p0);
     assert.equal(ctx.S.movimientos.filter((m) => m._secundario && m.tipo === 'entrada').length, 1);
-    revertir(ctx, mov);
+    revertir(ctx, movimiento);
     assert.equal(saldo(ctx, 'cuenta:nequi'), 200000);
     assert.equal(debe(ctx), 100000);
     assert.equal(ctx.S.movimientos.length, 0);
@@ -85,10 +86,10 @@ describe('medeben', () => {
 
   test('Me deben — abono dividido entre cuentas, y el que va "sin cuenta" no mueve ningún saldo', () => {
     const ctx = freshApp();
-    const mov = aplicar(ctx, { monto: 30000, destinos: [{ fuente: 'cuenta:nequi', monto: 12000 }, { fuente: 'cuenta:efectivo', monto: 18000 }] });
+    const movimiento = aplicar(ctx, { monto: 30000, destinos: [{ fuente: 'cuenta:nequi', monto: 12000 }, { fuente: 'cuenta:efectivo', monto: 18000 }] });
     assert.equal(saldo(ctx, 'cuenta:nequi'), 212000);
     assert.equal(saldo(ctx, 'cuenta:efectivo'), 118000);
-    revertir(ctx, mov);
+    revertir(ctx, movimiento);
     assert.equal(saldo(ctx, 'cuenta:nequi'), 200000);
     assert.equal(saldo(ctx, 'cuenta:efectivo'), 100000);
     const sin = aplicar(ctx, { monto: 7000, destino: '' });
@@ -100,37 +101,37 @@ describe('medeben', () => {
 
   test('Me deben — perdón = gasto real: la deuda queda en 0, ninguna cuenta se mueve, el patrimonio baja lo perdonado', () => {
     const ctx = freshApp(); const p0 = ctx.calcPatrimonioTotal();
-    const mov = aplicar(ctx, { tipo: 'pago-completo', monto: 100000, perdon: true });
+    const movimiento = aplicar(ctx, { tipo: 'pago_completo', monto: 100000, perdon: true });
     assert.equal(debe(ctx), 0);
     assert.equal(saldo(ctx, 'cuenta:nequi'), 200000);
     assert.equal(ctx.calcPatrimonioTotal() - p0, -100000, 'lo que te debían deja de ser un activo');
     assert.equal(ctx.S.gastosVar.length, 1);
     assert.equal(ctx._esGastoVarNoReal(ctx.S.gastosVar[0]), false, 'cuenta como gasto real');
-    revertir(ctx, mov);
+    revertir(ctx, movimiento);
     assert.equal(debe(ctx), 100000);
     assert.equal(ctx.S.gastosVar.length, 0);
   });
 
   test('Me deben — abono con extra: guardar es ingreso real, gastar es gasto, pendiente es ingreso sin cuenta, regalar no mueve nada', () => {
     const ctx = freshApp();
-    const mov = aplicar(ctx, {
+    const movimiento = aplicar(ctx, {
       monto: 20000, destino: 'cuenta:nequi', tieneExtra: true, extraMonto: 10000,
       extPartes: [{ tipo: 'guardar', cuenta: 'cuenta:efectivo', monto: 4000 }, { tipo: 'gastar', monto: 2000, desc: 'x' }, { tipo: 'regalar', monto: 1000 }, { tipo: 'pendiente', monto: 3000 }],
     });
     assert.equal(saldo(ctx, 'cuenta:efectivo'), 104000);
     assert.equal(debe(ctx), 80000, 'solo el abono (20.000) reduce la deuda de 100.000; el extra no');
     // El abono y el extra guardado comparten _abonoId: la cuenta los muestra como un solo movimiento (mejora 5)
-    const partesAbono = ctx.S.movimientos.filter((m) => m._abonoId === mov.id);
+    const partesAbono = ctx.S.movimientos.filter((m) => m._abonoId === movimiento.id);
     assert.deepEqual(Array.from(partesAbono, (m) => m._parteAbono).sort(), ['abono', 'extra']);
     assert.equal(ctx.S.gastosVar.length, 1);
     assert.equal(ctx._esGastoVarNoReal(ctx.S.gastosVar[0]), false, 'el extra gastado cuenta como gasto real');
     assert.equal(ctx.S.ingresosExtra.length, 1);
     const ings = ctx.S.movimientos.filter((m) => m._esExtraIngreso);
     assert.equal(ings.length, 2, 'el extra guardado en una cuenta Y el gastado al instante son ingreso real (plata nueva)');
-    ings.forEach((ing) => assert.equal(ctx._esEntradaEspejoNoIngreso(ing), false));
+    ings.forEach((ingreso) => assert.equal(ctx._esEntradaEspejoNoIngreso(ingreso), false));
     assert.equal(ctx.entradasIngresoReal().reduce((a, m) => a + m.monto, 0), 6000, 'ingresos: 4.000 guardados + 2.000 gastados (los 1.000 regalados no entraron)');
-    assert.equal(mov._extPartes.length, 4);
-    revertir(ctx, mov);
+    assert.equal(movimiento._extPartes.length, 4);
+    revertir(ctx, movimiento);
     assert.equal(saldo(ctx, 'cuenta:efectivo'), 100000);
     assert.equal(saldo(ctx, 'cuenta:nequi'), 200000);
     assert.equal(ctx.S.gastosVar.length + ctx.S.ingresosExtra.length + ctx.S.movimientos.length, 0);
@@ -138,35 +139,35 @@ describe('medeben', () => {
 
   test('Me deben — abono vía encargo: descuenta el encargo, no el patrimonio total; revertir devuelve la salida del encargo', () => {
     const ctx = freshApp();
-    const enc = ctx.S.encargos[0];
-    const mov = aplicar(ctx, { monto: 30000, destino: 'cuenta:nequi', enc, encCuentaSplits: null, encCuenta: 'cuenta:efectivo' });
+    const encargo = ctx.S.encargos[0];
+    const movimiento = aplicar(ctx, { monto: 30000, destino: 'cuenta:nequi', encargo, encargoCuentaSplits: null, encargoCuenta: 'cuenta:efectivo' });
     assert.equal(saldo(ctx, 'cuenta:nequi'), 230000);
-    assert.equal(enc.movimientos.length, 1);
-    assert.equal(enc.movimientos[0].tipo, 'salida');
-    assert.equal(enc.movimientos[0].cuenta, 'cuenta:efectivo');
-    assert.equal(mov._viaEncargo, true);
-    revertir(ctx, mov);
+    assert.equal(encargo.movimientos.length, 1);
+    assert.equal(encargo.movimientos[0].tipo, 'salida');
+    assert.equal(encargo.movimientos[0].cuenta, 'cuenta:efectivo');
+    assert.equal(movimiento._viaEncargo, true);
+    revertir(ctx, movimiento);
     assert.equal(saldo(ctx, 'cuenta:nequi'), 200000);
-    assert.equal(enc.movimientos.length, 0);
+    assert.equal(encargo.movimientos.length, 0);
   });
 
   test('Me deben — abono vía encargo con la plata saliendo de dos cuentas del encargo: una salida por cuenta, todas se revierten', () => {
     const ctx = freshApp();
-    const enc = ctx.S.encargos[0];
-    const mov = aplicar(ctx, { monto: 30000, destino: 'cuenta:nequi', enc, encCuentaSplits: [{ fuente: 'cuenta:efectivo', monto: 10000 }, { fuente: 'cuenta:nequi', monto: 20000 }], encCuenta: '' });
-    assert.equal(enc.movimientos.length, 2);
-    assert.equal(new Set(enc.movimientos.map((m) => m._grupoAbonoId)).size, 1, 'comparten el mismo grupo para tratarse como una unidad');
-    revertir(ctx, mov);
-    assert.equal(enc.movimientos.length, 0);
+    const encargo = ctx.S.encargos[0];
+    const movimiento = aplicar(ctx, { monto: 30000, destino: 'cuenta:nequi', encargo, encargoCuentaSplits: [{ fuente: 'cuenta:efectivo', monto: 10000 }, { fuente: 'cuenta:nequi', monto: 20000 }], encargoCuenta: '' });
+    assert.equal(encargo.movimientos.length, 2);
+    assert.equal(new Set(encargo.movimientos.map((m) => m._grupoAbonoId)).size, 1, 'comparten el mismo grupo para tratarse como una unidad');
+    revertir(ctx, movimiento);
+    assert.equal(encargo.movimientos.length, 0);
   });
 
   test('Me deben — préstamo vía tarjeta: revertir baja la deuda de la TC y quita su cargo', () => {
     const ctx = freshApp();
     ctx.S.tarjetasCredito = [{ id: 'tc1', nombre: 'Visa', cupo: 100000, deuda: 30000, estado: 'activa', compras: [], pagos: [], saldoInicial: null }];
-    ctx.S.tcMovimientos = [{ id: 'x', tcId: 'tc1', tipo: 'cargo_prestamo', monto: 30000, _deudorMovId: 'mt' }];
+    ctx.S.tcMovimientos = [{ id: 'x', tcId: 'tc1', tipo: 'cargo_prestamo', monto: 30000, _deudorMovimientoId: 'mt' }];
     const d = ctx.S.deudores[0];
     d.movimientos.push({ id: 'mt', tipo: 'prestamo', monto: 30000, fecha: '2026-09-20', _viaTC: true, _tcId: 'tc1', _tcMonto: 30000 });
-    ctx._revertirMovDeudor(d, d.movimientos.find((m) => m.id === 'mt'));
+    ctx._revertirMovimientoDeudor(d, d.movimientos.find((m) => m.id === 'mt'));
     assert.equal(ctx.S.tarjetasCredito[0].deuda, 0);
     assert.equal(ctx.S.tcMovimientos.length, 0);
     assert.equal(d.movimientos.some((m) => m.id === 'mt'), false);
@@ -174,10 +175,10 @@ describe('medeben', () => {
 
   test('Me deben — revertir un abono cuyo espejo ya no existe NO devuelve el saldo otra vez', () => {
     const ctx = freshApp();
-    const mov = aplicar(ctx, { monto: 30000, destino: 'cuenta:nequi' });
+    const movimiento = aplicar(ctx, { monto: 30000, destino: 'cuenta:nequi' });
     assert.equal(saldo(ctx, 'cuenta:nequi'), 230000);
     ctx.S.movimientos = []; // alguien borró el espejo a mano
-    revertir(ctx, mov);
+    revertir(ctx, movimiento);
     assert.equal(saldo(ctx, 'cuenta:nequi'), 230000);
   });
 
@@ -194,7 +195,7 @@ describe('medeben', () => {
     assert.equal(ctx.calcPatrimonioTotal() - p0, -30000);
     // perdonar lo que queda = pago completo
     const resto = aplicar(ctx, { tipo: 'abono', monto: 70000, perdon: true });
-    assert.equal(resto.tipo, 'pago-completo');
+    assert.equal(resto.tipo, 'pago_completo');
     assert.equal(debe(ctx), 0);
     assert.equal(ctx.S.gastosVar.length, 2);
     // revertir solo la primera
@@ -208,7 +209,7 @@ describe('medeben', () => {
     const ctx = freshApp();
     aplicar(ctx, { tipo: 'abono', monto: 30000, perdon: true });
     const d = ctx.S.deudores[0];
-    const recibido = d.movimientos.filter((m) => (m.tipo === 'abono' || m.tipo === 'pago-completo') && !m._perdon);
+    const recibido = d.movimientos.filter((m) => (m.tipo === 'abono' || m.tipo === 'pago_completo') && !m._perdon);
     assert.equal(recibido.length, 0);
   });
 });
@@ -284,7 +285,7 @@ describe('deudas', () => {
 });
 
 describe('deudas-sin-cuenta', () => {
-  // Deudas sin pata de caja (core-state.js _movsDeudaSinCuenta): un préstamo/abono/pago que mueve el patrimonio sin
+  // Deudas sin pata de caja (core-state.js _movimientosDeudaSinCuenta): un préstamo/abono/pago que mueve el patrimonio sin
   // pasar por ninguna cuenta es un AJUSTE de base (como una apertura), no crecimiento ni ingreso/gasto del mes.
   const test = require('node:test');
   const assert = require('node:assert/strict');
@@ -314,7 +315,7 @@ describe('deudas-sin-cuenta', () => {
   test('Me deben — un abono o pago recibido sin cuenta destino es ajuste (−); con destino/destinos o perdón no', () => {
     const ctx = app({ deudores: d([
       { id: 'a', tipo: 'abono', monto: 600, fecha: '2026-09-17' },
-      { id: 'b', tipo: 'pago-completo', monto: 1000, fecha: '2026-09-18', destino: '' },
+      { id: 'b', tipo: 'pago_completo', monto: 1000, fecha: '2026-09-18', destino: '' },
       { id: 'c', tipo: 'abono', monto: 5000, fecha: '2026-09-19', destino: 'cuenta:efectivo' },
       { id: 'e', tipo: 'abono', monto: 308000, fecha: '2026-10-03', destinos: [{ fuente: 'cajita:x', monto: 308000 }] },
       { id: 'f', tipo: 'abono', monto: 7000, fecha: '2026-10-04', _perdon: true },
@@ -369,25 +370,25 @@ describe('prestamo-margen', () => {
   const core = f => path.join(RAIZ, 'js', 'core', f), modulo = f => path.join(RAIZ, 'js', 'modules', f);
   const ARCHIVOS = [core('core-state.js'), core('periodo.js'), core('nu-calc.js'), core('calc-helpers.js'), core('cuenta-efectos.js'), core('diferencial.js'), core('split.js'), core('diferencial.js'), modulo('prestado.js')];
 
-  function cargar(inst) {
+  function cargar(instancia) {
     const app = loadApp(ARCHIVOS, { permissive: true });
     Object.assign(app.S, { modulos: {}, libro: [], movimientos: [], gastosVar: [], cajitas: [], deudores: [], misDeudas: [], tarjetasCredito: [{ id: 'tc1', nombre: 'TC', deuda: 0, cupo: 1e7 }],
       cuentas: [{ id: 'nequi', tipo: 'billetera', nombre: 'Nequi', saldo: 0 }, { id: 'efectivo', tipo: 'efectivo', nombre: 'Efectivo', saldo: 0 }] });
-    const dom = createFakeDom({ [inst + '_monto']: { value: '700000' }, [inst + '_dif_real']: { value: '698000' }, [inst + '-dif-body']: { style: { display: '' } } });
+    const dom = createFakeDom({ [instancia + '_monto']: { value: '700000' }, [instancia + '_dif_real']: { value: '698000' }, [instancia + '-dif-body']: { style: { display: '' } } });
     app.document = dom.document;
     return app;
   }
 
   test('Préstamo con TC — el margen queda enlazado al préstamo y borrarlo lo quita (no sigue contando como ingreso)', () => {
     const app = cargar('prtc');
-    const movId = 'mp1';
+    const movimientoId = 'mp1';
     const d = { id: 'd1', nombre: 'Ana', movimientos: [] };
-    const m = { id: movId, tipo: 'prestamo', monto: 700000, fecha: '2026-10-13', _viaTC: true, _tcId: 'tc1', _tcMonto: 698000 };
+    const m = { id: movimientoId, tipo: 'prestamo', monto: 700000, fecha: '2026-10-13', _viaTC: true, _tcId: 'tc1', _tcMonto: 698000 };
     d.movimientos.push(m); app.S.deudores.push(d); app.S.tarjetasCredito[0].deuda = 698000;
-    m.diferencial = app.diffAplicar('prtc', { desc: 'x', fecha: '2026-10-13', _deudorNombre: 'Ana' }, movId);
+    m.diferencial = app.diffAplicar('prtc', { desc: 'x', fecha: '2026-10-13', _deudorNombre: 'Ana' }, movimientoId);
     assert.ok(m.diferencial, 'hubo margen');
     assert.equal(app.Periodo.ingresosDelMes('2026-10').entradas, 2000, 'el margen cuenta como ingreso mientras exista');
-    app._revertirMovDeudor(d, m);
+    app._revertirMovimientoDeudor(d, m);
     assert.equal(app.S.movimientos.length, 0, 'el margen se fue con el préstamo');
     assert.equal(app.Periodo.ingresosDelMes('2026-10').entradas, 0);
     assert.equal(app.S.tarjetasCredito[0].deuda, 0);
@@ -422,8 +423,8 @@ describe('yodebo', () => {
     || path.join(__dirname, '..', 'js', 'modules');
 
   // "Yo debo": lo que se prueba acá es el efecto financiero, sin pantalla.
-  // _planMovMiDeuda() lee el formulario (DOM) y arma el plan; _aplicarMovMiDeuda(plan)
-  // y _revertirMovMiDeuda(mov) son puras sobre S, así que se prueban directo con un plan armado a mano.
+  // _planMovimientoMiDeuda() lee el formulario (DOM) y arma el plan; _aplicarMovimientoMiDeuda(plan)
+  // y _revertirMovimientoMiDeuda(mov) son puras sobre S, así que se prueban directo con un plan armado a mano.
   // Orden igual que index.html: core-state → cuenta-efectos → calc-helpers → módulos.
   // permissive: prestado.js referencia funciones de UI (openSheet/toast/Events) a nivel de módulo.
   function freshApp() {
@@ -454,16 +455,16 @@ describe('yodebo', () => {
   function plan(ctx, o) {
     return Object.assign({ d: ctx.S.misDeudas[0], tipo: 'pago', fecha: '2026-10-02', nota: '', perdon: false, extra: 0, partido: false }, o);
   }
-  function eliminar(ctx, mov) {
-    ctx._revertirMovMiDeuda(mov);
+  function eliminar(ctx, movimiento) {
+    ctx._revertirMovimientoMiDeuda(movimiento);
     const d = ctx.S.misDeudas[0];
-    d.movimientos = d.movimientos.filter((x) => x.id !== mov.id);
+    d.movimientos = d.movimientos.filter((x) => x.id !== movimiento.id);
   }
 
   test('Yo debo — pago dividido entre dos cuentas: baja la deuda, no cambia el patrimonio, y eliminar lo revierte exacto', () => {
     const ctx = freshApp();
     const p0 = ctx.calcPatrimonioTotal();
-    const mov = ctx._aplicarMovMiDeuda(plan(ctx, {
+    const movimiento = ctx._aplicarMovimientoMiDeuda(plan(ctx, {
       monto: 40000, partido: true,
       cuentas: [{ cuenta: 'cuenta:efectivo', monto: 25000 }, { cuenta: 'cuenta:nequi', monto: 15000 }],
     }));
@@ -471,9 +472,9 @@ describe('yodebo', () => {
     assert.equal(saldo(ctx, 'cuenta:nequi'), 15000);
     assert.equal(debe(ctx), 50000);
     assert.equal(ctx.calcPatrimonioTotal(), p0, 'pagar una deuda no cambia el patrimonio neto');
-    assert.equal(mov.fuentes.length, 2);
+    assert.equal(movimiento.fuentes.length, 2);
     assert.equal(ctx.S.movimientos.filter((m) => m._secundario && m.tipo === 'salida').length, 2);
-    eliminar(ctx, mov);
+    eliminar(ctx, movimiento);
     assert.equal(saldo(ctx, 'cuenta:efectivo'), 50000);
     assert.equal(saldo(ctx, 'cuenta:nequi'), 30000);
     assert.equal(debe(ctx), 90000);
@@ -483,7 +484,7 @@ describe('yodebo', () => {
   test('Yo debo — recibido dividido: patrimonio neutro (el activo sube y la deuda también)', () => {
     const ctx = freshApp();
     const p0 = ctx.calcPatrimonioTotal();
-    ctx._aplicarMovMiDeuda(plan(ctx, {
+    ctx._aplicarMovimientoMiDeuda(plan(ctx, {
       tipo: 'recibido', monto: 20000, partido: true,
       cuentas: [{ cuenta: 'cuenta:efectivo', monto: 5000 }, { cuenta: 'cuenta:nequi', monto: 15000 }],
     }));
@@ -496,16 +497,16 @@ describe('yodebo', () => {
   test('Yo debo — perdón = ingreso real: deuda a 0, ninguna cuenta se mueve, patrimonio +lo perdonado', () => {
     const ctx = freshApp();
     const p0 = ctx.calcPatrimonioTotal();
-    const mov = ctx._aplicarMovMiDeuda(plan(ctx, { monto: 90000, perdon: true, cuentas: [] }));
+    const movimiento = ctx._aplicarMovimientoMiDeuda(plan(ctx, { monto: 90000, perdon: true, cuentas: [] }));
     assert.equal(debe(ctx), 0);
     assert.equal(saldo(ctx, 'cuenta:efectivo'), 50000);
     assert.equal(saldo(ctx, 'cuenta:nequi'), 30000);
     assert.equal(ctx.calcPatrimonioTotal() - p0, 90000);
-    const ing = ctx.S.movimientos.find((m) => m._esPerdonRecibido);
-    assert.equal(ing.fuente, '');
-    assert.equal(ctx._esEntradaEspejoNoIngreso(ing), false, 'tiene que contar como ingreso, no como espejo');
-    assert.equal(mov._perdon, true);
-    eliminar(ctx, mov);
+    const ingreso = ctx.S.movimientos.find((m) => m._esPerdonRecibido);
+    assert.equal(ingreso.fuente, '');
+    assert.equal(ctx._esEntradaEspejoNoIngreso(ingreso), false, 'tiene que contar como ingreso, no como espejo');
+    assert.equal(movimiento._perdon, true);
+    eliminar(ctx, movimiento);
     assert.equal(debe(ctx), 90000);
     assert.equal(ctx.S.movimientos.length, 0);
     assert.equal(ctx.calcPatrimonioTotal(), p0);
@@ -515,14 +516,14 @@ describe('yodebo', () => {
     const ctx = freshApp();
     ctx.S.cuentas.find((c) => c.id === 'efectivo').saldo = 100000;
     const p0 = ctx.calcPatrimonioTotal();
-    const mov = ctx._aplicarMovMiDeuda(plan(ctx, { monto: 90000, extra: 5000, cuentas: [{ cuenta: 'cuenta:efectivo', monto: 95000 }] }));
+    const movimiento = ctx._aplicarMovimientoMiDeuda(plan(ctx, { monto: 90000, extra: 5000, cuentas: [{ cuenta: 'cuenta:efectivo', monto: 95000 }] }));
     assert.equal(saldo(ctx, 'cuenta:efectivo'), 5000);
     assert.equal(debe(ctx), 0);
     assert.equal(ctx.calcPatrimonioTotal() - p0, -5000, 'solo el extra es gasto');
     assert.equal(ctx.S.gastosVar.length, 1);
     assert.equal(ctx.S.gastosVar[0].monto, 5000);
     assert.equal(ctx._esGastoVarNoReal(ctx.S.gastosVar[0]), false, 'cuenta como gasto real');
-    eliminar(ctx, mov);
+    eliminar(ctx, movimiento);
     assert.equal(saldo(ctx, 'cuenta:efectivo'), 100000);
     assert.equal(debe(ctx), 90000);
     assert.equal(ctx.S.gastosVar.length, 0);
@@ -531,7 +532,7 @@ describe('yodebo', () => {
   test('Yo debo — pago con tarjeta: deuda PROPIA de la TC, patrimonio igual, sobrevive al refresh y se revierte', () => {
     const ctx = freshApp();
     const p0 = ctx.calcPatrimonioTotal();
-    const mov = ctx._aplicarMovMiDeuda(plan(ctx, { monto: 40000, cuentas: [{ cuenta: 'tc:tc1', monto: 40000 }] }));
+    const movimiento = ctx._aplicarMovimientoMiDeuda(plan(ctx, { monto: 40000, cuentas: [{ cuenta: 'tc:tc1', monto: 40000 }] }));
     const tc = ctx.S.tarjetasCredito[0];
     assert.equal(tc.deuda, 40000);
     assert.equal(debe(ctx), 50000);
@@ -543,7 +544,7 @@ describe('yodebo', () => {
     // tcRecalcular corre en cada refresh y reconstruye tc.deuda desde los cargos:
     ctx.tcNormalizarTarjetas();
     assert.equal(tc.deuda, 40000, 'si cargo_deuda no estuviera en _tcEsCargoExterno, esto daría 0');
-    eliminar(ctx, mov);
+    eliminar(ctx, movimiento);
     assert.equal(tc.deuda, 0);
     assert.equal(ctx.S.tcMovimientos.length, 0);
     ctx.tcNormalizarTarjetas();
@@ -553,14 +554,14 @@ describe('yodebo', () => {
 
   test('Yo debo — pago dividido efectivo + tarjeta, y eliminarlo devuelve ambos', () => {
     const ctx = freshApp();
-    const mov = ctx._aplicarMovMiDeuda(plan(ctx, {
+    const movimiento = ctx._aplicarMovimientoMiDeuda(plan(ctx, {
       monto: 60000, partido: true,
       cuentas: [{ cuenta: 'cuenta:efectivo', monto: 20000 }, { cuenta: 'tc:tc1', monto: 40000 }],
     }));
     assert.equal(saldo(ctx, 'cuenta:efectivo'), 30000);
     assert.equal(ctx.S.tarjetasCredito[0].deuda, 40000);
     assert.equal(debe(ctx), 30000);
-    eliminar(ctx, mov);
+    eliminar(ctx, movimiento);
     assert.equal(saldo(ctx, 'cuenta:efectivo'), 50000);
     assert.equal(ctx.S.tarjetasCredito[0].deuda, 0);
     assert.equal(ctx.S.movimientos.length + ctx.S.tcMovimientos.length, 0);
@@ -577,18 +578,18 @@ describe('yodebo', () => {
 
   test('Yo debo — si el movimiento espejo ya no existe, eliminar NO devuelve el saldo otra vez (evita doble reversión)', () => {
     const ctx = freshApp();
-    const mov = ctx._aplicarMovMiDeuda(plan(ctx, { monto: 10000, cuentas: [{ cuenta: 'cuenta:efectivo', monto: 10000 }] }));
+    const movimiento = ctx._aplicarMovimientoMiDeuda(plan(ctx, { monto: 10000, cuentas: [{ cuenta: 'cuenta:efectivo', monto: 10000 }] }));
     assert.equal(saldo(ctx, 'cuenta:efectivo'), 40000);
     ctx.S.movimientos = []; // alguien borró el espejo a mano
-    eliminar(ctx, mov);
+    eliminar(ctx, movimiento);
     assert.equal(saldo(ctx, 'cuenta:efectivo'), 40000);
   });
 
-  test('cuenta-efectos — registrarMovEspejo / borrarMovEspejo: sin cuenta, tipo desconocido o cuenta borrada devuelven null/false', () => {
+  test('cuenta-efectos — registrarMovimientoEspejo / borrarMovimientoEspejo: sin cuenta, tipo desconocido o cuenta borrada devuelven null/false', () => {
     const ctx = freshApp();
     ctx.S.cuentas.push({ id: 'c1', tipo: 'banco', nombre: 'Cta', saldo: 0 });
     ctx.S.cajitas.push({ id: 'cj1', nombre: 'Caj', saldo: 0 });
-    const r = (cuenta, flujo) => ctx.registrarMovEspejo({ cuenta, flujo, monto: 1000, fecha: '2026-10-02', desc: 'x', origen: 'T' });
+    const r = (cuenta, flujo) => ctx.registrarMovimientoEspejo({ cuenta, flujo, monto: 1000, fecha: '2026-10-02', desc: 'x', origen: 'T' });
     assert.equal(r('', 'entrada'), null);
     assert.equal(r('ganancia', 'entrada'), null);
     assert.equal(r('cuenta:noexiste', 'entrada'), null);
@@ -603,20 +604,20 @@ describe('yodebo', () => {
     assert.deepEqual([fila(c).fuente, fila(c).tipo], ['cajita:cj1', 'entrada']);
     assert.equal(ctx.S.cuentas.find((x) => x.id === 'c1').movimientos, undefined, 'la cuenta ya no tiene lista propia');
     assert.equal(ctx.S.cajitas[0].historial, undefined, 'la cajita tampoco');
-    assert.equal(ctx.borrarMovEspejo('cuenta:nequi', a), true);
-    assert.equal(ctx.borrarMovEspejo('cuenta:nequi', a), false);
-    assert.equal(ctx.borrarMovEspejo('cuenta:c1', b), true);
-    assert.equal(ctx.borrarMovEspejo('cajita:cj1', c), true);
+    assert.equal(ctx.borrarMovimientoEspejo('cuenta:nequi', a), true);
+    assert.equal(ctx.borrarMovimientoEspejo('cuenta:nequi', a), false);
+    assert.equal(ctx.borrarMovimientoEspejo('cuenta:c1', b), true);
+    assert.equal(ctx.borrarMovimientoEspejo('cajita:cj1', c), true);
     assert.equal(ctx.S.movimientos.length, 0);
   });
 
   test('Yo debo — grupos de préstamo: el primer "Me prestó" crea el Histórico y getGrupoSaldo cuenta lo recibido como deuda que sube', () => {
     const ctx = freshApp();
     ctx.S.misDeudas[0].movimientos = [];
-    const mov = ctx._aplicarMovMiDeuda(plan(ctx, { tipo: 'recibido', monto: 50000, cuentas: [{ cuenta: 'cuenta:efectivo', monto: 50000 }] }));
+    const movimiento = ctx._aplicarMovimientoMiDeuda(plan(ctx, { tipo: 'recibido', monto: 50000, cuentas: [{ cuenta: 'cuenta:efectivo', monto: 50000 }] }));
     const d = ctx.S.misDeudas[0];
     assert.equal(d.grupos.length, 1);
-    assert.equal(mov.grupoId, d.grupos[0].id);
+    assert.equal(movimiento.grupoId, d.grupos[0].id);
     assert.equal(ctx.getGrupoSaldo(d, d.grupos[0].id), 50000);
   });
 
@@ -624,7 +625,7 @@ describe('yodebo', () => {
     const ctx = freshApp();
     const d = ctx.S.misDeudas[0];
     d.movimientos = [];
-    ctx._aplicarMovMiDeuda(plan(ctx, { tipo: 'recibido', monto: 50000, cuentas: [{ cuenta: 'cuenta:efectivo', monto: 50000 }] })); // cae en el Histórico
+    ctx._aplicarMovimientoMiDeuda(plan(ctx, { tipo: 'recibido', monto: 50000, cuentas: [{ cuenta: 'cuenta:efectivo', monto: 50000 }] })); // cae en el Histórico
     const moto = ctx._crearGrupoDeudor(d, '2026-10-03', 'Moto');
     d.movimientos.push({ id: 'm1', tipo: 'recibido', monto: 30000, fecha: '2026-10-03', grupoId: moto.id });
     d.movimientos.push({ id: 'p1', tipo: 'pago', monto: 30000, fecha: '2026-10-04', grupoId: moto.id });
@@ -644,7 +645,7 @@ describe('yodebo', () => {
   test('Yo debo — el perdón cuenta en el ingreso del mes de Inicio (sin _prestadoDirectamente, una entrada sin cuenta no se contaba)', () => {
     const ctx = freshApp();
     const antes = ctx.calcHealthScore().ingresosMes;
-    ctx._aplicarMovMiDeuda(plan(ctx, { monto: 90000, perdon: true, cuentas: [], fecha: hoyISO() }));
+    ctx._aplicarMovimientoMiDeuda(plan(ctx, { monto: 90000, perdon: true, cuentas: [], fecha: hoyISO() }));
     assert.equal(ctx.calcHealthScore().ingresosMes - antes, 90000);
   });
 
@@ -652,28 +653,28 @@ describe('yodebo', () => {
     const ctx = freshApp();
     ctx.S.cuentas.find((c) => c.id === 'efectivo').saldo = 500000;
     const antes = ctx.calcHealthScore().ingresosMes;
-    ctx._aplicarMovMiDeuda(plan(ctx, { tipo: 'recibido', monto: 40000, cuentas: [{ cuenta: 'cuenta:efectivo', monto: 40000 }], fecha: hoyISO() }));
-    ctx._aplicarMovMiDeuda(plan(ctx, { monto: 20000, cuentas: [{ cuenta: 'cuenta:efectivo', monto: 20000 }], fecha: hoyISO() }));
+    ctx._aplicarMovimientoMiDeuda(plan(ctx, { tipo: 'recibido', monto: 40000, cuentas: [{ cuenta: 'cuenta:efectivo', monto: 40000 }], fecha: hoyISO() }));
+    ctx._aplicarMovimientoMiDeuda(plan(ctx, { monto: 20000, cuentas: [{ cuenta: 'cuenta:efectivo', monto: 20000 }], fecha: hoyISO() }));
     assert.equal(ctx.calcHealthScore().ingresosMes, antes, 'recibir un préstamo no es un ingreso');
     assert.equal(ctx.S.gastosVar.length, 0, 'pagar la deuda no es un gasto');
   });
 
   test('Yo debo — te perdonan UNA PARTE: la deuda baja, ninguna cuenta se mueve, el ingreso es lo perdonado y revertir lo quita', () => {
     const ctx = freshApp(); const p0 = ctx.calcPatrimonioTotal();
-    const mov = ctx._aplicarMovMiDeuda(plan(ctx, { monto: 40000, perdon: true, cuentas: [] }));
+    const movimiento = ctx._aplicarMovimientoMiDeuda(plan(ctx, { monto: 40000, perdon: true, cuentas: [] }));
     assert.equal(debe(ctx), 50000);
     assert.equal(saldo(ctx, 'cuenta:efectivo'), 50000);
     assert.equal(ctx.calcPatrimonioTotal() - p0, 40000);
-    const ing = ctx.S.movimientos.find((m) => m._esPerdonRecibido);
-    assert.equal(ing.monto, 40000);
-    assert.match(ing.desc, /parte de la deuda/);
-    assert.equal(ing._prestadoDirectamente, true);
+    const ingreso = ctx.S.movimientos.find((m) => m._esPerdonRecibido);
+    assert.equal(ingreso.monto, 40000);
+    assert.match(ingreso.desc, /parte de la deuda/);
+    assert.equal(ingreso._prestadoDirectamente, true);
     // perdonar el resto
-    const resto = ctx._aplicarMovMiDeuda(plan(ctx, { monto: 50000, perdon: true, cuentas: [] }));
+    const resto = ctx._aplicarMovimientoMiDeuda(plan(ctx, { monto: 50000, perdon: true, cuentas: [] }));
     assert.equal(debe(ctx), 0);
     assert.match(ctx.S.movimientos.filter((m) => m._esPerdonRecibido)[1].desc, /Me perdonó la deuda/);
     eliminar(ctx, resto);
-    eliminar(ctx, mov);
+    eliminar(ctx, movimiento);
     assert.equal(debe(ctx), 90000);
     assert.equal(ctx.S.movimientos.length, 0);
   });
@@ -743,7 +744,7 @@ describe('totalPrestadoPendiente', () => {
 
   test('getDeudorSaldo / getMiDeudaSaldo — una sola fórmula para las dos direcciones (Deudas.saldo)', () => {
     const ctx = freshApp();
-    const meDeben = { movimientos: [{ tipo: 'prestamo', monto: 300 }, { tipo: 'abono', monto: 100 }, { tipo: 'pago-completo', monto: 50 }] };
+    const meDeben = { movimientos: [{ tipo: 'prestamo', monto: 300 }, { tipo: 'abono', monto: 100 }, { tipo: 'pago_completo', monto: 50 }] };
     const yoDebo = { movimientos: [{ tipo: 'recibido', monto: 300 }, { tipo: 'pago', monto: 100 }] };
     assert.equal(ctx.getDeudorSaldo(meDeben), 150);
     assert.equal(ctx.getMiDeudaSaldo(yoDebo), 200);
@@ -833,7 +834,7 @@ describe('prestamos-formularios-comunes', () => {
   });
 
   test('nombres de botones: «Nuevo préstamo» (Me deben) y «Nueva deuda» (Yo debo); ya no existe «Me prestó más»', () => {
-    const html = fs.readFileSync(path.join(RAIZ, 'index.html'), 'utf8');
+    const html = htmlClasico(fs.readFileSync(path.join(RAIZ, 'index.html'), 'utf8'));
     assert.ok(/Nuevo préstamo\s*<\/span>/.test(html));
     assert.ok(/Nueva deuda\s*<\/span>/.test(html));
     assert.ok(html.includes('id="mdMovSheetTitle">Nueva deuda</div>'));

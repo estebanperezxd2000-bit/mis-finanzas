@@ -23,6 +23,24 @@ Los sheets y pantallas **no llevan `style="…"` en el HTML ni en los strings de
 
 Las filas de movimientos de Tarjetas, Encargos, Gastos y Cuentas se arman con `filaMovimiento({…})` y su botón de borrar con `botonEliminarFila(accion, args, titulo)` (ambos en `js/core/utilidades-ui.js`); no se escribe a mano `.gasto-item-top`. El borde o color de una variante se pide con una clase en `clase` (`tc-item-b-*`, `enc-item-b-*`), nunca con estilo en línea. Los atributos `data-mov-*` van en `attrs`. Una prueba (`tests/nucleo.test.js`, bloque `fila-movimiento`) falla si un módulo vuelve a repetir el esqueleto.
 
+## 0 bis. Clases CSS nuevas: reglas
+
+`css/styles.css` tiene unas 1.900 clases, todas en `kebab-case` salvo 11. Lo que no se entiende son los **prefijos**: 1.206 empiezan con una abreviatura opaca (`ix` 374, `cp` 190, `an` 123, `enc`, `pe`, `alc`, `mdet`, `pr`, `ms`, `sp`, `cfg`, `fb`…). Esas clases viejas se renombran **pantalla por pantalla al rediseñarla**; lo que se escribe desde ahora sigue estas reglas. `tests/convenciones.test.js` vigila las cuatro primeras con un trinquete (`node scripts/convenciones-css.js` muestra el recuento; `--actualizar` registra lo que baja): el número solo puede bajar.
+
+1. **Solo `kebab-case`:** sin `_`, sin mayúsculas (`mesada-fila-pago`). Una clase no se arma con un valor guardado que lleve `_` (`abono_deuda`): se mapea a un nombre en kebab.
+2. **El prefijo es el nombre completo del módulo o de la pantalla:** `mesada-`, `alcancia-`, `prestado-`, `encargos-`, `cuentas-`. Solo se permiten las abreviaturas oficiales del glosario (`tc`, `nu`, `cdt`). No se crean clases con prefijos opacos aunque sea «para seguir el estilo» de la pantalla; si se rediseña una pantalla, se renombra todo su prefijo de una vez, en la misma entrega (HTML, JS y CSS).
+3. **Los componentes compartidos no llevan prefijo de módulo** y se nombran por lo que son (`btn-…`, `field-…`, `badge-…`, `empty-state`, `c-green`). Si dos pantallas usan lo mismo, es compartido y va sin prefijo.
+4. **Se nombra por función, no por apariencia:** `saldo-total`, no `texto-verde-grande`; nada de `rojo`, `azul`, `izquierda`, `grande` en el nombre (hoy `cuenta-action-btn--azul` lo incumple).
+5. **Colores, radios y tiempos salen de las variables de `:root`** (`var(--accent)`, `var(--radius)`). Si un diseño necesita un valor nuevo, se agrega primero como variable. Hoy hay 64 colores hex sueltos fuera de `:root`; no puede subir.
+6. **Nada de `!important`** (hoy 42; no puede subir): si hace falta, el problema es el orden o la especificidad de las reglas.
+7. **Nada de `style="…"`** en el HTML ni en los strings de JS, salvo valores calculados al ejecutar (ver §0).
+8. **No se estiliza por `id`:** los ids son para el JS y las etiquetas (`for`); los estilos van por clase.
+9. **Los nombres de clase no se arman concatenando texto** (`'alc-' + tipo`): se escriben completos o se mapean con un objeto. Así se pueden buscar, y algún día se podrá comprobar con una prueba que cada clase usada esté definida.
+10. **Al reemplazar un diseño se borra el CSS viejo en la misma entrega:** no se dejan clases muertas.
+11. **Estados:** una clase aparte con prefijo `is-` (`is-activo`, `is-abierto`), no una variante del nombre. *(Propuesta: hoy no hay un patrón único; al rediseñar, usar este y no mezclar.)*
+
+---
+
 ## 1. Regla general de orden
 
 Para cualquier sheet que registre un movimiento de plata, el orden es siempre:
@@ -120,13 +138,21 @@ No usar "Sumar"/"Restar", "Entró plata"/"Salió plata" en Cuentas. **Encargos**
 
 ---
 
+## 2 ter. Cerrar una hoja: X, «Cancelar», «Cerrar» y Esc (hojas de Mesada; las demás se pasan cuando se acomode su módulo en PC)
+
+- **Formularios** (`sheet-mesada-pago`, `sheet-mesada-pend`): en celular, sin cambios («Guardar» y debajo «Cancelar», a todo el ancho). En PC, botón **X** arriba a la derecha (`.sheet-x`, con `data-close-sheet`) y «Cancelar» al lado de «Guardar», a la derecha y sin ocupar todo el ancho: los dos botones van dentro de `<div class="sheet-acciones">` (en celular es `display:contents`, no cambia nada; en PC es una fila).
+- **Hojas que solo informan** (`sheet-mesada-det`): en celular el botón de abajo dice **«Cerrar»** (no hay nada que cancelar; lleva `.sheet-cerrar-movil`); en PC no hay botón de abajo, se cierran con la X, con **Esc** o tocando fuera.
+- **Barra de arrastre (`.sheet-handle`):** solo celular; en PC se oculta en todas las hojas (es un modal centrado, no se arrastra).
+- **Esc** cierra la hoja de arriba de la pila solo si trae `.sheet-x` (`js/core/eventos-base.js`) y no hace nada con el diálogo de confirmación abierto. Tocar fuera ya cerraba todas las hojas.
+- Para sumar otra hoja: `<button type="button" class="sheet-x" data-close-sheet="ID" aria-label="Cerrar">…</button>` justo después del asa, y los botones del pie en `.sheet-acciones`.
+
 ## 3. Inventario de sheets por módulo
 
 ### Cuentas personalizadas
 
 **`sheet-nueva-cuenta`** — Nueva cuenta: Nombre → Saldo inicial → Ícono → Color
 
-Agregar/Retirar dinero de una cuenta personalizada ya no tiene sheet propio — desde el 2026-09-03 reutiliza `sheet-agregar-dinero`/`sheet-restar-dinero`/`sheet-editar-apertura` de la sección de abajo, exactamente con el mismo orden de campos que Nequi/Efectivo (incluido el toggle "Es saldo inicial"). El sheet viejo, `sheet-mov-cuenta-custom` (Descripción opcional → Monto → Fecha, sin ese toggle), se retiró — ver `CHANGELOG.md#cuentas`.
+Agregar/Retirar dinero de una cuenta personalizada ya no tiene sheet propio — desde el 2026-09-03 reutiliza `sheet-agregar-dinero`/`sheet-restar-dinero`/`sheet-editar-apertura` de la sección de abajo, exactamente con el mismo orden de campos que Nequi/Efectivo (incluido el toggle "Es saldo inicial"). El sheet viejo, `sheet-mov-cuenta-custom` (Descripción opcional → Monto → Fecha, sin ese toggle), se retiró — ver `changelog/cuentas.md`.
 
 ### Nequi, Efectivo y cuentas personalizadas
 
@@ -262,15 +288,15 @@ Agregar/Retirar dinero de una cuenta personalizada ya no tiene sheet propio — 
 
 > El detalle (tabla de efectos sobre saldos, tipos guardados, destape) vive en [`alcancia.md`](./alcancia.md); aquí solo lo que condiciona el diseño del sheet.
 
-El sheet "Depositar" **no tiene selector de tipo**: cada depósito se arma con **uno o varios orígenes** (`_alcOrigenOptsHtml`, select `alc_dep_origen`). Con un solo origen se guarda el tipo clásico; con varios ("Dividir…", `js/core/split.js`), tipo `multi` con `partes[]`, y cada parte tiene el efecto de su origen:
+El sheet "Depositar" **no tiene selector de tipo**: cada depósito se arma con **uno o varios orígenes** (`_alcanciaOrigenOptsHtml`, select `alc_dep_origen`). Con un solo origen se guarda el tipo clásico; con varios ("Dividir…", `js/core/split.js`), tipo `multi` con `partes[]`, y cada parte tiene el efecto de su origen:
 
 | Origen | Tipo guardado (un origen) | ¿Descuenta cuenta? | ¿Ingreso del mes? | Dónde queda |
 |---|---|---|---|---|
-| Una cuenta real | `yo-cuenta` | **Sí** | No (traslado) | `S.transferencias`, `origen: cuenta`, `destino: 'alcancia'`, `_esAlcancia: true` |
-| Plata mía (no estaba en ninguna cuenta) | `yo-directo` | No | **Sí** | `S.movimientos` tipo `'entrada'` con `_esAlcanciaIngreso: true` |
-| Regalo de mamá | `regalo` | No | **Sí** | Igual que `yo-directo` |
-| Pago de mamá por un mandado | `mandado` | No | **Sí** | Igual que `yo-directo` |
-| Me pagaron una deuda (solo con un origen) | `cobro-deuda` | No | No (reduce la deuda de la persona) | `d.movimientos[]` del deudor (Prestado) |
+| Una cuenta real | `yo_cuenta` | **Sí** | No (traslado) | `S.transferencias`, `origen: cuenta`, `destino: 'alcancia'`, `_esAlcancia: true` |
+| Plata mía (no estaba en ninguna cuenta) | `yo_directo` | No | **Sí** | `S.movimientos` tipo `'entrada'` con `_esAlcanciaIngreso: true` |
+| Regalo de mamá | `regalo` | No | **Sí** | Igual que `yo_directo` |
+| Pago de mamá por un mandado | `mandado` | No | **Sí** | Igual que `yo_directo` |
+| Me pagaron una deuda (solo con un origen) | `cobro_deuda` | No | No (reduce la deuda de la persona) | `d.movimientos[]` del deudor (Prestado) |
 
 **Regla mnemotécnica:** si la plata ya estaba en una cuenta tuya → traslado (no ingreso). Si viene de afuera (efectivo sin cuenta, regalo, mandado) → ingreso del mes.
 
@@ -300,16 +326,16 @@ Al destapar se generan hasta 3 movimientos automáticos, y **no son intercambiab
 |---|---|---|---|
 | "Alcancía destapada — saldo registrado" | Plata que **ya estaba contada** (ingreso al guardarla, o gasto al sacarla de una cuenta) y solo cambia de lugar | `transferencia` | Neutral: ni ingreso nuevo ni gasto. Si contara como `entrada`, el ingreso del mes quedaría inflado (doble conteo). |
 | "Dinero extra encontrado en alcancía" (diferencia positiva) | Plata real **nunca registrada** en ningún lado | `entrada` | Ingreso nuevo de verdad: debe sumar a "Ingresos estimados" del mes. |
-| "Ajuste alcancía — faltante" (diferencia negativa) | Plata esperada que no apareció | gasto en `S.gastosVar` con `_esAlcanciaAjuste: true` (no vive en `S.movimientos`) | Excluido de gastos normales. Llama `_sumarASaldo(destino, -absDif)` para que el saldo físico también quede correcto. |
+| "Ajuste alcancía — faltante" (diferencia negativa) | Plata esperada que no apareció | gasto en `S.gastosVar` con `_esAlcanciaAjuste: true` (no vive en `S.movimientos`) | Excluido de gastos normales. Llama `_sumarASaldo(destino, -absDiferencial)` para que el saldo físico también quede correcto. |
 
 **Reglas que no se deben romper en el código:**
 
 - En `S.movimientos`, `tipo` solo toma estos valores: `'entrada'`, `'salida'`, `'salida_manual'`, `'apertura'` y `'transferencia'`. **Cualquier otro valor (incluido `'ingreso'`) cae por descarte en la rama de "salida"** dentro de `getMovimientosCuenta()` y se muestra con signo negativo aunque el dinero esté entrando. Si un movimiento cuenta como ingreso o gasto del mes lo decide su `clase`, no el `tipo`.
 - Las cuentas personalizadas **no tienen convención propia**: su historial vive en `S.movimientos` con `fuente: 'custom:ID'` y los mismos `tipo` que Nequi o Efectivo (desde 2026-10-12; no existe `c.movimientos`). `_sumarASaldo()` solo mueve `c.saldo`; ver `cuentas.md`.
 - `_esAlcancia: true` oculta movimientos del feed general (`_normMovimientos`) — **no decide** si cuentan como ingreso; eso lo decide la `clase` guardada.
-- `_esAlcanciaIngreso: true` identifica los ingresos reales generados al momento del depósito (regalo, mandado, yo-directo, partes sin cuenta de un depósito dividido). Son tipo `'entrada'` y **sí aparecen** en el feed porque son ingresos reales visibles.
+- `_esAlcanciaIngreso: true` identifica los ingresos reales generados al momento del depósito (regalo, mandado, yo_directo, partes sin cuenta de un depósito dividido). Son tipo `'entrada'` y **sí aparecen** en el feed porque son ingresos reales visibles.
 - Al destapar, `S.alcancia.saldoRegistrado` se resetea a `0` — necesario porque `calcPatrimonioTotal()` suma ese campo mientras está activa; si no se reseteara, el dinero quedaría contado dos veces.
-- El historial (`entradaHist`) **incluye** `movimientos: [...a.movimientos]` para que las tarjetas de historial muestren el desglose por tipo. Sin esto, `_alcDesgloseHtml` no tendría de dónde sacar el desglose de los ciclos anteriores.
+- El historial (`entradaHistorial`) **incluye** `movimientos: [...a.movimientos]` para que las tarjetas de historial muestren el desglose por tipo. Sin esto, `_alcanciaDesgloseHtml` no tendría de dónde sacar el desglose de los ciclos anteriores.
 
 ---
 

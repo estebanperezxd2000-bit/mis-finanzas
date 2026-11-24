@@ -2,15 +2,18 @@
 //
 // applyModulos(): refleja S.modulos (Spotify, Mesada, «saldo inicial») en la interfaz: pestaña de Spotify, interruptores de
 // Configuración, banners de saldo inicial. Al final emite Ui 'modulos' para que otros módulos (menú Más…) se ajusten.
-function applyModulos(){
+import { exponerGlobales, exponerVariables } from './puente.js';
+import { S } from './estado.js';
+import { showScreen } from './navegacion.js';
+import { Ui } from './ui.js';
+// Puente global (js/core/puente.js): las funciones se hoistean, así que quedan en window desde el principio.
+exponerGlobales({ applyModulos });
+
+export function applyModulos(){
   const mod=S.modulos||{mesada:true,spotify:true,corregirSaldo:true};
   // Spotify nav tab
-  const navSp=document.getElementById('nav-spotify');
-  if(navSp)navSp.style.display=mod.spotify?'':'none';
-  document.querySelectorAll('.desktop-nav-item[data-modulo]').forEach(btn => {
-    btn.hidden = !mod[btn.dataset.modulo];
-  });
-
+  const navSpotify=document.getElementById('nav-spotify');
+  if(navSpotify)navSpotify.style.display=mod.spotify?'':'none';
   // Mesada screen in Más menu
   const mesScreen=document.getElementById('screen-mesada');
   if(mesScreen && !mod.mesada) mesScreen.classList.remove('active');
@@ -30,11 +33,11 @@ function applyModulos(){
   const bannerApertura=document.getElementById('banner-apertura-cuenta');
   if(bannerApertura)bannerApertura.style.display=mostrarBanners?'':'none';
   // Ocultar el toggle "Es saldo inicial" en el sheet de agregar dinero
-  const adAperturaWrap=document.getElementById('adAperturaWrap');
-  if(adAperturaWrap)adAperturaWrap.style.display=mostrarBanners?'flex':'none';
+  const agregarDineroAperturaWrap=document.getElementById('agregarDineroAperturaWrap');
+  if(agregarDineroAperturaWrap)agregarDineroAperturaWrap.style.display=mostrarBanners?'flex':'none';
   // Ocultar el toggle "Es saldo inicial" en el sheet de Nu (entra plata)
-  const nuMovAperturaWrap=document.getElementById('nuMovAperturaWrap');
-  if(nuMovAperturaWrap&&!mostrarBanners)nuMovAperturaWrap.style.display='none';
+  const nuMovimientoAperturaWrap=document.getElementById('nuMovimientoAperturaWrap');
+  if(nuMovimientoAperturaWrap&&!mostrarBanners)nuMovimientoAperturaWrap.style.display='none';
   // Actualizar "Necesita atención" en Inicio para reflejar el nuevo estado de módulos
   // (ej: avisos de Spotify deben aparecer/desaparecer al activar/desactivar el módulo)
   if(typeof renderAttencion==='function') renderAttencion();

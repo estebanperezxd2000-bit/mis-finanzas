@@ -2,7 +2,7 @@
 
 Reglas y advertencias **escritas a mano** sobre cómo se reparte el código entre archivos. Complementa a [`mapa-codigo.md`](./mapa-codigo.md), que es **generado** y responde "¿en qué archivo vive esta función?".
 
-Aquí no va comportamiento de negocio (eso es de cada `modulo.md`) ni bugs corregidos (eso es de `CHANGELOG.md`).
+Aquí no va comportamiento de negocio (eso es de cada `modulo.md`) ni bugs corregidos (eso es de `CHANGELOG.md` y de `docs/changelog/`: el primero trae las entradas recientes y un índice; el resto del historial está por tema, un archivo por módulo, y por fecha).
 
 ---
 
@@ -17,9 +17,10 @@ Aquí no va comportamiento de negocio (eso es de cada `modulo.md`) ni bugs corre
 
 ## 2. Cómo carga cada archivo
 
-Fuente de verdad: `index.html` (los `<script src>`) y `Loader.GROUPS` en `js/core/lazy-loader.js`. `mapa-codigo.md` §1 lo resume.
+Fuente de verdad: `js/main.js` (los `import` de carga inmediata, en orden), y `Loader.GROUPS` en `js/core/lazy-loader.js`. `mapa-codigo.md` §1 lo resume.
 
-- **De entrada:** un `<script defer>` (o `async`/módulo ES) en `index.html`. Ya está disponible cuando corre cualquier pantalla.
+- **De entrada:** un `import` en `js/main.js` (módulo ES). El orden de `main.js` es el orden de carga y de evaluación: un archivo solo puede importar de los que van ANTES (un test lo vigila). Para llamar algo de un archivo que carga después, o de un módulo lazy, se usa el nombre suelto con guardia `typeof` (puente global). Cuatro archivos de lógica pura (`umbrales`, `reglas`, `salud`, `plan-deudas`) no importan el puente ni tocan `window`, para que Node también los cargue (`require` de un módulo ES, Node 20.19+/22.12+); `js/core/globales-logica.js` los expone en `window` dentro de la app.
+- **Archivo nuevo:** `export` en lo que otros usan, `import { … } from './x.js';` (UNA línea, solo de archivos que cargan antes), y `exponerGlobales({ … })` con sus funciones (al principio) y constantes (al final); luego su línea en `main.js` o su grupo en `Loader.GROUPS`. `npm run lint` y `tests/modulos-es.test.js` avisan de lo que falte.
 - **Lazy:** listado en `Loader.GROUPS`. Se descarga la primera vez que se entra a esa pantalla, o en segundo plano por `Loader.ensureAll()` tras `appDataLoaded`. `ensureAll()` **no** precarga:
   - `wrapped` fuera de su ventana de enero.
   - `mesada` ni `spotify` si su toggle de Configuración → "Módulos activos" está apagado (`S.modulos.<x> === false`).
@@ -31,6 +32,7 @@ Fuente de verdad: `index.html` (los `<script src>`) y `Loader.GROUPS` en `js/cor
 
 Es la trampa más frecuente al buscar una función.
 
+- **`js/core/personas-core.js`** — `Personas`: la tabla única de personas (`S.personas`), sus invariantes (`verificar`) y las relaciones de los módulos (Préstamos, Encargos, Spotify) declaradas en el núcleo con su colección, `saldo`, `resumen` y `pantalla`; de ahí salen la lista, el perfil, la búsqueda y la posición neta de Personas. Está en el núcleo para que no dependa de qué módulo lazy ya cargó. Carga justo después de `estado.js`. Ver [`personas.md`](./personas.md).
 - **`js/core/calc-helpers.js`** — funciones puras (solo `S`/`MC`, sin DOM) de Mesada, Tarjetas de crédito, Préstamos y Spotify que Inicio necesita en el primer render sin cargar esos módulos completos. `mesada.js`, `tarjetas-credito.js`, `prestado.js` y `spotify.js` **ya no las definen**; las usan como globales.
 - **`js/core/umbrales.js`** — los límites de «qué es sano» (fondo de 3/6 meses, 1,5×/3× de deuda de tarjeta, gasto sobre ingreso, runway, racha de déficit, hero, Atención, Proyección), congelados y en un solo sitio; solo los lee `inicio.js`. Carga de entrada, antes de `periodo.js`/`inicio.js`. **Todo test que cargue `inicio.js` tiene que cargar también `umbrales.js`.** La ventana de «meses recientes» del ingreso/gasto típicos (`VENTANA_REFERENCIA_MESES`) vive en `periodo.js`, a propósito: es cálculo puro y se carga solo en muchas pruebas.
   - Si se mueve una función acá: todo test que cargue el archivo de origen y la use tiene que cargar también `calc-helpers.js`. En modo `permissive` la omisión no falla: da resultados en silencio.
@@ -54,6 +56,10 @@ El núcleo y Inicio llaman a lo que viva en un módulo lazy **siempre con guard 
 - **Un concepto, una palabra.** El vocabulario oficial y los sinónimos que no se usan están en [`glosario-dominio.md`](./glosario-dominio.md); un término de dominio nuevo se agrega ahí antes de usarlo.
 - **Sin abreviaturas opacas** (`ctc`, `prtc`, `mpp`, `gv`, `gf`, `cp`, `enc`…): se escriben completas. Las oficiales (`tc`, `cdt`, `ea`…) están en el glosario.
 - **Archivos:** `kebab-case`, minúsculas, sin `_` ni tildes. Los de dominio en español (`tarjetas-credito.js`), los técnicos en inglés (`lazy-loader.js`), los mixtos «tema + rol» (`nu-calc.js`, `personas-init.js`). Excepciones: `README.md`, `CHANGELOG.md`.
+- **Valores guardados:** los de formato fijo se escriben una sola vez, en `snake_case`, como constante en `js/core/estado.js` (`TIPO_PAGO_COMPLETO`, `TIPO_ALCANCIA`, y `esAbonoDeDeuda()` para el «abono o pago completo»). No se repiten como texto suelto: `tests/convenciones.test.js` lo vigila. Un valor nuevo con varios usos se agrega ahí y a esa prueba.
+- **Acciones de `data-action`:** `modulo:accion`. La misma prueba comprueba que toda acción que escribe una plantilla (o `index.html`) esté registrada con `Events.on` / `Events.registerAll`, y que toda registrada se use: así un renombre hecho solo de un lado falla en los tests y no en la pantalla.
+- **Cómo se renombra y qué se decidió no tocar:** [`guia-de-renombres.md`](./guia-de-renombres.md).
+- **Ids del HTML:** los de los sheets llevan el nombre completo del flujo como prefijo (`mesadaPago…`, `mesadaPagoPendiente…`, `agregarDinero…`, `nuMovimiento…`), sin abreviaturas.
 - **Carpetas:** plural si agrupan elementos del mismo tipo (`modules`, `docs`, `scripts`, `tests`); singular si son un concepto único (`core`, `support`, `css`, `js`).
 - **No se cambia por uniformar:** un nombre existente solo cambia si rompe el formato o confunde de verdad. Las claves de datos, ids del HTML y clases CSS no se renombran sin una razón de producto.
 - **Cómo se hace cumplir:** `tests/convenciones.test.js` (formato de archivos, abreviaturas que no pueden crecer y glosario al día). Si una abreviatura baja, `node scripts/convenciones.js --actualizar` registra la mejora.
@@ -85,3 +91,9 @@ Un módulo que necesita reaccionar a «se abrió la hoja X» o «se mostró la p
 
 Reglas: toda key es única y registrar otra vez la misma la **reemplaza** (un módulo lazy cargado dos veces no duplica); cada gancho corre en su propio try/catch. Cuando una función base necesita lógica de otro módulo que SÍ siempre carga con ella (p. ej. Personas dentro de Spotify/Encargos), esa lógica vive **dentro de la función base** (o en un helper llamado explícitamente), no como parche encima.
 
+
+## Tipos (JSDoc + `tsc --checkJs`)
+
+`npm run tipos` revisa con TypeScript (sin compilar nada, `noEmit`) los archivos que lista `tsconfig.json`: la lógica pura (`umbrales`, `reglas`, `salud`, `plan-deudas`), `payload-codec`, `fusion`, `validar-estado`, `respaldos`, `fecha`, `wait-for` y `puente`. También corre dentro de `npm test` (`tests/tipos.test.js`), así que lo cubren `subir.sh` y el CI. Lo que esos archivos leen del global sin importarlo se declara en `js/tipos-globales.d.ts`.
+
+Para sumar un archivo: añadirlo a `include` en `tsconfig.json` y corregir lo que avise. Los que dependen de `estado.js` (casi todos los demás) aún no se pueden sumar: leen `S` y decenas de funciones por el puente global, y TypeScript no las ve hasta que sean imports. Los JSDoc (`@param`, `@typedef`) afinan la revisión pero no son obligatorios.

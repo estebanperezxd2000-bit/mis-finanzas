@@ -111,11 +111,11 @@ Esta función es el corazón del módulo. La proyección hereda todo lo que ella
 |---|---|---|
 | Deuda total de tarjetas de crédito | `S.tarjetasCredito[].deuda` | Es plata que debo |
 | Lo que yo le debo a otras personas | `S.misDeudas` → `totalMisDeudasPendiente()` | Físicamente en mis cuentas pero no es mía |
-| Plata comprometida ajena en cuentas propias | `_saldoCPAjeno()` | Plata de otra persona que administro y aún no pagué |
+| Plata comprometida ajena en cuentas propias | `_saldoPlataComprometidaAjeno()` | Plata de otra persona que administro y aún no pagué |
 
 > **`calcC()`/`calcCDT()` y `Deudas`:** `calcC`, `calcCDT` viven en `js/core/nu-calc.js` y `Deudas` en `js/core/calc-helpers.js` (núcleo, carga de entrada), así que `calcPatrimonioTotal()` —que corre en cada `save()`— los llama directo (ya no hay envoltorios `_calcCSafe`/`_calcCDTSafe`). Aun así, `snapshotPatrimonio()` no guarda ningún punto si alguno todavía no cargó (`_patrimonioDependenciasListas()`: `calcC`, `calcCDT` y `Deudas` definidos): sin ese guard, un snapshot tomado antes de que carguen grabaría un patrimonio artificialmente bajo de forma permanente en el historial.
 
-> **Nota sobre `_saldoCPAjeno()`:** solo resta los destinos de plata comprometida que ya llegaron (`item.recibido = true`), son de tipo `gasto` con `gastoOrigen` cajita o TC, y todavía no se pagaron (`yaPague !== true`). Cuando se marca `yaPague`, la plata ya salió de la cuenta y deja de restarse.
+> **Nota sobre `_saldoPlataComprometidaAjeno()`:** solo resta los destinos de plata comprometida que ya llegaron (`item.recibido = true`), son de tipo `gasto` con `gastoOrigen` cajita o TC, y todavía no se pagaron (`yaPague !== true`). Cuando se marca `yaPague`, la plata ya salió de la cuenta y deja de restarse.
 
 ---
 
@@ -138,7 +138,7 @@ Afectan la proyección de dos maneras:
 - **Una compra:** aumenta `tc.deuda` → patrimonio baja.
 - **Un pago:** disminuye `tc.deuda` y descuenta la cuenta de pago → neto cero (ya se había restado al comprar).
 
-> La deuda TC que corresponde a encargos (`cargo_encargo`), plata comprometida (`_desdeCP`) y préstamos TC (`cargo_prestamo`) **no se resta del patrimonio** porque es ajena — `calcDeudaTcPropia()` la excluye.
+> La deuda TC que corresponde a encargos (`cargo_encargo`), plata comprometida (`_desdePlataComprometida`) y préstamos TC (`cargo_prestamo`) **no se resta del patrimonio** porque es ajena — `calcDeudaTcPropia()` la excluye.
 
 ### Encargos
 
@@ -146,7 +146,7 @@ No son patrimonio propio, así que el saldo de un encargo nunca entra en `calcPa
 
 ### Plata comprometida
 
-La ajena que ya llegó y no se ha pagado se resta vía `_saldoCPAjeno()`; al pagarse, sale de la cuenta y deja de restarse (neto cero). La propia no tiene efecto especial: ya está en la cuenta y se refleja normalmente.
+La ajena que ya llegó y no se ha pagado se resta vía `_saldoPlataComprometidaAjeno()`; al pagarse, sale de la cuenta y deja de restarse (neto cero). La propia no tiene efecto especial: ya está en la cuenta y se refleja normalmente.
 
 ### Alcancía oculta
 
@@ -169,8 +169,8 @@ Cualquier flujo que suba el saldo de Nequi, Efectivo, cajita o cuenta personaliz
 ## 5. Qué NO afecta la proyección
 
 - **Transferencias entre cuentas propias:** la suma de activos no cambia.
-- **Préstamos a terceros con fuente especificada:** neto cero (una cuenta baja, el saldo deudor sube). **Sin fuente especificada:** `descontarFuente('')` no hace nada, así que el saldo deudor sube pero ninguna cuenta baja → el patrimonio sube sin que haya ingreso. Es un uso legítimo (se sabe que existe la deuda pero no de qué cuenta salió), y desde 2026-10-10 se trata como **ajuste de base**: `montoBase` del día lo descuenta, igual que una apertura, así que **no cuenta como crecimiento** en la tendencia ni en la proyección (`_movsDeudaSinCuenta()`, `recalcularMontoBaseHistorial()` en `el núcleo`). Antes un solo préstamo de $500.000 sin cuenta llevó la proyección a 12 meses de +$1,2 M a +$6,7 M. Lo mismo vale para un abono/pago recibido sin cuenta destino (−) y para "Yo debo" (recibido sin cuenta −, pago sin cuenta +). Si ese préstamo en realidad es plata nueva (p. ej. un regalo), el movimiento lleva `clase: 'ingreso'` y cuenta como ingreso del mes en vez de ajuste.
-- **Que alguien me preste plata (con cuenta especificada):** neto cero (la cuenta sube, `misDeudas` sube y se resta). **Excepción sin cuenta especificada:** `_aplicarMovMiDeuda(p)` llama `sumarFuente(cuenta, monto, …)` solo por cada cuenta indicada en `p.cuentas`; con la lista vacía no toca ninguna cuenta, así que `misDeudas` sube sin que suba ningún activo.
+- **Préstamos a terceros con fuente especificada:** neto cero (una cuenta baja, el saldo deudor sube). **Sin fuente especificada:** `descontarFuente('')` no hace nada, así que el saldo deudor sube pero ninguna cuenta baja → el patrimonio sube sin que haya ingreso. Es un uso legítimo (se sabe que existe la deuda pero no de qué cuenta salió), y desde 2026-10-10 se trata como **ajuste de base**: `montoBase` del día lo descuenta, igual que una apertura, así que **no cuenta como crecimiento** en la tendencia ni en la proyección (`_movimientosDeudaSinCuenta()`, `recalcularMontoBaseHistorial()` en `el núcleo`). Antes un solo préstamo de $500.000 sin cuenta llevó la proyección a 12 meses de +$1,2 M a +$6,7 M. Lo mismo vale para un abono/pago recibido sin cuenta destino (−) y para "Yo debo" (recibido sin cuenta −, pago sin cuenta +). Si ese préstamo en realidad es plata nueva (p. ej. un regalo), el movimiento lleva `clase: 'ingreso'` y cuenta como ingreso del mes en vez de ajuste.
+- **Que alguien me preste plata (con cuenta especificada):** neto cero (la cuenta sube, `misDeudas` sube y se resta). **Excepción sin cuenta especificada:** `_aplicarMovimientoMiDeuda(p)` llama `sumarFuente(cuenta, monto, …)` solo por cada cuenta indicada en `p.cuentas`; con la lista vacía no toca ninguna cuenta, así que `misDeudas` sube sin que suba ningún activo.
 - **Saldos iniciales / aperturas:** descontados del cálculo vía `montoBase`.
 - **Pagos de TC:** neto cero (baja la cuenta de pago, baja la deuda en igual medida).
 - **Gastos de encargos sin diferencial:** el gasto queda registrado en el encargo, no en el patrimonio propio. Solo un margen que entra a cuenta propia cambia el patrimonio.
@@ -189,7 +189,7 @@ Cualquier flujo que suba el saldo de Nequi, Efectivo, cajita o cuenta personaliz
 | Compra con TC de encargo / plata comprometida | ❌ No | `calcDeudaTcPropia()` excluye esa deuda |
 | Encargo — depósito | ❌ No | El saldo del encargo no es patrimonio propio |
 | Encargo — margen/diferencial a cuenta propia | ✅ Sí — sube | El diferencial entra a una cuenta real |
-| Plata comprometida ajena — recibida y no pagada | ✅ Sí — resta | `_saldoCPAjeno()` la descuenta |
+| Plata comprometida ajena — recibida y no pagada | ✅ Sí — resta | `_saldoPlataComprometidaAjeno()` la descuenta |
 | Plata comprometida ajena — pagada | ❌ Neto cero | Sale de la cuenta, deja de restarse |
 | Alcancía — depósito desde cuenta | ❌ Neto cero | Traslado: la cuenta baja, `saldoRegistrado` sube |
 | Alcancía — depósito externo (regalo, efectivo) | ✅ Sí — sube | Ingreso real: `S.movimientos` tipo `'entrada'` |

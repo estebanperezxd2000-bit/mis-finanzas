@@ -4,12 +4,95 @@
 // y el enlace de los inputs marcados con data-s-bind (cuota de Mesada, costo de Spotify) hacia S.
 // Los listeners de cada módulo viven en su propio archivo (Events.registerAll / data-action).
 
-function _initEventListeners() {
+import { exponerGlobales, exponerVariables } from './puente.js';
+import { _sheetStack, closeSheet, openSheet, showScreen } from './navegacion.js';
+import { _closeDialog } from './dialogos.js';
+import { abrirNuevoGastoFijo, abrirNuevoGastoVar, switchGastoTab } from '../modules/gastos.js';
+import { S } from './estado.js';
+import { parseMoney } from './persistencia.js';
+import { _getCuotaAnio } from './calc-helpers.js';
+import { debounceSave } from './utilidades-ui.js';
+// Puente global (js/core/puente.js): las funciones se hoistean, así que quedan en window desde el principio.
+exponerGlobales({ _initEventListeners, _bindInputsAS });
+
+export function _initEventListeners() {
   // --- Categorías: eliminar — migrado a data-action="config:eliminarCat" (js/modules/configuracion.js), ya no necesita delegado propio ---
 
   // --- Navegación bottom nav ---
   document.querySelectorAll('.nav-item[data-screen]').forEach(btn => {
     btn.addEventListener('click', () => showScreen(btn.dataset.screen));
+  });
+
+  // --- Menú lateral (solo se ve en PC, ver css/pc.css y docs/version-pc.md): mismos destinos que la barra inferior ---
+  document.querySelectorAll('.menu-lateral-item[data-screen]').forEach(btn => {
+    btn.addEventListener('click', () => showScreen(btn.dataset.screen));
+  });
+
+  // --- Atajo de teclado de PC: Ctrl/Cmd + K abre la búsqueda global (mismo botón que el de la cabecera) ---
+  document.addEventListener('keydown', (e) => {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'k') return;
+    if (typeof window.matchMedia !== 'function' || !window.matchMedia('(min-width: 900px)').matches) return;
+    const btnBuscar = document.getElementById('btn-buscar-global');
+    if (!btnBuscar) return;
+    e.preventDefault();
+    btnBuscar.click();
+  });
+
+  // --- Esc cierra la hoja de arriba si tiene botón X (las de PC): mismo cierre que la X. Con un diálogo de confirmación abierto no hace nada ---
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || e.defaultPrevented) return;
+    const dialogo = document.getElementById('dialog-overlay');
+    if (dialogo && dialogo.classList.contains('open')) return;
+    const id = _sheetStack[_sheetStack.length - 1];
+    if (!id || !document.querySelector('#sheet-' + id + ' .sheet-x')) return;
+    e.preventDefault();
+    closeSheet(id);
+  });
+
+  // --- Teclado dentro de una hoja abierta: Tab no se escapa de la hoja de arriba (es modal) ---
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Tab') return;
+    const id = _sheetStack[_sheetStack.length - 1];
+    const hoja = id && document.querySelector('#sheet-' + id + ' .sheet');
+    if (!hoja) return;
+    const dialogo = document.getElementById('dialog-overlay');
+    if (dialogo && dialogo.classList.contains('open')) return;
+    const foco = [...hoja.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]):not([type="hidden"]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')]
+      .filter(x => x.offsetParent !== null || x === document.activeElement);
+    if (!foco.length) { e.preventDefault(); hoja.focus(); return; }
+    const primero = foco[0], ultimo = foco[foco.length - 1], actual = document.activeElement;
+    if (e.shiftKey && (actual === primero || actual === hoja || !hoja.contains(actual))) { e.preventDefault(); ultimo.focus(); }
+    else if (!e.shiftKey && (actual === ultimo || actual === hoja || !hoja.contains(actual))) { e.preventDefault(); primero.focus(); }
+  });
+
+  // --- Lo clicable que no es un botón (tarjetas de acción, filas con data-action) también se alcanza y se activa con el teclado ---
+  // Se marca con role="button" + tabindex="0" al aparecer (incluido lo que pintan los módulos después) y Enter / Espacio lo activan.
+  // Un elemento que contiene botones/enlaces/campos NO puede ser role="button" (interactivos anidados): ahí solo se le da tabindex y Enter /
+  // Espacio lo activan igual. Si no tiene texto ni nombre (p. ej. una muestra de color) se le da uno para los lectores de pantalla.
+  const _SEL_CLICABLE_NO_BOTON = '[data-action]:not(button):not(a):not(input):not(select):not(textarea):not([data-teclado]), .action-card:not([data-teclado])';
+  const _SEL_INTERACTIVO = 'button,a[href],input,select,textarea,[data-action]';
+  const _volverBoton = (el) => {
+    el.setAttribute('data-teclado', '1');
+    if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '0');
+    if (el.hasAttribute('role') || el.querySelector(_SEL_INTERACTIVO)) return;
+    el.setAttribute('role', 'button');
+    if (!el.textContent.trim() && !el.hasAttribute('aria-label') && !el.hasAttribute('title')) {
+      el.setAttribute('aria-label', el.dataset.color ? 'Color ' + el.dataset.color : 'Opción');
+    }
+  };
+  const _marcarClicables = (raiz) => {
+    if (!raiz || raiz.nodeType !== 1) return;
+    if (raiz.matches(_SEL_CLICABLE_NO_BOTON)) _volverBoton(raiz);
+    raiz.querySelectorAll(_SEL_CLICABLE_NO_BOTON).forEach(_volverBoton);
+  };
+  _marcarClicables(document.body);
+  new MutationObserver(muts => muts.forEach(m => m.addedNodes.forEach(_marcarClicables))).observe(document.body, { childList: true, subtree: true });
+  document.addEventListener('keydown', (e) => {
+    if ((e.key !== 'Enter' && e.key !== ' ') || e.defaultPrevented) return;
+    const el = e.target;
+    if (!el || !el.hasAttribute || !el.hasAttribute('data-teclado')) return; // solo si el foco está en el propio elemento, no en un botón de dentro
+    e.preventDefault();
+    el.click();
   });
 
   // --- Header add button ---
@@ -45,8 +128,8 @@ function _initEventListeners() {
 
   const menuGastoFijo = document.getElementById('menu-gasto-fijo');
   if (menuGastoFijo) menuGastoFijo.addEventListener('click', () => { closeSheet('menu'); abrirNuevoGastoFijo(); });
-  const menuAD = document.getElementById('menu-agregar-dinero');
-  if (menuAD) menuAD.addEventListener('click', () => { closeSheet('menu'); openSheet('agregar-dinero-menu'); });
+  const menuAgregarDinero = document.getElementById('menu-agregar-dinero');
+  if (menuAgregarDinero) menuAgregarDinero.addEventListener('click', () => { closeSheet('menu'); openSheet('agregar-dinero-menu'); });
 
   const menuTransferir = document.getElementById('menu-transferir');
   if (menuTransferir) menuTransferir.addEventListener('click', () => { closeSheet('menu'); abrirTransferir(); });
@@ -95,7 +178,7 @@ function _initEventListeners() {
   // --- Cuenta selector, Nequi/Efectivo, Nu (entró/salió plata) y
   // cajita (agregar): migrados a js/modules/cuentas.js. ---
 
-  // --- mpSplitToggle / btn-add-split-row: migrados a js/modules/mesada.js ---
+  // --- mesadaPagoSplitToggle / btn-add-split-row: migrados a js/modules/mesada.js ---
 
   // --- Inputs que escriben directo en S (data-s-bind) ---
   // S es la única fuente de verdad: el input actualiza S en cada cambio y luego se
@@ -107,16 +190,16 @@ function _initEventListeners() {
   // mov_fuente: migrado a js/modules/prestado.js junto con el resto del
   // sheet "Registrar movimiento" — ver nota más arriba.
   // spPagarFuente/spPagarMonto: migrados a js/modules/spotify.js.
-  // mpDestino/mpMonto, mpDebeWrap/mpQuedaDebiendo, mppDestino/mppMonto:
+  // mesadaPagoDestino/mesadaPagoMonto, mesadaPagoDebeWrap/mesadaPagoQuedaDebiendo, mesadaPagoPendienteDestino/mesadaPagoPendienteMonto:
   // migrados a js/modules/mesada.js.
-  // adMenuDest/adMenuMonto, nuRate, tr_origen/tr_destino/tr_monto:
+  // agregarDineroMenuDestino/agregarDineroMenuMonto, nuRate, tr_origen/tr_destino/tr_monto:
   // migrados a js/modules/cuentas.js (su propio wiring).
 }
 
 // Cuota de Mesada del año visible y costo de Spotify. Solo se graba una cuota explícita
 // si difiere de la heredada (_getCuotaAnio): si no, escribir el valor «congelaría» el
 // fallback de un año anterior y rompería la herencia hacia años futuros.
-function _bindInputsAS(){
+export function _bindInputsAS(){
   document.querySelectorAll('[data-s-bind]').forEach(el => {
     el.addEventListener('input', () => {
       const bind = el.getAttribute('data-s-bind');

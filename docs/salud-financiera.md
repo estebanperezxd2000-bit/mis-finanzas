@@ -2,7 +2,7 @@
 
 Documentación de la tarjeta **Salud financiera** (`health-score-card`, pantalla Inicio) de `mis-finanzas` (`index.html`). Pensada para volver a leerla en unos meses y entender el módulo sin releer el código: qué problema resuelve, qué reglas no se deben romper, qué datos usa y cómo fluye el cálculo. Los detalles de implementación (funciones, ids de DOM) aparecen al final, como referencia rápida.
 
-El historial de bugs corregidos vive en [`CHANGELOG.md`](./CHANGELOG.md#salud-financiera), no acá.
+El historial de bugs corregidos vive en [`changelog/salud-financiera.md`](./changelog/salud-financiera.md), no acá.
 
 ---
 
@@ -116,7 +116,7 @@ Si hay score → anillo de progreso SVG + etiqueta (Excelente / Regular / Necesi
 - **Rendimientos de Nu expuestos aparte, nunca sumados a ingresos:** los ratios de deuda/gasto necesitan medir flujo de caja real y disponible, no crecimiento de patrimonio (ni plata todavía bloqueada dentro de un CDT).
 - **Reutiliza los mismos filtros de ingreso/gasto real que Análisis financiero**, en vez de tener su propio criterio: `_esEntradaEspejoNoIngreso()` para ingresos, y `_esGastoVarNoReal()` para gastos (`_esPagoTC`, `_esAlcancia`, `_esExtraPrestamo`, `esPagoGastoFijo`). Ambos helpers están centralizados en un solo lugar del código — no duplicados a mano en cada pantalla —, que fue precisamente el fix que resolvió los dos bugs de divergencia detectados entre esta tarjeta y Análisis financiero (ver `CHANGELOG.md`).
 - **Liquidez con y sin CDTs separadas:** existir como dos variables (`liquidoReal` / `liquidoConCDTs`) en vez de una sola con un flag, para que cada factor del score pueda elegir explícitamente cuál necesita, sin ambigüedad.
-- **Las reglas compartidas con «Necesita atención» viven en funciones, no en copias:** `_mesesCubiertos`, `_nivelRunway`, `_textoRunway` y `_rachaDeficitRelevante` (`inicio.js`) las usan tanto la Salud como Atención, para que ambas digan lo mismo.
+- **Las reglas compartidas con «Necesita atención» viven en funciones, no en copias:** `_mesesCubiertos`, `_nivelRunway`, `_textoRunway` (`inicio.js`) y `Reglas.rachaDeficitRelevante` (`reglas.js`) las usan tanto la Salud como Atención, para que ambas digan lo mismo.
 - **Sin puntos por configurar la app:** un número de «salud financiera» que sube por tener 2 gastos fijos anotados premiaba el orden en la app, no el estado del dinero.
 - **El runway («Cubres X meses de gastos») se muestra en la tarjeta:** es la cifra más útil en una crisis y el puntaje solo no la dice. Niveles en `UMBRALES.runway` (< 1 mes rojo, < 3 ámbar).
 
@@ -129,7 +129,7 @@ Si hay score → anillo de progreso SVG + etiqueta (Excelente / Regular / Necesi
 | `calcHealthScore()` | Calcula el puntaje 0-100, la lista de tips e `ingresosMes`/`rendimientoCDTMes`; devuelve `null` si no hay datos base (`!S.cajitas`) |
 | `renderHealthScore()` | Pinta la tarjeta `#health-score-card`: anillo de progreso SVG, etiqueta (Excelente/Regular/Necesita atención), runway («Cubres X meses de gastos») y tips |
 | `_mesesCubiertos()` / `_nivelRunway()` / `_textoRunway()` | Runway: cálculo, nivel (crítico / atención / ok según `UMBRALES.runway`) y texto |
-| `_rachaDeficitRelevante()` | Meses seguidos de déficit que merecen aviso (comparte Salud y Atención); usa `Periodo.rachaDeficit()` |
+| `Reglas.rachaDeficitRelevante()` | Meses seguidos de déficit que merecen aviso (comparte Salud y Atención); usa `Periodo.rachaDeficit()` |
 
 **ID del DOM:** `health-score-card` (pantalla Inicio).
 
@@ -149,11 +149,11 @@ Además del puntaje, la tarjeta muestra cuatro pilares (**Liquidez, Deuda, Flujo
 - **Estado:** crisis > presión > atención > creciendo > estable (reglas en el comentario de `Salud.estado`). Presión y crisis no celebran y proponen hasta 3 acciones con enlace. Patrimonio negativo nunca es «Creciendo».
 - Límites en `UMBRALES.salud.pilares`; pruebas en `tests/finanzas.test.js`.
 
-## Rediseño de la tarjeta y comportamiento sin historial (2026-11-06, SW v112)
+## Rediseño de la tarjeta y comportamiento sin historial (2026-11-06)
 
 - **Un solo estado.** La franja bajo el hero (`#inicio-franja-estado`) se eliminó: duplicaba el estado de la tarjeta, que además trae las acciones de presión/crisis. `calcEstadoSituacion()` sigue alimentando a Análisis y Wrapped.
 - **«Base» para evaluar (`Salud.tieneBase`).** Hay base con una tendencia de patrimonio (≥ 30 días), con 2 meses completos con datos o con 1 mes completo y ≥ 30 días de uso (`UMBRALES.salud.historial`; `_situacion()` aporta `mesesReferencia` y `diasDeUso`). Sin base (`m.sinBase`) no se concluye nada de ahorro, flujo ni tendencia: el estado es **Empezando** (neutro) salvo que haya patrimonio negativo, liquidez negativa o crisis (hechos que no necesitan historial); la tarjeta no muestra puntaje ni pilares sin datos; el puntaje ignora gasto típico, racha y «por ahora gastas más» (`puntaje({ sinBase })`); el aviso «Gastas más de lo que ingresas» del hero tampoco aparece.
-- **Falta de ingresos ≠ déficit.** `Periodo.balanceEvaluable(b)`: solo los meses con ingresos registrados cuentan como superávit/déficit (racha, `resumenFlujo`, pilar Flujo, estado, plan de deudas). Un saldo inicial no es ingreso.
+- **Falta de ingresos ≠ déficit.** `Periodo.balanceEvaluable(b)`: solo los meses con ingresos registrados cuentan como superávit/déficit (racha, `resumenFlujo`, pilar Flujo, estado). Un saldo inicial no es ingreso.
 - **Tres estados por indicador:** favorable (verde), desfavorable (ámbar/rojo) y sin evaluar (`sin`, gris). «Sin deudas propias» es favorable y nunca genera una recomendación de endeudarse.
 - **Consejos.** Máximo 3, lo urgente primero. Se quitó «Registra las categorías» (es de Configuración) y el relleno genérico; «Registra tus ingresos» y «Cuando completes un mes de gastos» se unificaron en un consejo corto («Registra tus ingresos y gastos para una evaluación más precisa» / «Sigue registrando…» si ya hay ingresos). El CDT solo se sugiere con gasto típico medido, sin deudas y con ≥ 1 mes de gasto **por encima** del fondo mínimo, diciendo cuánto sobra (`UMBRALES.salud.cdtExcedenteMeses`).
 - **Sin repetir cifras.** El runway («Cubres X meses») vive solo en el pilar Liquidez; se quitó la línea suelta sobre los consejos.

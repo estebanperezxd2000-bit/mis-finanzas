@@ -1,18 +1,19 @@
-// Sync con Firestore: setSyncStatus, _fbSaveToCloud (guardado con debounce),
-// _fbLoadData, onSnapshot, registro de Events('authgate',...) + habilitación
+// Sync con Firestore: setSyncStatus, _firebaseSaveToCloud (guardado con debounce),
+// _firebaseLoadData, onSnapshot, registro de Events('authgate',...) + habilitación
 // del botón de login — extraído de index.html (era <script type="module">
-// inline). Ver auditoria-tecnica.md #2 y CHANGELOG.md#infraestructura--seguridad.
+// inline). Ver auditoria-tecnica.md #2 y changelog/infraestructura-seguridad.md.
 //
-// import de waitFor (js/core/wait-for-module.js — versión ES module
-// independiente de js/core/wait-for.js, ver ese archivo para el porqué):
+// import de waitFor (js/core/wait-for.js)):
 // reemplaza los dos reintentos manuales con setInterval/setTimeout que
 // tenía este archivo (_runWhenEventListenersReady y el registro de
 // Events('authgate',...), más abajo). Se usa `import` en vez de asumir un
 // global porque este archivo carga como `type="module" async`, sin
 // garantía de orden frente a ningún <script defer>. Ver
-// CHANGELOG.md#infraestructura--seguridad.
-import { waitFor } from './wait-for-module.js';
+// changelog/infraestructura-seguridad.md.
+import { waitFor } from './wait-for.js';
 import { codificarPayload, decodificarPayload } from './payload-codec.js';
+import { fusionarEstados } from './fusion.js';
+import { validarEstado } from './validar-estado.js';
 import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusionar, leerRespaldo, borrarRespaldosNube, almacenIndexedDB, fechaLocal } from './respaldos.js';
 
   // ── Helpers de estado de sync ──────────────────────────────────────────────
@@ -21,10 +22,15 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
     const txt = document.getElementById('fb-sync-text');
     if(dot) { dot.className = 'fb-sync-dot' + (state !== 'ok' ? ' '+state : ''); }
     if(txt) txt.textContent = text;
+    // Mismo estado en el pie del menú lateral de PC.
+    const dotLateral = document.getElementById('lateral-sync-dot');
+    const txtLateral = document.getElementById('lateral-sync-text');
+    if(dotLateral) { dotLateral.className = 'fb-sync-dot' + (state !== 'ok' ? ' '+state : ''); }
+    if(txtLateral) txtLateral.textContent = text;
   }
 
   // ── Guardar en Firestore con debounce ─────────────────────────────────────
-  // FIX (2026-08-17): el autosave de bootstrap.js (cada 60s) y el snapshot
+  // FIX: el autosave de bootstrap.js (cada 60s) y el snapshot
   // diario de patrimonio en _finishFirstLoad() llamaban a esto sin chequear
   // si algo había cambiado de verdad. Resultado real reportado por el
   // usuario: una pestaña olvidada abierta (en otro dispositivo, o una
@@ -37,24 +43,27 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
   // aborta antes del `setDoc` — no se gasta escritura de Firestore ni se
   // dispara el toast en otras pestañas/dispositivos.
   let _saveTimer = null;
-  // _savePromise/_saveResolve: FIX (2026-09-05) — _fbSaveToCloud() era
+  // _savePromise/_saveResolve: FIX — _firebaseSaveToCloud() era
   // "fire and forget": no había forma de saber, desde afuera, si el
   // guardado con debounce realmente terminó en un setDoc() exitoso, en
   // un "no hacía falta escribir nada" (payload idéntico), o si nunca
-  // llegó a intentarlo (guards de _dataLoaded/_fbUser/_fb). Eso permitía
+  // llegó a intentarlo (guards de _dataLoaded/_firebaseUser/_firebase). Eso permitía
   // que llamadores como leerArchivoImport() (configuracion.js) mostraran
   // "Datos importados correctamente" y recargaran la página sin haber
-  // guardado nada de verdad si _fbSaveToCloud() se llamaba antes de que
+  // guardado nada de verdad si _firebaseSaveToCloud() se llamaba antes de que
   // _dataLoaded fuera true (ver auditoria-tecnica.md).
-  // Ahora _fbSaveToCloud() siempre devuelve una Promise que resuelve con
+  // Ahora _firebaseSaveToCloud() siempre devuelve una Promise que resuelve con
   // {ok:boolean, reason:string}. Como varias llamadas seguidas comparten
   // el mismo debounce (clearTimeout de la anterior), todas comparten
   // también la misma promesa pendiente — así ninguna llamada se queda
   // esperando una promesa que el clearTimeout canceló.
   let _savePromise = null;
   let _saveResolve = null;
-  let _forzarProximo = false; // lo pide _fbSaveToCloud({ forzar:true }): importar un backup pisa la nube a propósito
-  const PAYLOAD_AVISO_BYTES = 800000, PAYLOAD_LIMITE_BYTES = 1000000; // el documento de Firestore admite 1 MiB
+  let _forzarProximo = false; // lo pide _firebaseSaveToCloud({ forzar:true }): importar un backup pisa la nube a propósito
+  // Las reglas de Firestore rechazan un payload de 950.000 caracteres o más (firestore.rules) y el documento admite 1 MiB: el límite del
+  // cliente queda POR DEBAJO del de las reglas, así el aviso «no cabe» sale antes de que la escritura falle sin explicación.
+  // Una prueba (tests/cierre-wrapped.test.js) vigila que sigan por debajo de lo que dicen las reglas.
+  const PAYLOAD_AVISO_BYTES = 760000, PAYLOAD_LIMITE_BYTES = 940000;
   window._payloadLimites = { aviso: PAYLOAD_AVISO_BYTES, limite: PAYLOAD_LIMITE_BYTES }; // los lee js/core/cierre.js (medidor de tamaño)
   // Cada guardado toma su número al empezar. Comprimir es asíncrono: si mientras tanto arrancó un guardado más nuevo, este
   // ya quedó viejo y no debe escribir después (pisaría datos más recientes en la nube).
@@ -64,7 +73,7 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
   // El documento lleva `rev` (entero que sube de 1 en 1 en cada guardado). `_revNube` es la revisión de la nube que ESTE
   // dispositivo ya aplicó o escribió; un guardado solo se acepta si la nube sigue en esa revisión (se comprueba dentro de una
   // transacción de Firestore: lectura + escritura atómicas). Si otro dispositivo guardó en medio, NO se pisa: se carga su versión
-  // y la copia local descartada queda en localStorage (`mf_conflicto`). Un documento viejo sin `rev` cuenta como 0.
+  // y la copia local descartada queda en el almacén de respaldos del equipo (tipo `conflicto`; último recurso: `mf_conflicto` en localStorage). Un documento viejo sin `rev` cuenta como 0.
   // `_revEnVuelo` es la revisión que este dispositivo está escribiendo ahora: el eco de su propio guardado no es «otro dispositivo».
   window._revNube = null;
   window._revEnVuelo = 0;
@@ -85,7 +94,7 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
   }
   const _lsGet = k => { try { return localStorage.getItem(k); } catch(_) { return null; } };
   const _lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch(_) {} };
-  const _uidActual = () => (window._fbUser && window._fbUser.uid) || null;
+  const _uidActual = () => (window._firebaseUser && window._firebaseUser.uid) || null;
   const _lsDel = k => { try { localStorage.removeItem(k); } catch(_) {} };
   function _errorRespaldo(e) {
     const permisos = !!e && (e.code === 'permission-denied' || /permission|insufficient/i.test(String(e.message || '')));
@@ -106,10 +115,10 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
   async function _respaldarAntesDeEscribir(tipo) {
     const ahora = Date.now(), hoy = fechaLocal(new Date(ahora)), marcaDia = hoy + '|' + (_uidActual() || '');
     // En la nube (el «día» ya respaldado por este dispositivo se recuerda para no leer nada de más en cada guardado).
-    if(!_respaldoNubeBloqueado && window._fb && window._fbUser && typeof window._fb.runTransaction === 'function'
+    if(!_respaldoNubeBloqueado && window._firebase && window._firebaseUser && typeof window._firebase.runTransaction === 'function'
        && (tipo === 'previo' || _lsGet('mf_respaldoDia') !== marcaDia)) {
       try {
-        const r = await respaldarEnNube({ fb: window._fb, uid: window._fbUser.uid, tipo, ahora, decodificar: decodificarPayload });
+        const r = await respaldarEnNube({ firebase: window._firebase, uid: window._firebaseUser.uid, tipo, ahora, decodificar: decodificarPayload });
         // 'sin-datos' no marca el día: el próximo guardado vuelve a intentarlo cuando ya haya algo que proteger.
         if(r.estado === 'creado' || r.estado === 'ya-existia') {
           if(tipo === 'diario') _lsSet('mf_respaldoDia', marcaDia);
@@ -129,23 +138,23 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
     }
   }
   // API para Configuración (js/modules/configuracion.js): listar, leer el contenido, estado y borrado total.
-  window._fbRespaldos = {
+  window._firebaseRespaldos = {
     async listar() {
-      const fb = window._fb, uid = _uidActual(), almacen = _almacen();
+      const firebase = window._firebase, uid = _uidActual(), almacen = _almacen();
       let nube = [], equipo = [], errorNube = null;
-      if(fb && uid) { try { nube = await listarEnNube({ fb, uid }); } catch(e) { errorNube = e; } }
+      if(firebase && uid) { try { nube = await listarEnNube({ firebase, uid }); } catch(e) { errorNube = e; } }
       if(almacen) { try { equipo = await listarEnEquipo({ almacen }); } catch(_) {} }
       return { filas: fusionar(nube, equipo), errorNube: errorNube ? (errorNube.code || String(errorNube.message || errorNube)) : null };
     },
-    leer(fila) { return leerRespaldo({ fb: window._fb, uid: _uidActual(), almacen: _almacen(), fila, decodificar: decodificarPayload }); },
+    leer(fila) { return leerRespaldo({ firebase: window._firebase, uid: _uidActual(), almacen: _almacen(), fila, decodificar: decodificarPayload }); },
     estado() {
       let ultimo = null; try { ultimo = JSON.parse(_lsGet('mf_respaldoUltimo') || 'null'); } catch(_) {}
       return { ultimo, error: _lsGet('mf_respaldoError'), bloqueado: _respaldoNubeBloqueado };
     },
     async borrarTodos() {
-      const fb = window._fb, uid = _uidActual(), almacen = _almacen();
+      const firebase = window._firebase, uid = _uidActual(), almacen = _almacen();
       let r = { borrados: 0, errores: 0 };
-      if(fb && uid) r = await borrarRespaldosNube({ fb, uid });
+      if(firebase && uid) r = await borrarRespaldosNube({ firebase, uid });
       if(almacen) { try { await almacen.vaciar(); } catch(_) { r.errores++; } }
       ['mf_respaldoDia', 'mf_respaldoEquipoDia', 'mf_respaldoUltimo', 'mf_respaldoError'].forEach(_lsDel);
       return r;
@@ -156,13 +165,16 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
   // `forzar` (importar un backup, borrar todo): escritura intencional que pisa la nube y sube la revisión.
   // `opciones.sinRespaldo`: no conservar copia de lo que se pisa (solo «borrar todos los datos», que además borra los respaldos).
   async function _escribirNube(payloadNube, ts, forzar, opciones) {
-    const { db, doc, setDoc, runTransaction } = window._fb;
+    const { db, doc, setDoc, runTransaction } = window._firebase;
     if(!(opciones && opciones.sinRespaldo)) await _respaldarAntesDeEscribir(forzar ? 'previo' : 'diario');
-    const ref = doc(db, 'usuarios', window._fbUser.uid, 'data', 'finanzas');
-    const base = window._revNube;
+    const ref = doc(db, 'usuarios', window._firebaseUser.uid, 'data', 'finanzas');
+    // `base` = la revisión sobre la que se calculó ESTE payload (se toma al serializar, no ahora): si mientras tanto llegó una
+    // versión nueva de otro dispositivo, el payload ya está viejo y la comparación con la nube falla en vez de pisarla.
+    const base = (opciones && 'base' in opciones) ? opciones.base : window._revNube;
     const directa = async (revBase) => {
       const rev = (revBase || 0) + 1;
       window._revEnVuelo = rev;
+      window._ultimaEscrituraPropia = { rev, ts };
       await setDoc(ref, { payload: payloadNube, updatedAt: ts, rev });
       window._revNube = rev;
       return { ok: true, rev };
@@ -181,6 +193,7 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
         const revNube = s.exists() ? _revDe(s.data()) : 0;
         if (revNube !== base) return { conflicto: true, snap: s };
         window._revEnVuelo = base + 1;
+        window._ultimaEscrituraPropia = { rev: base + 1, ts };
         tx.set(ref, { payload: payloadNube, updatedAt: ts, rev: base + 1 });
         return { rev: base + 1 };
       });
@@ -188,18 +201,76 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
       window._revNube = res.rev;
       return { ok: true, rev: res.rev };
     } catch (e) {
-      // Sin conexión la transacción falla de inmediato; setDoc, en cambio, queda en la cola local de Firestore y sube al volver la red.
-      if (_errorSinRed(e)) return directa(base);
-      throw e;
+      if (!_errorSinRed(e)) throw e;
+      // La transacción dijo «sin conexión». Eso también pasa estando en línea (p. ej. una pestaña secundaria con varias pestañas
+      // abiertas), y escribir a ciegas con setDoc pisaría lo de otra pestaña sin avisar. Primero se intenta leer la revisión
+      // directo del servidor: si responde, se compara igual que en la transacción (queda una ventana de milisegundos, que el
+      // listener cierra al detectar dos escrituras con la misma revisión). Solo si de verdad no hay red se encola con setDoc.
+      const { getDocFromServer } = window._firebase;
+      if (typeof getDocFromServer === 'function') {
+        try {
+          const s = await getDocFromServer(ref);
+          const revNube = s.exists() ? _revDe(s.data()) : 0;
+          if (revNube !== base) return { ok: false, reason: 'conflict', snap: s };
+          return directa(base);
+        } catch (e2) { if (!_errorSinRed(e2)) throw e2; }
+      }
+      return directa(base);
     }
   }
-  window._fbEscribirDoc = _escribirNube;
+  window._firebaseEscribirDoc = _escribirNube;
 
   // Otro dispositivo guardó antes que este: se conserva una copia de lo local que se descarta y se carga la versión de la nube.
+  // Guarda una copia de lo local que se va a descartar. Devuelve dónde quedó: 'equipo' (almacén de respaldos del dispositivo: IndexedDB,
+  // comprimido, sin el tope de ~5 MB de localStorage; se ve y se restaura en Configuración → Respaldos), 'ls' (localStorage comprimido:
+  // último recurso, solo recuperable a mano), 'vacio' (no había nada que proteger) o null (NO se pudo guardar). Nunca lanza.
+  async function _guardarCopiaConflicto(plano) {
+    if (typeof plano !== 'string' || !plano) return 'vacio';
+    const almacen = _almacen();
+    if (almacen) {
+      try {
+        const r = await respaldarEnEquipo({ almacen, plano, tipo: 'conflicto', ahora: Date.now(), codificar: codificarPayload });
+        if (r.estado === 'creado') return 'equipo';
+        if (r.estado === 'sin-datos') return 'vacio';
+      } catch (e) { console.warn('[Sync] No se pudo guardar la copia del conflicto en el almacén de respaldos:', e); }
+    }
+    try { localStorage.setItem('mf_conflicto', JSON.stringify({ ts: Date.now(), payload: await codificarPayload(plano) })); return 'ls'; } catch (_) { /* sin cupo o sin almacenamiento */ }
+    return null;
+  }
+  // Texto del aviso según dónde quedó la copia: si NO se pudo guardar, se dice claro (antes el aviso ni salía).
+  function _textoAvisoConflicto(inicio, donde) {
+    if (donde === 'equipo') return inicio + ' Lo que habías cambiado aquí quedó como copia en Respaldos (dentro de Configuración).';
+    if (donde === 'ls') return inicio + ' Lo que habías cambiado aquí quedó como copia temporal en este dispositivo, pero no se puede restaurar desde la app.';
+    if (donde === 'vacio') return inicio;
+    return inicio + ' ATENCIÓN: no se pudo guardar copia de lo que habías cambiado aquí; esos cambios se perdieron.';
+  }
+  // Fusiona lo local con lo que hay en la nube (js/core/fusion.js). `baseTxt` = último estado común. Devuelve el texto JSON fusionado o
+  // null si no se puede (sin base, o alguno ilegible): entonces vale lo de siempre, se carga la nube y lo local queda como copia.
+  function _fusionarConNube(baseTxt, localTxt, remotoTxt) {
+    try {
+      if (!baseTxt || !localTxt || !remotoTxt) return null;
+      const base = JSON.parse(baseTxt), merged = fusionarEstados(base, JSON.parse(localTxt), JSON.parse(remotoTxt));
+      return JSON.stringify(merged);
+    } catch (e) { console.warn('[Sync] No se pudo fusionar con la nube:', e); return null; }
+  }
+  // Pone el estado fusionado en S (la nube ya se aplicó antes: `_lastSavedPayload` es la nube, así el siguiente guardado ve la diferencia).
+  // `remotoTxt`: el texto de la nube. `_lastSavedPayload` debe ser ESO (no S tal como quedó tras _applyCloudData, que conserva las claves
+  // que solo existían aquí): así el guardado siguiente ve la diferencia y sube lo combinado.
+  function _aplicarFusion(textoFusionado, remotoTxt) {
+    const f = JSON.parse(textoFusionado);
+    Object.keys(window.S).forEach(k => { if (!(k in f)) delete window.S[k]; });
+    Object.assign(window.S, f);
+    if (window.Libro) window.Libro.hidratar(window.S); // el saldo no viaja en el estado: sale del libro ya fusionado
+    window._lastSavedPayload = JSON.stringify(JSON.parse(remotoTxt));
+  }
   async function _resolverConflicto(snapCrudo, payloadLocal) {
-    try { localStorage.setItem('mf_conflicto', JSON.stringify({ ts: Date.now(), payload: payloadLocal })); } catch (_) {}
+    const baseTxt = window._lastSavedPayload; // el último estado de la nube que este dispositivo vio, ANTES de aplicar la nueva
+    const donde = await _guardarCopiaConflicto(payloadLocal); // la copia se guarda siempre, aunque después se fusione
     const snap = await _decodificarSnap(snapCrudo);
+    const remotoTxt = snap.exists() ? (snap.data() || {}).payload : null;
+    const fusion = _fusionarConNube(baseTxt, payloadLocal, remotoTxt);
     _applyCloudData(snap);
+    if (fusion) _aplicarFusion(fusion, remotoTxt);
     const tsNube = (snap.data() || {}).updatedAt || 0;
     window._lastSavedAt = tsNube;
     try { localStorage.setItem('mf_lastSavedAt', String(tsNube)); } catch (_) {}
@@ -208,26 +279,52 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
     if (typeof refresh === 'function') refresh();
     if (window.applyModulos) applyModulos();
     setSyncStatus('ok', 'Sincronizado con la nube');
-    if (typeof toast === 'function') toast('Otro dispositivo guardó antes que tú: se cargó su versión. Lo que habías cambiado aquí sin guardar no se subió; revísalo.', 'warn', 10000);
+    if (fusion) {
+      if (typeof toast === 'function') toast('Otro dispositivo guardó al mismo tiempo: se combinaron los cambios de los dos.', 'info', 6000);
+      if (typeof window._firebaseSaveToCloud === 'function') window._firebaseSaveToCloud(); // sube lo combinado
+    } else if (typeof toast === 'function') {
+      toast(_textoAvisoConflicto('Otro dispositivo guardó antes que tú: se cargó su versión.', donde), 'warn', donde === 'equipo' || donde === 'vacio' ? 10000 : 14000);
+    }
   }
   // Copia de seguridad de lo local cuando una actualización de otro dispositivo llega con cambios locales sin guardar.
-  window._fbConflictoGuardado = function() {
-    try { const c = JSON.parse(localStorage.getItem('mf_conflicto') || 'null'); return c; } catch (_) { return null; }
+  // Solo existe la del último recurso (localStorage); la normal está en el almacén de respaldos. Devuelve { ts, payload } con el JSON ya en texto.
+  window._firebaseConflictoGuardado = async function() {
+    try {
+      const c = JSON.parse(localStorage.getItem('mf_conflicto') || 'null');
+      if (c && c.payload) c.payload = await decodificarPayload(c.payload);
+      return c;
+    } catch (_) { return null; }
   };
 
   // Cuerpo del guardado con debounce, extraído tal cual del setTimeout para
-  // poder ejecutarlo también de inmediato (ver _fbFlushSave más abajo).
+  // poder ejecutarlo también de inmediato (ver _firebaseFlushSave más abajo).
   async function _ejecutarGuardado() {
       const resolve = _saveResolve;
       _savePromise = null; _saveResolve = null;
-      if(!window._fbUser || !window._fb){ resolve({ok:false, reason:'no-auth'}); return; }
+      if(!window._firebaseUser || !window._firebase){ resolve({ok:false, reason:'no-auth'}); return; }
       try {
-        const {db, doc, setDoc} = window._fb;
+        const {db, doc, setDoc} = window._firebase;
         if(!window.S){setSyncStatus("error","Error: datos no inicializados");resolve({ok:false, reason:'no-data'});return;}
         // Se serializa UNA sola vez. Antes se clonaba con JSON.parse(JSON.stringify(S)) para «limpiar los undefined» y se volvía a
         // serializar: el clon costaba ~3/4 del tiempo de este paso y la cadena es idéntica (JSON.stringify ya descarta los undefined, y
         // lo que va a Firestore es una cadena, no un objeto). Una prueba de sync.test.js fija esa igualdad.
+        // Antes de serializar: un número roto (NaN) se guardaría como null sin avisar. Si hay un problema grave no se escribe y la nube
+        // conserva el último estado bueno; lo leve (ids repetidos) solo se deja en consola.
+        const validacion = validarEstado(window.S);
+        window._validacionEstado = validacion;
+        if(validacion.leves.length) console.warn('[Validación] ' + validacion.leves.join('; '));
+        if(!validacion.ok) {
+          console.error('[Validación] el estado tiene problemas graves y NO se guardó:', validacion.graves);
+          setSyncStatus('error', 'Datos inválidos: no se guardó');
+          if(typeof toast === 'function' && !window._avisoValidacionMostrado) {
+            window._avisoValidacionMostrado = true;
+            toast('No se guardó en la nube: hay datos inválidos (' + validacion.graves[0] + '). La nube sigue con el último estado bueno; avisa para revisarlo.', 'err', 12000);
+          }
+          resolve({ok:false, reason:'invalid', problemas:validacion.graves});
+          return;
+        }
         const payloadStr = JSON.stringify(window.S);
+        const baseAlSerializar = window._revNube; // la revisión sobre la que se calculó este payload (ver _escribirNube)
         const miSeq = ++_saveSeq; // antes del chequeo "¿cambió algo?": un guardado sin cambios también deja viejo a uno en vuelo
         // Nada cambió desde el último guardado real (ni local ni el que
         // acabamos de recibir de la nube) — no hay razón para escribir.
@@ -238,7 +335,7 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
           resolve({ok:true, reason:'no-changes'});
           return;
         }
-        // Tope de tamaño (2026-10-13): todo el estado va en UN documento de Firestore (límite 1 MiB). Si se pasa, `setDoc`
+        // Tope de tamaño: todo el estado va en UN documento de Firestore (límite 1 MiB). Si se pasa, `setDoc`
         // falla y el catch de abajo diría "revisa conexión" mientras la nube se queda para siempre en el último guardado
         // bueno. Se mide antes de escribir: aviso a los 800 KB (una vez por sesión) y se detiene a 1.000.000 bytes con un
         // mensaje que dice la causa real.
@@ -247,14 +344,14 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
         const bytes = payloadNube.length; // base64 o JSON plano: todo ASCII salvo tildes del plano (≈ 1 byte por carácter)
         window._payloadBytes = bytes;
         if(bytes > PAYLOAD_LIMITE_BYTES) {
-          setSyncStatus('error', 'Datos demasiado grandes para la nube (' + Math.round(bytes/1024) + ' KB de 1.000 KB)');
-          if(typeof toast === 'function') toast('Tus datos ya no caben en la nube (' + Math.round(bytes/1024) + ' KB de 1.000 KB) y no se están guardando. Exporta un backup y avisa para archivar meses antiguos.', 'err', 10000);
+          setSyncStatus('error', 'Datos demasiado grandes para la nube (' + Math.round(bytes/1000) + ' KB de ' + Math.round(PAYLOAD_LIMITE_BYTES/1000) + ' KB)');
+          if(typeof toast === 'function') toast('Tus datos ya no caben en la nube (' + Math.round(bytes/1000) + ' KB de ' + Math.round(PAYLOAD_LIMITE_BYTES/1000) + ' KB) y no se están guardando. Exporta un backup y avisa para archivar meses antiguos.', 'err', 10000);
           resolve({ok:false, reason:'too-large', bytes});
           return;
         }
         if(bytes > PAYLOAD_AVISO_BYTES && !window._avisoTamanoMostrado) {
           window._avisoTamanoMostrado = true;
-          if(typeof toast === 'function') toast('Tus datos ocupan ' + Math.round(bytes/1024) + ' KB de 1.000 KB en la nube. Conviene archivar meses antiguos pronto.', 'warn', 8000);
+          if(typeof toast === 'function') toast('Tus datos ocupan ' + Math.round(bytes/1000) + ' KB de ' + Math.round(PAYLOAD_LIMITE_BYTES/1000) + ' KB en la nube. Conviene archivar meses antiguos pronto.', 'warn', 8000);
         }
         const savedAt = Date.now();
         // FIX (2026-08-17, hallazgo #2 — el toast falso pasaba INCLUSO sin
@@ -280,13 +377,14 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
         window._lastSavedAt = savedAt;
         try { localStorage.setItem('mf_lastSavedAt', String(savedAt)); } catch(_){}
         const forzar = _forzarProximo; _forzarProximo = false;
-        const r = await _escribirNube(payloadNube, savedAt, forzar);
+        const r = await _escribirNube(payloadNube, savedAt, forzar, { base: baseAlSerializar });
         if (!r.ok) {
           // Conflicto: la nube cambió desde la última vez que este dispositivo la leyó. No se pisa.
           await _resolverConflicto(r.snap, payloadStr);
           resolve({ok:false, reason:'conflict'});
           return;
         }
+        window._baseAntesDeEscribir = window._lastSavedPayload; // el estado común de partida de esta escritura (para fusionar si otro escribió la misma revisión)
         window._lastSavedPayload = payloadStr;
         setSyncStatus('ok', 'Guardado en la nube · ' + new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}));
         resolve({ok:true});
@@ -297,7 +395,7 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
       }
   }
 
-  window._fbSaveToCloud = function(opts) {
+  window._firebaseSaveToCloud = function(opts) {
     if(opts && opts.forzar) _forzarProximo = true;
     // Estado aislado (conEstadoAislado, js/core/persistencia.js): un estado de prueba jamás se escribe en la nube.
     if(window._estadoAislado) return Promise.resolve({ok:false, reason:'isolated'});
@@ -310,11 +408,11 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
     if(!_savePromise){
       _savePromise = new Promise((resolve) => { _saveResolve = resolve; });
     }
-    _saveTimer = window._fbSaveTimer = setTimeout(_ejecutarGuardado, 1500);
+    _saveTimer = window._firebaseSaveTimer = setTimeout(_ejecutarGuardado, 1500);
     return _savePromise;
   };
 
-  // FIX (2026-09-19): guardado inmediato al salir de la app. Un cambio esperaba
+  // FIX: guardado inmediato al salir de la app. Un cambio esperaba
   // hasta ~0,8 s (debounceSave, js/core/utilidades-ui.js) + 1,5 s (el debounce de acá)
   // antes de empezar a escribir; el único guardado de emergencia era
   // `beforeunload` (el núcleo), que en celulares casi nunca se dispara al
@@ -322,7 +420,7 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
   // `pagehide` sí son confiables. Solo acelera un guardado que YA iba a
   // ocurrir: no escribe nada si este dispositivo no modificó nada, y respeta
   // _dataLoaded (modo lectura) igual que el resto.
-  window._fbFlushSave = function() {
+  window._firebaseFlushSave = function() {
     if(!window._dataLoaded || !_savePromise) return Promise.resolve({ok:true, reason:'nothing-pending'});
     clearTimeout(_saveTimer);
     const pendiente = _savePromise;
@@ -332,7 +430,7 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
 
   let _ultimoFlushOculto = 0;
   function _guardarAlOcultar() {
-    if(!window._dataLoaded || !window._fbUser) return;
+    if(!window._dataLoaded || !window._firebaseUser) return;
     const ahora = Date.now();
     if(ahora - _ultimoFlushOculto < 1000) return; // visibilitychange + pagehide suelen llegar juntos
     _ultimoFlushOculto = ahora;
@@ -341,7 +439,7 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
     // guardado de beforeunload, no se fuerza nada si solo se abrió a leer.
     if(window._locallyModified && typeof save === 'function') { try { save(); } catch(_){} }
     if(_savePromise) console.log('[Sync] Página oculta — guardando de inmediato.');
-    window._fbFlushSave();
+    window._firebaseFlushSave();
   }
   document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'hidden') _guardarAlOcultar(); });
   window.addEventListener('pagehide', _guardarAlOcultar);
@@ -357,10 +455,10 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
     refresh(); if(window.applyModulos) applyModulos();
     poblarCatSelect('gv_cat',getCatsVar());
     poblarCatSelect('gf_c',getCatsFijo());
-    // FIX (2026-08-28): _initEventListeners vive en otro <script defer>
+    // FIX: _initEventListeners vive en otro <script defer>
     // (fuera de este archivo). firebase-sync.js carga como `type="module"
     // async` a propósito (ver index.html, comentario junto al <script> —
-    // deja correr _fbLoadData/onSnapshot en paralelo con el parseo del
+    // deja correr _firebaseLoadData/onSnapshot en paralelo con el parseo del
     // documento en vez de esperar a que termine). `async` no da NINGUNA
     // garantía de orden frente a los <script defer>. Normalmente igual
     // funciona porque Firestore tarda más en responder que en terminar
@@ -383,14 +481,14 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
   }
 
   // Antes era un setTimeout recursivo propio, cada 20ms, sin tope de
-  // intentos (ver CHANGELOG.md#infraestructura--seguridad, entrada de
+  // intentos (ver changelog/infraestructura-seguridad.md, entrada de
   // consolidación de este patrón). Mismo intervalo de 20ms preservado —
   // se eligió corto a propósito para minimizar el retraso antes de pintar
   // tras resolver auth.
   function _runWhenEventListenersReady() {
     waitFor(() => typeof _initEventListeners === 'function', () => {
       _initEventListeners();
-      // FIX 2026-08-13: verificarVencimientosCDT (cuentas.js, grupo lazy) sin
+      // FIX: verificarVencimientosCDT (cuentas.js, grupo lazy) sin
       // guard — mismo problema que _renderTasaHistorialTag arreglado antes:
       // corre en cada arranque de la app, no solo al visitar Cuentas.
       if(typeof verificarVencimientosCDT==='function') verificarVencimientosCDT();
@@ -415,10 +513,10 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
   // dispositivo o pestaña se refleje automáticamente sin recargar la página.
   let _unsubscribeSnapshot = null; // Para poder cancelar el listener si hace falta
 
-  window._fbLoadData = function() {
-    if(!window._fbUser || !window._fb) return;
-    const {db, doc, onSnapshot} = window._fb;
-    const docRef = doc(db, 'usuarios', window._fbUser.uid, 'data', 'finanzas');
+  window._firebaseLoadData = function() {
+    if(!window._firebaseUser || !window._firebase) return;
+    const {db, doc, onSnapshot} = window._firebase;
+    const docRef = doc(db, 'usuarios', window._firebaseUser.uid, 'data', 'finanzas');
 
     // Cancelar listener anterior si existía (ej: re-login)
     if(_unsubscribeSnapshot) { _unsubscribeSnapshot(); _unsubscribeSnapshot = null; }
@@ -437,7 +535,7 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
     // posterior). Antes: si la primera entrega venía del caché local
     // (fromCache=true), NO se pintaba nada — se esperaba hasta 8s la
     // confirmación del servidor "para no mostrar datos obsoletos" (ver
-    // CHANGELOG.md#arranque). En la práctica esos 8s eran casi siempre
+    // changelog/arranque.md). En la práctica esos 8s eran casi siempre
     // puro spinner: el caché de persistentLocalCache() es el mismo
     // dispositivo releyendo su propio último guardado (setDoc), así que
     // casi nunca es "obsoleto" — y aunque lo fuera, un snapshot del
@@ -535,17 +633,35 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
           const esNueva = hayRev
             ? remoteData.rev > Math.max(window._revNube || 0, window._revEnVuelo || 0)
             : (remoteTs > localTs + 5000 && remoteTs > _remotoAplicadoTs);
-          if(esNueva) {
+          // Misma revisión que acabo de escribir pero con otra hora: otro dispositivo/pestaña escribió esa revisión a la vez que yo
+          // (ninguno vio al otro). No es el eco de mi guardado: se trata como actualización de otro y se conserva copia de lo local.
+          const mia = window._ultimaEscrituraPropia;
+          const mismaRevOtroEscritor = hayRev && !!mia && remoteData.rev === mia.rev && remoteTs !== mia.ts;
+          // «Borrar todos los datos» en otro dispositivo escribe un documento vacío ({}). Aquí NO se ignora ni se fusiona: si no, esta
+          // pestaña conserva sus datos viejos y el siguiente guardado los vuelve a subir (se «resucitan» los datos borrados).
+          if((esNueva || mismaRevOtroEscritor) && !window._borrandoTodo && _payloadEsVacio(remoteData.payload)) { _adoptarBorradoRemoto(remoteTs); return; }
+          if(esNueva || mismaRevOtroEscritor) {
+            window._ultimaEscrituraPropia = null;
             _remotoAplicadoTs = Math.max(_remotoAplicadoTs, remoteTs);
             console.log('[Sync] Datos más nuevos del servidor — aplicando actualización en tiempo real.');
-            // Cambios locales sin guardar que esta actualización va a reemplazar: se guarda una copia antes.
+            // Cambios locales sin guardar (o, si otro escribió la misma revisión, lo que yo había escrito): en vez de descartarlos se
+            // fusionan con lo de la nube (js/core/fusion.js). Siempre queda además una copia en Respaldos.
+            // El texto local y la base se toman AHORA (síncrono, antes de _applyCloudData); guardar la copia y avisar es asíncrono.
+            let fusion = null, hayLocal = false;
             try {
-              if(window._lastSavedPayload && JSON.stringify(window.S) !== window._lastSavedPayload) {
-                localStorage.setItem('mf_conflicto', JSON.stringify({ ts: Date.now(), payload: JSON.stringify(window.S) }));
-                if(window.toast) window.toast('Otro dispositivo guardó mientras editabas aquí: se cargó su versión.', 'warn', 8000);
+              const planoLocal = window._lastSavedPayload ? JSON.stringify(window.S) : null;
+              hayLocal = !!planoLocal && (planoLocal !== window._lastSavedPayload || mismaRevOtroEscritor);
+              if(hayLocal) {
+                const baseTxt = mismaRevOtroEscritor ? window._baseAntesDeEscribir : window._lastSavedPayload;
+                fusion = _fusionarConNube(baseTxt, planoLocal, snap.data().payload);
+                _guardarCopiaConflicto(planoLocal).then(donde => {
+                  if(fusion) return; // se fusionó: la copia es solo un seguro y no hace falta avisar de ella
+                  if(window.toast) window.toast(_textoAvisoConflicto('Otro dispositivo guardó mientras editabas aquí: se cargó su versión.', donde), 'warn', donde === 'equipo' ? 10000 : 14000);
+                });
               }
             } catch(_){}
             _applyCloudData(snap);
+            if(fusion) { try { _aplicarFusion(fusion, snap.data().payload); } catch(e) { console.warn('[Sync] No se pudo aplicar la fusión:', e); fusion = null; } }
             // Materializar intereses antes de renderizar para minimizar diferencia con Nu
             (window.S&&window.S.cajitas||[]).forEach(c=>{ if(typeof materializarIntereses==='function') materializarIntereses(c); });
             // Re-renderizar la UI sin reinicializar event listeners
@@ -554,7 +670,8 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
               refresh();
               if(window.applyModulos) applyModulos();
               setSyncStatus('ok', 'Sincronizado · ' + new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}));
-              if(window.toast) window.toast('Datos actualizados desde otro dispositivo', 'info', 3000);
+              if(window.toast) window.toast(fusion ? 'Se combinaron tus cambios con los de otro dispositivo' : 'Datos actualizados desde otro dispositivo', 'info', fusion ? 5000 : 3000);
+              if(fusion && typeof window._firebaseSaveToCloud === 'function') window._firebaseSaveToCloud(); // sube lo combinado
             }
           }
         }
@@ -624,11 +741,12 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
           estado = 'empty';
         } else {
           Object.assign(window.S, cloudData);
+          if (window.Libro) window.Libro.hidratar(window.S);
           // La migración y auto-sanación de tarjetas de crédito ahora vive en
           // tcNormalizarTarjetas(), que se ejecuta en cada refresh() — no hace
           // falta un parche puntual aquí.
         }
-        // FIX (2026-08-17, ver window._fbSaveToCloud más arriba): fijar acá
+        // FIX: fijar acá
         // la base de comparación del chequeo "¿cambió algo de verdad?" — se
         // recalcula con JSON.stringify(window.S) (no con el payload crudo
         // de la nube) para que compare exactamente igual que el próximo
@@ -646,7 +764,28 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
     }
   }
 
-  // FIX (2026-09-19) — la nube se pisaba con el estado por defecto tras
+  function _payloadEsVacio(plano) {
+    try { const o = JSON.parse(plano); return !!o && typeof o === 'object' && !Array.isArray(o) && Object.keys(o).length === 0; } catch(_) { return false; }
+  }
+
+  // Otro dispositivo borró todo: se bloquea el guardado de inmediato (lo que hay aquí ya no es la verdad), se borran también los
+  // respaldos de ESTE equipo (el que borró limpió los suyos y los de la nube) y se recarga, que es lo que hace el dispositivo que borró.
+  // No se guarda copia de lo local: se pidió borrar TODO. Los snapshots repetidos del mismo borrado no lo repiten.
+  let _adoptandoBorrado = false;
+  function _adoptarBorradoRemoto(ts) {
+    if(_adoptandoBorrado) return;
+    _adoptandoBorrado = true;
+    window._dataLoaded = false;
+    clearTimeout(window._syncConfirmTimer);
+    window._lastSavedAt = ts;
+    try { localStorage.setItem('mf_lastSavedAt', String(ts)); } catch(_) {}
+    if(window.toast) window.toast('Se borraron todos los datos desde otro dispositivo. Recargando…', 'warn', 4000);
+    const espera = ms => new Promise(r => setTimeout(r, ms));
+    const limpieza = Promise.resolve().then(() => window._firebaseRespaldos && window._firebaseRespaldos.borrarTodos()).catch(() => {});
+    Promise.all([espera(1200), Promise.race([limpieza, espera(3000)])]).then(() => location.reload());
+  }
+
+  // FIX — la nube se pisaba con el estado por defecto tras
   // borrar el storage del navegador (DevTools > Application). Causa: con la
   // caché de Firestore vacía o inconsistente, el listener puede decir "no hay
   // documento" — y _finishFirstLoad() lo tomaba como una carga válida:
@@ -668,13 +807,13 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
   // un BatchGetDocuments directo al servidor — no pasa por la caché local ni
   // por el "target" del listener (que es lo que puede estar inconsistente).
   async function _leerDocEnServidor() {
-    const {db, doc, runTransaction} = window._fb || {};
+    const {db, doc, runTransaction} = window._firebase || {};
     if(typeof runTransaction !== 'function') {
       return {ok:false, error:'runTransaction no está expuesto (actualizar firebase-init.js)'};
     }
-    if(!window._fbUser) return {ok:false, error:'sin usuario'};
+    if(!window._firebaseUser) return {ok:false, error:'sin usuario'};
     try {
-      const ref = doc(db, 'usuarios', window._fbUser.uid, 'data', 'finanzas');
+      const ref = doc(db, 'usuarios', window._firebaseUser.uid, 'data', 'finanzas');
       const snap = await runTransaction(db, tx => tx.get(ref));
       return {ok:true, snap: await _decodificarSnap(snap)};
     } catch(e) {
@@ -724,14 +863,14 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
   function _finishFirstLoad(confiable) {
     document.getElementById('fb-loading-screen').style.display = 'none';
     // PROTECCIÓN: marcar que los datos ya se cargaron correctamente.
-    // _fbSaveToCloud no guardará nada hasta que esta bandera esté activa.
+    // _firebaseSaveToCloud no guardará nada hasta que esta bandera esté activa.
     window._dataLoaded = !!confiable;
     _initAppUI();
     // Snapshot diario: guardar patrimonio del día aunque no haya otros cambios.
     // Esto llena la gráfica de patrimonio sin que el usuario tenga que hacer nada.
     if(confiable && typeof snapshotPatrimonio === 'function'){
       snapshotPatrimonio();
-      if(typeof window._fbSaveToCloud === 'function') window._fbSaveToCloud();
+      if(typeof window._firebaseSaveToCloud === 'function') window._firebaseSaveToCloud();
     }
     // Resumen de cierre de mes: detectar si cambió el mes desde la última apertura
     _checkCierreMes();
@@ -746,7 +885,7 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
       window._syncConfirmTimer = setTimeout(_avisarSinConfirmar, 8000);
     }
     // Notificar a módulos inline que los datos están listos.
-    // Los scripts inline no pueden sobrescribir window._fbLoadData de forma confiable
+    // Los scripts inline no pueden sobrescribir window._firebaseLoadData de forma confiable
     // porque este módulo (type="module") se ejecuta DESPUÉS que ellos, sobreescribiendo
     // cualquier wrapper que hayan puesto. El evento 'appDataLoaded' es el canal correcto.
     window.dispatchEvent(new CustomEvent('appDataLoaded'));
@@ -768,8 +907,8 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
     const mesK = ultimoMesVisto;
     const totalGastos = Periodo.gastosDelMes(mesK).total;
     // Patrimonio al cierre (último registro del mes anterior en el historial)
-    const hist = S.patrimonioHistorial || [];
-    const snapMes = [...hist].filter(h=>(h.fecha||'').startsWith(mesK)).pop();
+    const historial = S.patrimonioHistorial || [];
+    const snapMes = [...historial].filter(h=>(h.fecha||'').startsWith(mesK)).pop();
     const patrimonioMes = snapMes ? snapMes.valor : null;
     const [anioM, mesM] = mesK.split('-').map(Number);
     const nombreMes = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][mesM-1];
@@ -782,7 +921,7 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
   }
 
   // ── Login con Google ──────────────────────────────────────────────────────
-  // Guard de doble ejecución (2026-09-27): el doble popup por doble clic/
+  // Guard de doble ejecución: el doble popup por doble clic/
   // doble tap mientras el primero seguía abierto ya lo cubre el bloqueo
   // genérico de Events.dispatch (js/core/events.js) — cualquier handler
   // async queda bloqueado en su propio elemento hasta que su promesa
@@ -791,11 +930,11 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
   // alcanza a quedar visible un instante después de un login exitoso
   // (onAuthStateChanged/DOM aún resolviendo) con el botón ya habilitado de
   // antes, un clic ahí repetiría el signIn aunque ya hubiera una sesión
-  // activa — por eso el corte por `window._fbUser` sigue siendo local.
-  window._fbSignIn = async function() {
-    if(!window._fb) return;
-    if(window._fbUser) return; // ya hay sesión — ignora clics durante el parpadeo de la pantalla de login
-    const {auth, provider, signInWithPopup, popupResolver} = window._fb;
+  // activa — por eso el corte por `window._firebaseUser` sigue siendo local.
+  window._firebaseSignIn = async function() {
+    if(!window._firebase) return;
+    if(window._firebaseUser) return; // ya hay sesión — ignora clics durante el parpadeo de la pantalla de login
+    const {auth, provider, signInWithPopup, popupResolver} = window._firebase;
     try {
       // popupResolver explícito: si esta carga arrancó sin resolver (ver
       // firebase-init.js, mf_auth_hint), es lo que carga el iframe recién acá.
@@ -820,32 +959,32 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
   };
 
   // ── Cerrar sesión ─────────────────────────────────────────────────────────
-  // FIX (2026-09-27): entre confirmar y el location.reload() final había un
+  // FIX: entre confirmar y el location.reload() final había un
   // guardado a Firestore + el propio signOut(), todo async — nada bloqueaba
   // la app en esa ventana, así que se podía seguir navegando/editando datos
   // mientras tanto (efecto observado: "me puedo seguir moviendo unos
   // segundos"). Se reutiliza #fb-loading-screen (overlay de pantalla
   // completa que ya usa el arranque de la app, ver index.html) para
   // bloquear cualquier interacción hasta que la sesión termine de cerrarse.
-  window._fbSignOut = async function() {
+  window._firebaseSignOut = async function() {
     const ok = await dialogo('Cerrar sesión', '¿Seguro que quieres salir? Tus datos quedan guardados en la nube.', 'Cerrar sesión', true);
     if(!ok) return;
-    if(!window._fb) return;
+    if(!window._firebase) return;
     const _overlay = document.getElementById('fb-loading-screen');
     if(_overlay) _overlay.style.display = 'flex';
     // Cancelar cualquier guardado pendiente antes de salir para evitar
     // que un timer de debounce guarde datos vacíos o corruptos post-signout.
     // Ambos timers se exponen en window para que este módulo pueda cancelarlos.
     clearTimeout(window._debounceTimer);     // timer de debounceSave (script global)
-    clearTimeout(window._fbSaveTimer);       // timer de _fbSaveToCloud (módulo Firebase)
+    clearTimeout(window._firebaseSaveTimer);       // timer de _firebaseSaveToCloud (módulo Firebase)
     // Guardar una última vez de forma inmediata si hay datos válidos
-    if(window._fbUser && window.S && window._dataLoaded) {
+    if(window._firebaseUser && window.S && window._dataLoaded) {
       try {
         const signOutTs = Date.now();
         try { localStorage.setItem('mf_lastSavedAt', String(signOutTs)); } catch(_){}
         const r = await _escribirNube(await codificarPayload(JSON.stringify(window.S)), signOutTs, false);
         if(!r.ok) {
-          // Otro dispositivo guardó antes: se carga su versión (la local queda en `mf_conflicto`) y no se cierra la sesión todavía.
+          // Otro dispositivo guardó antes: se carga su versión (la local queda como copia tipo `conflicto`) y no se cierra la sesión todavía.
           await _resolverConflicto(r.snap, JSON.stringify(window.S));
           if(_overlay) _overlay.style.display = 'none';
           return;
@@ -864,16 +1003,16 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
       _unsubscribeSnapshot();
       _unsubscribeSnapshot = null;
     }
-    // window._fbCacheFallbackTimer ya no se crea en ningún lado (ver
-    // _fbLoadData, docs/auditoria-tecnica.md #4) — esta línea queda
+    // window._firebaseCacheFallbackTimer ya no se crea en ningún lado (ver
+    // _firebaseLoadData, docs/auditoria-tecnica.md #4) — esta línea queda
     // inofensiva a propósito (el `if` nunca entra) en vez de borrarla, para
     // no tocar código de limpieza de sesión sin necesidad real.
-    if(window._fbCacheFallbackTimer) { clearTimeout(window._fbCacheFallbackTimer); window._fbCacheFallbackTimer = null; }
+    if(window._firebaseCacheFallbackTimer) { clearTimeout(window._firebaseCacheFallbackTimer); window._firebaseCacheFallbackTimer = null; }
     // Bloquear futuros guardados limpiando el usuario ANTES del signOut
     window._dataLoaded = false;
     window._lastSavedAt = 0;
-    window._fbUser = null;
-    const {auth, signOut} = window._fb;
+    window._firebaseUser = null;
+    const {auth, signOut} = window._firebase;
     await signOut(auth);
     location.reload();
   };
@@ -888,14 +1027,14 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
     setTimeout(() => input.focus(), 50);
   };
   window._cerrarEliminarCuenta = function() {
-    // FIX (2026-09-27): mientras _fbDeleteAccount está en curso, esta misma
+    // FIX: mientras _firebaseDeleteAccount está en curso, esta misma
     // función se dispara al tocar "Cancelar" o al hacer clic fuera del
     // overlay (ver _wireDeleteAccountOverlay) — cerraba el overlay y dejaba
     // seguir navegando mientras el borrado seguía en Firestore en segundo
     // plano. El botón "Confirmar" ya se autobloquea vía Events.dispatch
     // (js/core/events.js) por ser un handler async, pero eso no cubre otros
     // elementos como este.
-    if(window._fbDeleteAccountEnCurso) return;
+    if(window._firebaseDeleteAccountEnCurso) return;
     document.getElementById('del-account-overlay').classList.remove('open');
   };
 
@@ -927,7 +1066,7 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
         if (confirm) confirm.disabled = (this.value.trim() !== 'ELIMINAR');
       });
       input.addEventListener('keydown', function(e){
-        if(e.key === 'Enter' && this.value.trim() === 'ELIMINAR') window._fbDeleteAccount();
+        if(e.key === 'Enter' && this.value.trim() === 'ELIMINAR') window._firebaseDeleteAccount();
       });
     }
   }
@@ -950,41 +1089,41 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
     try { sessionStorage.clear(); } catch(_){}
   }
 
-  window._fbDeleteAccount = async function() {
+  window._firebaseDeleteAccount = async function() {
     const input = document.getElementById('del-account-input');
     if(input.value.trim() !== 'ELIMINAR') return;
-    if(!window._fb || !window._fbUser) return;
+    if(!window._firebase || !window._firebaseUser) return;
     // Con PIN activo, se vuelve a pedir antes de borrar la cuenta (mejora 13). Si se cancela no se toca nada.
     if(typeof window.pedirPinAntesDe === 'function' && !(await window.pedirPinAntesDe('Para eliminar tu cuenta y todos tus datos'))) return;
 
-    // FIX (2026-09-27): antes se podía cancelar el overlay (botón "Cancelar"
+    // FIX: antes se podía cancelar el overlay (botón "Cancelar"
     // o clic afuera) mientras el borrado seguía en curso en segundo plano —
     // ver el guard equivalente en _cerrarEliminarCuenta más arriba.
-    window._fbDeleteAccountEnCurso = true;
+    window._firebaseDeleteAccountEnCurso = true;
 
     const btn = document.getElementById('del-account-confirm');
     const textoOriginal = btn.textContent;
     btn.disabled = true;
     btn.textContent = 'Eliminando…';
 
-    const {auth, db, doc, deleteDoc, deleteUser, reauthenticateWithPopup, provider, popupResolver, signOut} = window._fb;
-    const uid = window._fbUser.uid;
+    const {auth, db, doc, deleteDoc, deleteUser, reauthenticateWithPopup, provider, popupResolver, signOut} = window._firebase;
+    const uid = window._firebaseUser.uid;
 
     // Cancelar guardados/listeners pendientes para que nada reescriba datos a mitad de la eliminación
     clearTimeout(window._debounceTimer);
-    clearTimeout(window._fbSaveTimer);
+    clearTimeout(window._firebaseSaveTimer);
     if(typeof _unsubscribeSnapshot === 'function') {
       _unsubscribeSnapshot();
       _unsubscribeSnapshot = null;
     }
-    // Ver nota equivalente en _fbSignOut — código de limpieza inofensivo,
+    // Ver nota equivalente en _firebaseSignOut — código de limpieza inofensivo,
     // dejado a propósito.
-    if(window._fbCacheFallbackTimer) { clearTimeout(window._fbCacheFallbackTimer); window._fbCacheFallbackTimer = null; }
+    if(window._firebaseCacheFallbackTimer) { clearTimeout(window._firebaseCacheFallbackTimer); window._firebaseCacheFallbackTimer = null; }
     window._dataLoaded = false;
 
     try {
       // 0) Borrar los respaldos automáticos (nube y equipo): son datos del usuario y, sin cuenta, quedarían huérfanos (nunca lanza).
-      try { await window._fbRespaldos.borrarTodos(); } catch(_) {}
+      try { await window._firebaseRespaldos.borrarTodos(); } catch(_) {}
       // 1) Borrar el documento de datos en Firestore
       await deleteDoc(doc(db, 'usuarios', uid, 'data', 'finanzas'));
       // 2) Borrar el usuario de Firebase Auth
@@ -997,14 +1136,14 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
           await deleteDoc(doc(db, 'usuarios', uid, 'data', 'finanzas'));
           await deleteUser(auth.currentUser);
         } catch(e2) {
-          window._fbDeleteAccountEnCurso = false;
+          window._firebaseDeleteAccountEnCurso = false;
           btn.disabled = false;
           btn.textContent = textoOriginal;
           if(typeof toast === 'function') toast('No se pudo eliminar la cuenta: ' + (e2.message || e2), 'err');
           return;
         }
       } else {
-        window._fbDeleteAccountEnCurso = false;
+        window._firebaseDeleteAccountEnCurso = false;
         btn.disabled = false;
         btn.textContent = textoOriginal;
         if(typeof toast === 'function') toast('No se pudo eliminar la cuenta: ' + (e.message || e), 'err');
@@ -1014,7 +1153,7 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
 
     // 3) Limpiar todo rastro local y cerrar sesión
     window._lastSavedAt = 0;
-    window._fbUser = null;
+    window._firebaseUser = null;
     _limpiarStorageLocal();
     try { await signOut(auth); } catch(_){}
     location.reload();
@@ -1043,9 +1182,9 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
   function _registrarEventosAuthgate() {
     if(typeof Events === 'undefined' || typeof Events.registerAll !== 'function') return false;
     Events.registerAll('authgate', {
-      signIn: window._fbSignIn,
+      signIn: window._firebaseSignIn,
       cerrarEliminarCuenta: window._cerrarEliminarCuenta,
-      eliminarCuenta: window._fbDeleteAccount,
+      eliminarCuenta: window._firebaseDeleteAccount,
     });
     // Confirmado: ya se puede usar el botón de login (ver el timeout de
     // seguridad en el bloque de arriba, junto a onAuthStateChanged).
@@ -1054,7 +1193,7 @@ import { respaldarEnNube, respaldarEnEquipo, listarEnNube, listarEnEquipo, fusio
     document.querySelectorAll('[data-action^="authgate:"]').forEach(function(b){ b.disabled = false; });
     return true;
   }
-  // Antes era un setInterval propio (ver CHANGELOG.md#infraestructura--
+  // Antes era un setInterval propio (ver changelog/infraestructura-seguridad.md
   // seguridad, entrada de consolidación de este patrón). _registrarEventosAuthgate
   // ya hace el registro Y devuelve si tuvo éxito, así que sirve directo como
   // checkFn — waitFor solo lo vuelve a llamar hasta que dé true.

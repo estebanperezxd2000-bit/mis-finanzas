@@ -2,6 +2,7 @@
 // botón data-action presente. Informa (a) acciones sin handler registrado y (b) excepciones al tocar cada botón.
 // Uso: node scripts/smoke-browser.js [raiz-del-repo] [--verbose]   (por defecto, la raíz del repo; necesita `npm install`: jsdom ^27.4.0 está en devDependencies; atajo: `npm run smoke`)
 // Vive en scripts/ y NO en la carpeta de tests: `node --test` ejecuta todo .js que encuentra ahí y esto necesita jsdom.
+const { clasicos, sinExport, prepararVentana } = require('./jsdom-modulos');
 const { JSDOM, ResourceLoader, VirtualConsole } = require('jsdom');
 const fs = require('fs'), path = require('path');
 const RAIZ = path.resolve(process.argv.slice(2).find(a => !a.startsWith('--')) || path.join(__dirname, '..'));
@@ -14,7 +15,7 @@ class Local extends ResourceLoader {
     if (url === ORIGEN + '__espia.js') return Promise.resolve(Buffer.from(ESPIA_JS));
     if (url.startsWith(ORIGEN) || url.startsWith('file://')) {
       const f = url.startsWith(ORIGEN) ? path.join(RAIZ, decodeURIComponent(url.slice(ORIGEN.length).split('?')[0])) : decodeURIComponent(url.slice(7));
-      if (fs.existsSync(f)) return Promise.resolve(fs.readFileSync(f));
+      if (fs.existsSync(f)) return Promise.resolve(sinExport(fs.readFileSync(f), f));
       faltan.push(path.relative(RAIZ, f)); // css, imágenes, etc. que no están en la carpeta
       return Promise.resolve(Buffer.from(''));
     }
@@ -28,11 +29,15 @@ vc.on('jsdomError', e => uncaught.push(String(e.detail && e.detail.stack || e.me
 const esperar = ms => new Promise(r => setTimeout(r, ms));
 (async () => {
   const ESPIA = '<script src="__espia.js" defer></script>'; // defer: corre justo después de events.js, en el orden del documento
-  let html = fs.readFileSync(path.join(RAIZ, 'index.html'), 'utf8');
+  let html = clasicos(fs.readFileSync(path.join(RAIZ, 'index.html'), 'utf8'));
   const tagEv = html.match(/<script[^>]*src="js\/core\/events\.js"[^>]*><\/script>/);
   if (tagEv) html = html.replace(tagEv[0], tagEv[0] + ESPIA); else console.log('AVISO: index.html no carga js/core/events.js; no se puede mapear las acciones registradas');
+  // matchMedia controlable: la FASE 5 lo pasa a «PC» (≥900 px) y de vuelta; el resto de las fases corre como celular (false).
+  const modoPc = { pc: false, oyentes: [] };
+  const matchMediaFalso = q => ({ media: q, get matches() { return /min-width:\s*900px/.test(q) ? modoPc.pc : false; },
+    addEventListener: (_, f) => { if (/min-width:\s*900px/.test(q)) modoPc.oyentes.push(f); }, removeEventListener() {}, addListener: f => { if (/min-width:\s*900px/.test(q)) modoPc.oyentes.push(f); }, removeListener() {} });
   const dom = new JSDOM(html, { runScripts: 'dangerously', resources: new Local(), pretendToBeVisual: true, virtualConsole: vc, url: ORIGEN + 'index.html',
-    beforeParse(win) { win.TextEncoder = TextEncoder; win.TextDecoder = TextDecoder; win.HTMLCanvasElement.prototype.getContext = () => ({ font: '', measureText: () => ({ width: 0 }) }); } });
+    beforeParse(win) { prepararVentana(win); win.matchMedia = matchMediaFalso; win.TextEncoder = TextEncoder; win.TextDecoder = TextDecoder; win.HTMLCanvasElement.prototype.getContext = () => ({ font: '', measureText: () => ({ width: 0 }) }); } });
   const w = dom.window;
   w.addEventListener('error', e => uncaught.push('window.error: ' + e.message));
   w.addEventListener('unhandledrejection', e => uncaught.push('rechazo: ' + (e.reason && e.reason.message || e.reason)));
@@ -68,10 +73,10 @@ const esperar = ms => new Promise(r => setTimeout(r, ms));
   // ── Fase 2: Cuentas y Nu con datos, navegando como el usuario ──
   const fallos = [];
   const chequea = (cond, msg) => { if (!cond) fallos.push(msg); };
-  const visibles = () => ev(`['selector','detalle-simple','detalle-nu','detalle-cajita','sub-meta','sub-cdts'].filter(i=>{const e=document.getElementById('cuentas-'+i);return e&&e.style.display!=='none'}).join(',')`);
+  const visibles = () => ev(`['selector','detalle-simple','detalle-nu','detalle-cajita','sub-meta','sub-cdts'].filter(i=>{const e=document.getElementById('cuentas-'+i);return e&&e.classList.contains('panel-activo')}).join(',')`);
   const hoy = new Date(), iso = n => { const d = new Date(hoy); d.setDate(d.getDate() + n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
   ev(`S.cuentas=[{id:'nequi',tipo:'billetera',nombre:'Nequi',saldo:0},{id:'efectivo',tipo:'efectivo',nombre:'Efectivo',saldo:0},{id:'nu',tipo:'ahorro',nombre:'Nu',tasaEA:9.25}];
-      S.cajitas.push({id:'ca',cuentaId:'nu',nombre:'Mi cajita',saldo:100000,fecha:'${iso(-8)}',cdts:[{id:'cd1',monto:20000,tasa:9,rte:0,inicio:'${iso(-3)}',vence:'${iso(60)}',nombre:'CDT uno'}]});
+      S.cajitas.push({id:'ca',cuentaId:'nu',nombre:'Mi cajita',saldo:100000,fecha:'${iso(-8)}',cdts:[{id:'cd1',monto:20000,tasa:9,tasaRetencion:0,inicio:'${iso(-3)}',vence:'${iso(60)}',nombre:'CDT uno'}]});
       S.libro.push({id:'lca',fecha:'${iso(-8)}',cuenta:'cajita:ca',monto:100000,tipo:'apertura',origen:{modulo:'smoke'}});
       S.cuentas.find(c=>c.id==='nequi').saldo=50000; S.libro.push({id:'lnq',fecha:'${iso(-8)}',cuenta:'cuenta:nequi',monto:50000,tipo:'apertura',origen:{modulo:'smoke'}});`);
   const acc0 = new Set(acciones);
@@ -97,18 +102,18 @@ const esperar = ms => new Promise(r => setTimeout(r, ms));
   ev(`abrirCuenta('cuenta:nu')`); chequea(visibles() === 'detalle-nu', 'abrirCuenta(nu) no muestra solo el detalle de Nu: ' + visibles()); chequea(ev('cuentaActual') === 'cuenta:nu', 'cuentaActual != cuenta:nu');
   const tNu = await tocar('Nu');
   ev(`abrirCuenta('cuenta:nu'); abrirDetalleCajita('ca')`); chequea(visibles() === 'detalle-cajita', 'abrirDetalleCajita no muestra solo el detalle de la cajita: ' + visibles()); chequea(ev('_cajitaActualId') === 'ca', '_cajitaActualId no quedó en ca');
-  const tCaj = await tocar('cajita');
+  const tCajita = await tocar('cajita');
   ev(`abrirCuenta('cuenta:nu'); abrirDetalleCajita('ca'); volverSelector()`); chequea(visibles() === 'selector', 'volver desde la cajita: ' + visibles()); chequea(ev('_cajitaActualId') === null, 'volverSelector no reinició la cajita abierta');
   ev(`abrirCuenta('cuenta:nequi')`); chequea(visibles() === 'detalle-simple', 'abrirCuenta(nequi) no muestra el detalle simple: ' + visibles()); chequea(ev('_cajitaActualId') === null, 'quedó una cajita abierta al entrar a Nequi');
   const tSim = await tocar('simple');
   ev(`abrirCuenta('cuenta:nequi'); renderDetalleCuenta('cuenta:nequi')`);
   // Escenario de Spotify con datos (S.spotify): pinta la pantalla y toca sus botones
-  ev(`S.spotify.costo=17500; S.spotify.personas.push({id:'sp1',nombre:'Ana',monto:5000,pagado:false,proximoPago:'${iso(5)}',fechaIngreso:'${iso(-30)}',ultimoDestino:'',mesesAdelantados:1});
-      S.spotify.historial.push({id:'h1',tipo:'cobro',spId:'sp1',nombre:'Ana',fuente:'cuenta:nequi',fecha:'${iso(-2)}',monto:5000});`);
-  try { ev(`renderSpotify(); renderSpHistorial(); renderSpStats()`); } catch (e) { fallos.push('Spotify: render lanzó ' + e.message); }
-  chequea(/Ana/.test(ev(`document.getElementById('spotifyList').innerHTML`)), 'Spotify: la lista no muestra al integrante guardado en S.spotify.personas');
-  const accSp = [...new Set([...w.document.querySelectorAll('#screen-spotify [data-action]')].map(e => e.dataset.action))];
-  for (const a of accSp) {
+  ev(`S.personas.push({id:'pSp1',nombre:'Ana'}); S.spotify.costo=17500; S.spotify.integrantes.push({id:'sp1',personaId:'pSp1',monto:5000,pagado:false,proximoPago:'${iso(5)}',fechaIngreso:'${iso(-30)}',ultimoDestino:'',mesesAdelantados:1});
+      S.spotify.historial.push({id:'h1',tipo:'cobro',spotifyId:'sp1',nombre:'Ana',fuente:'cuenta:nequi',fecha:'${iso(-2)}',monto:5000});`);
+  try { ev(`renderSpotify(); renderSpotifyHistorial(); renderSpotifyStats()`); } catch (e) { fallos.push('Spotify: render lanzó ' + e.message); }
+  chequea(/Ana/.test(ev(`document.getElementById('spotifyList').innerHTML`)), 'Spotify: la lista no muestra al integrante guardado en S.spotify.integrantes');
+  const accSpotify = [...new Set([...w.document.querySelectorAll('#screen-spotify [data-action]')].map(e => e.dataset.action))];
+  for (const a of accSpotify) {
     const el = w.document.querySelector(`#screen-spotify [data-action="${a}"]`); const w0 = logs.warn.length, u0 = uncaught.length;
     try { el.dispatchEvent(new w.MouseEvent('click', { bubbles: true, cancelable: true })); } catch (e) { fallos.push(`Spotify: ${a} lanzó ${e.message}`); }
     await esperar(10);
@@ -116,8 +121,8 @@ const esperar = ms => new Promise(r => setTimeout(r, ms));
     uncaught.slice(u0).forEach(m => fallos.push(`Spotify: ${a} → ${m.slice(0, 170)}`));
     try { ev('closeAllSheets()'); } catch (e) {}
   }
-  console.log('FASE 2 Spotify: botones tocados', accSp.length, '→', accSp.join(' '));
-  const todas = [...new Set([...tSel, ...tNu, ...tCaj, ...tSim])];
+  console.log('FASE 2 Spotify: botones tocados', accSpotify.length, '→', accSpotify.join(' '));
+  const todas = [...new Set([...tSel, ...tNu, ...tCajita, ...tSim])];
   console.log('\nFASE 2 (Cuentas/Nu con datos): botones tocados:', todas.length, '→', todas.join(' '));
   console.log('FASE 2 fallos (' + fallos.length + '):'); fallos.forEach(f => console.log('  ' + f));
 
@@ -146,15 +151,15 @@ const esperar = ms => new Promise(r => setTimeout(r, ms));
     c4(nBtn(q('#gastosFijosList')) === 0 && viz(q('.btn-open-gasto-fijo')), 'Gastos fijos con datos: falta el botón de pie');
 
     ev(`S.tarjetasCredito=[]; renderTCScreen()`);
-    c4(nBtn(q('#tc-lista')) === 1 && !viz(q('#btn-nueva-tarjeta')) && sinSvg(q('#tc-lista')), 'Tarjetas vacío: un solo botón y sin «svg»');
+    c4(nBtn(q('#tc-lista')) === 1 && q('#screen-tarjetas').dataset.vacio === 'si' && sinSvg(q('#tc-lista')), 'Tarjetas vacío: un solo botón y sin «svg»');
     ev(`S.tarjetasCredito=[{id:'t1',nombre:'Visa',cupo:1000000,deuda:0,color:'#60b0f0',ultimos4:'1234'}]; renderTCScreen()`);
-    c4(nBtn(q('#tc-lista')) === 0 && viz(q('#btn-nueva-tarjeta')), 'Tarjetas con datos: falta el botón de pie');
+    c4(nBtn(q('#tc-lista')) === 0 && q('#screen-tarjetas').dataset.vacio === 'no', 'Tarjetas con datos: falta el botón de pie');
 
-    ev(`S.spotify.personas=[]; S.spotify.historial=[]; renderSpotify(); renderSpHistorial(); renderSpStats()`);
+    ev(`S.spotify.integrantes=[]; S.spotify.historial=[]; renderSpotify(); renderSpotifyHistorial(); renderSpotifyStats()`);
     c4(nBtn(q('#spotifyList')) === 1 && !viz(q('#btn-add-spotify-persona')) && sinSvg(q('#spotifyList')), 'Spotify vacío: un solo «Agregar persona» y sin «svg»');
     c4(!viz(q('#spStatsTitulo')), 'Spotify vacío: el título «Estadísticas» debe estar oculto');
     c4(!!q('#spHistorial .empty-inline'), 'Spotify vacío: «Sin pagos registrados aún» debe quedar dentro del historial');
-    ev(`S.spotify.personas.push({id:'sp9',nombre:'Luz',monto:5000,pagado:false,proximoPago:'2099-01-01',fechaIngreso:'2026-10-01',ultimoDestino:'',mesesAdelantados:0}); renderSpotify(); renderSpHistorial(); renderSpStats()`);
+    ev(`S.personas.push({id:'pSp9',nombre:'Luz'}); S.spotify.integrantes.push({id:'sp9',personaId:'pSp9',monto:5000,pagado:false,proximoPago:'2099-01-01',fechaIngreso:'2026-10-01',ultimoDestino:'',mesesAdelantados:0}); renderSpotify(); renderSpotifyHistorial(); renderSpotifyStats()`);
     c4(nBtn(q('#spotifyList')) === 0 && viz(q('#btn-add-spotify-persona')) && viz(q('#spStatsTitulo')), 'Spotify con persona: faltan el botón de pie o el título «Estadísticas»');
 
     ev(`S.deudores=[]; S.misDeudas=[]; renderDeudoresList(); renderMisDeudasList()`);
@@ -163,7 +168,7 @@ const esperar = ms => new Promise(r => setTimeout(r, ms));
     c4(fv.querySelector('.empty-state-btn').textContent.trim() === ct.querySelector('.empty-state-btn').textContent.trim(), 'Préstamos vacío: los dos botones deben llamarse igual');
     c4(fv.querySelector('.empty-state-title').textContent !== ct.querySelector('.empty-state-title').textContent, 'Préstamos vacío: los títulos deben distinguir quién debe a quién');
     c4(sinSvg(fv) && sinSvg(ct), 'Préstamos vacío: aparece el texto «svg»');
-    ev(`Deudas.agregar('favor',{id:'d1',nombre:'Ana',color:'#60b0f0',movimientos:[]}); Deudas.agregar('contra',{id:'d2',nombre:'Beto',color:'#f06868',movimientos:[]}); renderDeudoresList(); renderMisDeudasList()`);
+    ev(`S.personas.push({id:'pDa',nombre:'Ana Deuda',color:'#60b0f0'},{id:'pDb',nombre:'Beto',color:'#f06868'}); Deudas.agregar('favor',{id:'d1',personaId:'pDa',movimientos:[]}); Deudas.agregar('contra',{id:'d2',personaId:'pDb',movimientos:[]}); renderDeudoresList(); renderMisDeudasList()`);
     c4(nBtn(fv) === 0 && nBtn(ct) === 0 && viz(q('#btn-nueva-persona')) && viz(q('#btn-nueva-deuda')), 'Préstamos con datos: faltan los botones de pie');
 
     ev(`S.encargos=[]; renderEncargosList()`);
@@ -173,7 +178,7 @@ const esperar = ms => new Promise(r => setTimeout(r, ms));
     c4(q('#sheet-nuevo-encargo').classList.contains('open'), 'Encargos vacío: el botón del estado vacío no abre «Nuevo encargo»');
     c4(/Sin especificar/.test(q('#enc_cuenta_ini').innerHTML), 'Encargos vacío: el botón del estado vacío no puebla el select de cuentas');
     ev(`closeSheet('nuevo-encargo')`);
-    ev(`S.encargos=[{id:'e1',nombre:'Mamá',personaId:'',saldoInicial:0,movimientos:[],cuentas:[]}]; renderEncargosList()`);
+    ev(`S.personas.push({id:'pEm',nombre:'Mamá'}); S.encargos=[{id:'e1',personaId:'pEm',saldoInicial:0,movimientos:[],cuentas:[]}]; renderEncargosList()`);
     c4(nBtn(q('#encargosList')) === 0 && viz(q('#btn-nuevo-encargo')), 'Encargos con datos: falta el botón de pie');
 
     // .money-input: miles al escribir y cursor que no salta (campo real de la página)
@@ -187,24 +192,24 @@ const esperar = ms => new Promise(r => setTimeout(r, ms));
     gm.value = '';
 
     // Mejora 4: «Yo debo» marca el monto vacío en el propio campo, igual que «Me deben»
-    ev(`abrirMiDeuda('d2'); abrirMovMiDeuda('recibido')`);
+    ev(`abrirMiDeuda('d2'); abrirMovimientoMiDeuda('recibido')`);
     c4(q('#mdMovSheetTitle').textContent === 'Nueva deuda', 'Yo debo: el sheet de nueva deuda debe titularse «Nueva deuda»');
-    ev(`confirmarMovMiDeuda()`);
+    ev(`confirmarMovimientoMiDeuda()`);
     c4(q('#md_monto').classList.contains('input-error') && q('#md_monto_err').textContent === 'Ingresa un monto mayor a 0', 'Yo debo: monto vacío debe marcar el campo con «Ingresa un monto mayor a 0»');
     ev(`closeSheet('mov-mi-deuda')`);
 
     // Mejora 6: balance de Análisis — un color, un signo y un mensaje por escenario. Con ingresos hay 2 meses previos con ingreso (base para evaluar);
     // gastos SIN ingresos anotados es información que falta, no un déficit: neutro y sin «−$X».
-    const esc6 = (ing, gas) => {
-      ev(`S.movimientos=[]; S.gastosVar=[]; S.gastosFijos=[]; S.pagosGastosFijos={}; S.cajitas=[]; S.mesadas=S.mesadas&&{}; S.ingresosFijos=${ing ? `[{id:'i6',nombre:'Sueldo',monto:${ing},cobros:[{id:'c6',mesCubre:mesActual(),monto:${ing},fecha:mesActual()+'-01'},{id:'c6a',mesCubre:Periodo.mesDesplazado(mesActual(),-1),monto:${ing},fecha:Periodo.mesDesplazado(mesActual(),-1)+'-15'},{id:'c6b',mesCubre:Periodo.mesDesplazado(mesActual(),-2),monto:${ing},fecha:Periodo.mesDesplazado(mesActual(),-2)+'-15'}]}]` : '[]'};` +
+    const esc6 = (ingreso, gas) => {
+      ev(`S.movimientos=[]; S.gastosVar=[]; S.gastosFijos=[]; S.pagosGastosFijos={}; S.cajitas=[]; S.mesadas=S.mesadas&&{}; S.ingresosFijos=${ingreso ? `[{id:'i6',nombre:'Sueldo',monto:${ingreso},cobros:[{id:'c6',mesCubre:mesActual(),monto:${ingreso},fecha:mesActual()+'-01'},{id:'c6a',mesCubre:Periodo.mesDesplazado(mesActual(),-1),monto:${ingreso},fecha:Periodo.mesDesplazado(mesActual(),-1)+'-15'},{id:'c6b',mesCubre:Periodo.mesDesplazado(mesActual(),-2),monto:${ingreso},fecha:Periodo.mesDesplazado(mesActual(),-2)+'-15'}]}]` : '[]'};` +
          (gas ? `S.gastosVar=[{id:'g6',desc:'Compra',monto:${gas},fecha:hoy(),cat:'Comida',fuente:'cuenta:efectivo',clase:'gasto'}];` : '') + `renderAnalisis()`);
       const h = q('#analisis-balance-hero');
-      return { cls: h.className.replace('ix-analisis-balance-hero ', ''), monto: tx(h.querySelector('.an-hero-monto')), msg: h.querySelector('.an-hero-msg').textContent.trim(), ing: tx(q('#an-ingresos')) };
+      return { cls: h.className.replace('ix-analisis-balance-hero ', ''), monto: tx(h.querySelector('.an-hero-monto')), msg: h.querySelector('.an-hero-msg').textContent.trim(), ingreso: tx(q('#an-ingresos')) };
     };
     let r6 = esc6(0, 0);
     c4(r6.cls === 'an-hero-neu' && /Aún no hay ingresos ni gastos que cuenten para este mes/.test(r6.msg), 'Balance sin ingresos ni gastos: neutro con «Aún no hay ingresos ni gastos que cuenten para este mes.»');
     r6 = esc6(0, 33.33);
-    c4(r6.cls === 'an-hero-neu' && r6.monto === '—' && /^Registra tus ingresos para ver el balance del mes\.$/.test(r6.msg) && !/Mesada/.test(r6.msg) && r6.ing === '—', 'Balance sin ingresos y con gastos: neutro, «—» y mensaje de registrar ingresos (falta información, no un déficit)');
+    c4(r6.cls === 'an-hero-neu' && r6.monto === '—' && /^Registra tus ingresos para ver el balance del mes\.$/.test(r6.msg) && !/Mesada/.test(r6.msg) && r6.ingreso === '—', 'Balance sin ingresos y con gastos: neutro, «—» y mensaje de registrar ingresos (falta información, no un déficit)');
     r6 = esc6(100000, 30000);
     c4(r6.cls === 'an-hero-pos' && r6.monto === '+$70.000' && /vas bien: has gastado menos de lo que has recibido/.test(r6.msg), 'Balance con ingresos > gastos: verde con signo +');
     r6 = esc6(50000, 50000);
@@ -297,7 +302,7 @@ const esperar = ms => new Promise(r => setTimeout(r, ms));
   // handlers (authgate:*, pin:*) siempre aparecen como "sin handler" / "lanzan al
   // tocar". Eso NO es un fallo del producto: se excluye del veredicto.
   // Acciones de namespaces clásicos cuyo HANDLER vive en un módulo ES
-  // (firebase-sync.js define _fbSignOut/_abrirEliminarCuenta, pero se exponen
+  // (firebase-sync.js define _firebaseSignOut/_abrirEliminarCuenta, pero se exponen
   // bajo el namespace 'config'). jsdom no ejecuta módulos ES, así que estas
   // acciones no se pueden tocar aquí. No es un fallo del producto.
   const accionesQueDependenDeModuloES = new Set(['config:abrirEliminarCuenta', 'config:signOut']);
@@ -308,10 +313,168 @@ const esperar = ms => new Promise(r => setTimeout(r, ms));
   const sinHandlerReales = [...new Set(sinHandler)].filter(a => !esDeModulo(a));
   const lanzanReales = lanzan.filter(l => !esDeModulo(l.split(' →')[0].trim()));
 
+  // ── Fase 5: distribución de PC (≥900 px): ida y vuelta sin perder lo que la persona tenía abierto ──
+  const fallos5 = [];
+  const c5 = (cond, msg) => { if (!cond) fallos5.push(msg); };
+  try {
+    const hijos = id => [...w.document.getElementById(id).children].map(e => e.id || e.className).join(',');
+    const cambiarModo = pc => { modoPc.pc = pc; modoPc.oyentes.forEach(f => f({ matches: pc })); };
+    ev(`S.cuentas=[{id:'nequi',tipo:'billetera',nombre:'Nequi',saldo:0},{id:'efectivo',tipo:'efectivo',nombre:'Efectivo',saldo:0}]; S.cajitas=[]; showScreen('cuentas'); volverSelector();`);
+    const inicioCelular = hijos('screen-inicio'), cuentasCelular = hijos('screen-cuentas');
+    const panel = () => ev(`document.getElementById('screen-cuentas').dataset.panelActivo`);
+    cambiarModo(true);
+    c5(hijos('screen-inicio') === 'columna-principal,columna-riel', 'PC: Inicio no quedó en columna principal + riel: ' + hijos('screen-inicio'));
+    c5(hijos('screen-cuentas') === 'columna-lista,columna-centro,columna-movimientos', 'PC: Cuentas no quedó en lista | centro | movimientos: ' + hijos('screen-cuentas'));
+    c5(panel() === 'cuentas-detalle-simple' && ev('cuentaActual') === 'cuenta:nequi', 'PC: al estar en Cuentas debe abrirse la primera cuenta (' + panel() + ', ' + ev('cuentaActual') + ')');
+    c5(ev(`document.querySelector('#selector-cuentas-lista .cuenta-card-activa')?.dataset.fuente`) === 'cuenta:nequi', 'PC: la cuenta abierta no está resaltada en la lista');
+    c5(ev(`['cuentas-selector','cuentas-detalle-simple'].filter(i=>document.getElementById(i).classList.contains('panel-activo')).join(',')`) === 'cuentas-detalle-simple', 'PC: solo el detalle debe tener panel-activo (la lista se muestra por CSS)');
+    // La apertura fue automática: al volver a celular regresa al selector y todo vuelve a su sitio.
+    cambiarModo(false);
+    c5(panel() === 'cuentas-selector' && ev('cuentaActual') === '', 'Celular: tras una apertura automática debe volver al selector (' + panel() + ')');
+    c5(hijos('screen-inicio') === inicioCelular, 'Celular: Inicio no recuperó su orden: ' + hijos('screen-inicio'));
+    c5(hijos('screen-cuentas') === cuentasCelular, 'Celular: Cuentas no recuperó su orden: ' + hijos('screen-cuentas'));
+    // Una cuenta que la persona abrió ella misma se conserva al achicar.
+    cambiarModo(true);
+    ev(`abrirCuenta('cuenta:efectivo')`);
+    cambiarModo(false);
+    c5(panel() === 'cuentas-detalle-simple' && ev('cuentaActual') === 'cuenta:efectivo', 'Celular: la cuenta abierta por la persona debe conservarse al achicar (' + panel() + ')');
+    c5(hijos('screen-cuentas') === cuentasCelular, 'Celular: Cuentas no recuperó su orden tras abrir una cuenta: ' + hijos('screen-cuentas'));
+    // Gastos: las pestañas alternan el panel por clase (en PC se ven los dos por CSS).
+    const activosGastos = () => ev(`['panel-var','panel-fijo'].filter(i=>document.getElementById(i).classList.contains('panel-activo')).join(',')`);
+    ev(`switchGastoTab('fijo')`); c5(activosGastos() === 'panel-fijo', 'Gastos: la pestaña Fijos no dejó solo panel-fijo activo: ' + activosGastos());
+    ev(`switchGastoTab('var')`); c5(activosGastos() === 'panel-var', 'Gastos: la pestaña Gastos no dejó solo panel-var activo: ' + activosGastos());
+    // Prestado: las pestañas alternan el panel por clase y las pestañas se ocultan solo dentro del detalle.
+    const panelPrestamos = () => ev(`['deudoresView','deudorDetalle','misDeudasView','miDeudaDetalle'].filter(i=>document.getElementById(i).classList.contains('panel-activo')).join(',')`);
+    ev(`cambiarTabPrestamos('yo-debo')`); c5(panelPrestamos() === 'misDeudasView', 'Prestado: la pestaña Yo debo no dejó solo misDeudasView activo: ' + panelPrestamos());
+    ev(`cambiarTabPrestamos('me-deben')`); c5(panelPrestamos() === 'deudoresView' && ev(`document.getElementById('screen-prestamos').dataset.panelActivo`) === 'deudoresView', 'Prestado: la pestaña Me deben no dejó solo deudoresView activo: ' + panelPrestamos());
+    // Encargos: en PC se abre el primer encargo; al achicar sin haber elegido otro se vuelve a la lista.
+    ev(`S.personas.push({id:'pEs',nombre:'Santiago'}); S.encargos=[{id:'enc-prueba',personaId:'pEs',nota:'',movimientos:[],saldoInicial:0}]; showScreen('encargos')`);
+    const panelEncargos = () => ev(`document.getElementById('screen-encargos').dataset.panelActivo`);
+    c5(panelEncargos() === 'encargosListView', 'Encargos: en celular debe verse la lista (' + panelEncargos() + ')');
+    cambiarModo(true);
+    c5(panelEncargos() === 'encargoDetalle' && ev('encargoActualId') === 'enc-prueba', 'Encargos: en PC debe abrirse el primer encargo (' + panelEncargos() + ')');
+    cambiarModo(false);
+    c5(panelEncargos() === 'encargosListView' && ev('encargoActualId') === null, 'Encargos: al achicar tras una apertura automática debe volver a la lista (' + panelEncargos() + ')');
+    ev(`S.encargos=[]; showScreen('inicio')`);
+    // Personas (como el prototipo): en PC al abrir no hay nadie elegido; tocar una persona abre su ficha (sin hoja), volver a tocarla la cierra
+    // y salir de la pantalla también. En celular el perfil sigue siendo una hoja. El saldo neto es préstamos menos Yo debo (los encargos no entran).
+    ev(`S.personas=[{id:'per-prueba',nombre:'Laura',color:'#60b0f0'},{id:'per-neta',nombre:'Carlos',color:'#c8f060'}];
+        S.deudores=[{id:'d-neta',personaId:'per-neta',movimientos:[{id:'m1',tipo:'prestamo',monto:500000,fecha:'2026-10-01'}]}];
+        S.misDeudas=[{id:'md-neta',personaId:'per-neta',movimientos:[{id:'m2',tipo:'recibido',monto:200000,fecha:'2026-10-02'}]}];
+        S.encargos=[{id:'enc-neto',personaId:'per-neta',movimientos:[],saldoInicial:90000}];
+        showScreen('personas')`);
+    const fichaAbierta = () => ev(`document.getElementById('screen-personas').dataset.fichaAbierta`);
+    c5(fichaAbierta() === 'no', 'Personas: en celular no debe haber ficha abierta (' + fichaAbierta() + ')');
+    cambiarModo(true);
+    c5(fichaAbierta() === 'no' && ev('_perfilPersonaId') === null, 'Personas: en PC no debe haber nadie elegido al abrir (' + fichaAbierta() + ')');
+    const netoDe = id => ev(`(document.querySelector('#lista-personas-body [data-args=\\'["${id}"]\\'] .personas-saldo-neto')||{}).textContent`);
+    c5(netoDe('per-prueba') === 'Al día', 'Personas: quien no tiene deudas debe mostrar «Al día» (' + netoDe('per-prueba') + ')');
+    const netoCarlos = netoDe('per-neta') || '';
+    c5(/^\+\$\s?300\.000/.test(netoCarlos), 'Personas: el saldo neto de Carlos debe ser +$300.000 (préstamo 500.000 − Yo debo 200.000, sin el encargo): ' + netoCarlos);
+    c5(ev(`document.querySelector('#lista-personas-body [data-args=\\'["per-neta"]\\'] .personas-etiquetas').textContent`) === 'PréstamoEncargoLe debo', 'Personas: las etiquetas de Carlos no son Préstamo, Encargo y Le debo');
+    ev(`_alternarPerfilPersona('per-prueba')`);
+    c5(fichaAbierta() === 'si' && ev('_perfilPersonaId') === 'per-prueba', 'Personas: en PC al tocar una persona debe abrirse su ficha (' + fichaAbierta() + ')');
+    c5(ev(`document.getElementById('pficha-nombre').textContent`) === 'Laura', 'Personas: la ficha no muestra el nombre de la persona');
+    c5(ev(`document.getElementById('sheet-perfil-persona').classList.contains('open')`) === false, 'Personas: en PC el perfil no debe abrir la hoja');
+    ev(`_alternarPerfilPersona('per-neta')`);
+    c5(ev(`document.getElementById('pficha-nombre').textContent`) === 'Carlos', 'Personas: tocar otra persona debe cambiar la ficha');
+    ev(`_alternarPerfilPersona('per-neta')`);
+    c5(fichaAbierta() === 'no' && ev('_perfilPersonaId') === null, 'Personas: volver a tocar la persona abierta debe cerrar su ficha (' + fichaAbierta() + ')');
+    ev(`_alternarPerfilPersona('per-prueba'); showScreen('inicio'); showScreen('personas')`);
+    c5(fichaAbierta() === 'no', 'Personas: al salir y volver no debe quedar nadie elegido (' + fichaAbierta() + ')');
+    cambiarModo(false);
+    ev(`abrirPerfilPersona('per-prueba')`);
+    c5(fichaAbierta() === 'si' && ev(`document.getElementById('sheet-perfil-persona')`) === null || ev(`document.getElementById('sheet-perfil-persona').classList.contains('open')`) === false, 'Personas: en celular el perfil debe ser una pantalla (ficha), no la hoja');
+    c5(fichaAbierta() === 'si' && ev(`document.getElementById('pficha-nombre').textContent`) === 'Laura', 'Personas: en celular la ficha debe mostrar a la persona');
+    ev(`_cerrarFichaPersonas(); S.personas=[]; S.deudores=[]; S.misDeudas=[]; S.encargos=[]; showScreen('inicio')`);
+    // Prestado en PC (como el prototipo): se cambia entre Me deben y Yo debo con las pestañas; solo una lista a la vez y el detalle de la primera persona de la pestaña.
+    ev(`S.personas=[{id:'pL',nombre:'Laura'},{id:'pT',nombre:'Tío'}]; S.deudores=[{id:'dp1',personaId:'pL',movimientos:[{id:'p1',tipo:'prestamo',monto:600000,fecha:'2026-10-01'}]}];
+        S.misDeudas=[{id:'mp1',personaId:'pT',movimientos:[{id:'p2',tipo:'recibido',monto:380000,fecha:'2026-10-02'}]}]; refresh(); showScreen('prestamos')`);
+    cambiarModo(true);
+    const tabPrestamos = () => ev(`document.getElementById('screen-prestamos').dataset.tabPrestamos`);
+    c5(tabPrestamos() === 'me-deben' && panelPrestamos() === 'deudorDetalle', 'Prestado PC: debe abrir Me deben con el detalle de la primera persona (' + tabPrestamos() + ', ' + panelPrestamos() + ')');
+    c5(ev(`document.getElementById('tab-me-deben-n').textContent`) === ' · 1' && ev(`document.getElementById('tab-yo-debo-n').textContent`) === ' · 1', 'Prestado PC: las pestañas deben llevar cuántas personas tiene cada una');
+    ev(`cambiarTabPrestamos('yo-debo')`);
+    c5(tabPrestamos() === 'yo-debo' && panelPrestamos() === 'miDeudaDetalle' && ev('miDeudaActualId') === 'mp1', 'Prestado PC: la pestaña Yo debo debe abrir a su primera persona (' + tabPrestamos() + ', ' + panelPrestamos() + ')');
+    c5(ev(`document.getElementById('tab-yo-debo').className.indexOf('btn-ghost') === -1`), 'Prestado PC: la pestaña Yo debo debe verse activa');
+    ev(`cambiarTabPrestamos('me-deben')`);
+    c5(tabPrestamos() === 'me-deben' && panelPrestamos() === 'deudorDetalle' && ev('deudorActualId') === 'dp1', 'Prestado PC: volver a Me deben debe abrir a su primera persona (' + tabPrestamos() + ', ' + panelPrestamos() + ')');
+    // Una pestaña vacía se queda en su lista vacía (no salta a la otra).
+    ev(`S.misDeudas=[]; refresh(); cambiarTabPrestamos('yo-debo')`);
+    c5(tabPrestamos() === 'yo-debo' && panelPrestamos() === 'misDeudasView', 'Prestado PC: una pestaña vacía debe quedarse en su lista vacía (' + tabPrestamos() + ', ' + panelPrestamos() + ')');
+    // Abrir a alguien de Yo debo desde fuera (p. ej. «Ver detalle» en Personas) deja la pestaña y la lista de ese lado.
+    ev(`S.misDeudas=[{id:'mp1',personaId:'pT',movimientos:[{id:'p2',tipo:'recibido',monto:380000,fecha:'2026-10-02'}]}]; cambiarTabPrestamos('me-deben'); abrirMiDeuda('mp1')`);
+    c5(tabPrestamos() === 'yo-debo' && ev(`document.getElementById('tab-yo-debo').className.indexOf('btn-ghost') === -1`), 'Prestado: abrir a alguien de Yo debo debe pasar a esa pestaña (' + tabPrestamos() + ')');
+    // Tarjetas en PC: la primera tarjeta queda elegida y su detalle va en el panel; en celular no hay panel.
+    ev(`S.tarjetasCredito=[{id:'tc1',nombre:'Nu Mastercard',banco:'Nu',franquicia:'Mastercard',cupo:3000000,deuda:0,compras:[],pagos:[],estado:'activa'},{id:'tc2',nombre:'Rappi Visa',banco:'Rappi',franquicia:'Visa',cupo:2000000,deuda:0,compras:[],pagos:[],estado:'activa'}]; showScreen('tarjetas'); renderTCScreen()`);
+    c5(ev(`document.getElementById('tc-detalle-titulo').textContent`) === 'Compras y pagos · Nu Mastercard', 'Tarjetas PC: la primera tarjeta debe quedar elegida con su detalle (' + ev(`document.getElementById('tc-detalle-titulo').textContent`) + ')');
+    ev(`abrirDetalleTCSheet('tc2')`);
+    c5(ev(`document.getElementById('tc-detalle-titulo').textContent`) === 'Compras y pagos · Rappi Visa' && ev(`document.querySelector('#tc-lista .tc-card-activa').getAttribute('data-tc-id')`) === 'tc2', 'Tarjetas PC: elegir otra tarjeta debe cambiar el detalle y marcarla');
+    c5(ev(`document.getElementById('tc-cupo-total').textContent.replace(/\\s/g,'')`).indexOf('5.000.000') >= 0, 'Tarjetas PC: el cupo total debe sumar las tarjetas');
+    ev(`S.tarjetasCredito=[]; showScreen('prestamos')`);
+    // Mesada en PC: tira de 5 años; tocar otro año lo cambia. Gastos: «Registrar gasto» arriba junto a los meses.
+    ev(`showScreen('mesada'); renderMesada()`);
+    c5(ev(`document.querySelectorAll('#anio-tira .anio-tira-boton').length`) === 5, 'Mesada PC: la tira debe tener 5 años');
+    const anioHoy = ev(`new Date().getFullYear()`);
+    ev(`document.querySelector('#anio-tira [data-anio="${anioHoy + 1}"]').click()`);
+    c5(ev('S.mesadaAnio') === anioHoy + 1 && ev(`document.querySelector('#anio-tira .on').textContent`) === String(anioHoy + 1), 'Mesada PC: tocar un año de la tira debe cambiarlo');
+    ev(`S.mesadaAnio=${anioHoy}; showScreen('gastos')`);
+    c5(ev(`!!document.querySelector('.gastos-filtros #btn-gasto-var-arriba')`), 'Gastos PC: «Registrar gasto» debe estar junto al filtro de meses');
+    // Sin cuentas con saldo el formulario no se abre y avisa con un toast; con saldo abre la hoja: en los dos casos el botón responde.
+    ev(`document.getElementById('btn-gasto-var-arriba').click()`);
+    c5(ev(`document.querySelectorAll('.sheet.open').length > 0 || document.querySelectorAll('#toast-container > *').length > 0`), 'Gastos PC: el botón de arriba debe responder (abrir el formulario o avisar)');
+    ev(`document.querySelectorAll('.sheet.open').forEach(x => x.classList.remove('open')); showScreen('prestamos')`);
+    // Cabecera: el título es el de la sección (en PC se ve; en celular sigue el nombre de la app).
+    c5(ev(`document.getElementById('hSeccion').textContent`) === 'Prestado', 'Cabecera: el título debe ser el de la sección (' + ev(`document.getElementById('hSeccion').textContent`) + ')');
+    ev(`showScreen('personas')`);
+    c5(ev(`document.getElementById('hSeccion').textContent`) === 'Personas', 'Cabecera: al cambiar de pantalla el título debe cambiar');
+    ev(`showScreen('prestamos')`);
+    cambiarModo(false);
+    ev(`S.deudores=[]; S.misDeudas=[]; showScreen('inicio')`);
+    cambiarModo(true); cambiarModo(false); cambiarModo(true); cambiarModo(false);
+    c5(hijos('screen-inicio') === inicioCelular && hijos('screen-cuentas') === cuentasCelular, 'Varios cambios seguidos dejaron bloques fuera de su sitio');
+  } catch (e) { fallos5.push('excepción en la FASE 5: ' + e.message); }
+  console.log('FASE 5 (distribución de PC) fallos (' + fallos5.length + '):'); fallos5.forEach(f => console.log('  ' + f));
+
+  // ── Fase 6: accesibilidad — hojas como diálogos, foco que entra y vuelve, y lo clicable que no es botón se alcanza con teclado ──
+  const fallos6 = [];
+  const c6 = (cond, msg) => { if (!cond) fallos6.push(msg); };
+  try {
+    try { ev('_initEventListeners()'); } catch (e) { /* ya inicializado o sin sesión: se prueba con lo que haya */ }
+    const origen = w.document.createElement('button'); origen.id = 'a11y-origen'; w.document.body.appendChild(origen); origen.focus();
+    ev(`openSheet('menu')`);
+    const hoja = w.document.querySelector('#sheet-menu .sheet');
+    c6(hoja && hoja.getAttribute('role') === 'dialog' && hoja.getAttribute('aria-modal') === 'true', 'la hoja «menu» no se anuncia como diálogo modal');
+    const nombreId = hoja && hoja.getAttribute('aria-labelledby');
+    c6(nombreId && w.document.getElementById(nombreId) && w.document.getElementById(nombreId).textContent.trim(), 'la hoja «menu» no tiene nombre (aria-labelledby a su título)');
+    c6(hoja && hoja.contains(w.document.activeElement), 'al abrir la hoja el foco no entra en ella');
+    ev(`closeSheet('menu')`);
+    c6(w.document.activeElement === origen, 'al cerrar la hoja el foco no vuelve a quien lo tenía');
+    // Toda hoja con título queda con nombre accesible (o con aria-label propio)
+    const sinNombre = [...w.document.querySelectorAll('.overlay[id^="sheet-"]')].filter(o => { ev(`openSheet('${o.id.slice(6)}')`); const h = o.querySelector('.sheet'); const ok = !h || h.hasAttribute('aria-label') || h.hasAttribute('aria-labelledby') || !o.querySelector('.sheet-title'); ev(`closeSheet('${o.id.slice(6)}')`); return !ok; }).map(o => o.id);
+    c6(!sinNombre.length, 'hojas con título pero sin nombre accesible: ' + sinNombre.join(', '));
+    // Lo clicable que no es botón: se marca y Enter lo activa
+    const card = w.document.querySelector('.action-card');
+    c6(card && card.getAttribute('tabindex') === '0' && card.getAttribute('role') === 'button', '.action-card no quedó alcanzable con teclado');
+    let clics = 0; if (card) { card.addEventListener('click', () => clics++); card.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); }
+    c6(clics === 1, 'Enter sobre una tarjeta de acción no la activa (clics: ' + clics + ')');
+    // Lo que se pinta después también se marca (MutationObserver)
+    const nuevo = w.document.createElement('div'); nuevo.setAttribute('data-action', 'x:y'); nuevo.textContent = 'Algo'; w.document.body.appendChild(nuevo);
+    await esperar(20);
+    c6(nuevo.getAttribute('role') === 'button' && nuevo.getAttribute('tabindex') === '0', 'un elemento clicable agregado después no se marcó');
+    const conBoton = w.document.createElement('div'); conBoton.setAttribute('data-action', 'x:y'); conBoton.innerHTML = '<button type="button" data-action="x:z">ok</button>'; w.document.body.appendChild(conBoton);
+    await esperar(20);
+    c6(!conBoton.hasAttribute('role') && conBoton.getAttribute('tabindex') === '0', 'un contenedor con botones dentro no debe ser role=button (interactivos anidados)');
+    nuevo.remove(); conBoton.remove(); origen.remove();
+  } catch (e) { fallos6.push('la fase de accesibilidad lanzó: ' + e.message); }
+  console.log('FASE 6 (accesibilidad) fallos (' + fallos6.length + '):'); fallos6.forEach(f => console.log('  ' + f));
+
   const fallosReales = [];
   if (jsFaltan.length) fallosReales.push(`${jsFaltan.length} archivo(s) .js faltante(s): ${jsFaltan.join(', ')}`);
   if (antes > 0) fallosReales.push(`${antes} error(es) no atribuible(s) a un botón durante la carga (ver --verbose)`);
   if (fallos.length) fallosReales.push(`${fallos.length} fallo(s) en FASE 2: ${fallos.join(' | ')}`);
+  if (fallos5.length) fallosReales.push(`${fallos5.length} fallo(s) en FASE 5 (distribución de PC): ${fallos5.join(' | ')}`);
+  if (fallos6.length) fallosReales.push(`${fallos6.length} fallo(s) en FASE 6 (accesibilidad): ${fallos6.join(' | ')}`);
   if (fallos4.length) fallosReales.push(`${fallos4.length} fallo(s) en FASE 4 (estados vacíos): ${fallos4.join(' | ')}`);
   if (sinHandlerReales.length) fallosReales.push(`${sinHandlerReales.length} acción(es) sin handler real: ${sinHandlerReales.join(', ')}`);
   if (lanzanReales.length) fallosReales.push(`${lanzanReales.length} acción(es) que lanzan al tocar: ${lanzanReales.join(' | ')}`);

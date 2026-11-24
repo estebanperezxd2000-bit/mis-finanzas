@@ -31,7 +31,7 @@
          tenía además 2 oninput funcionales (metas de aportes) y 1 oninput
          + 2 onchange funcionales (filtro de movimientos), migrados a
          listeners delegados; encargos.js tenía 1 onclick en fila de
-         movimiento, migrado a data-action="core:abrirDetalleMov" (mismo
+         movimiento, migrado a data-action="core:abrirDetalleMovimiento" (mismo
          patrón que cuentas.js/prestado.js). Se revisaron los 29 archivos
          que conforman la app (todos los módulos de pantalla + los 5 de
          infraestructura: events.js, diferencial.js, split.js,
@@ -68,7 +68,7 @@
       manifest-src 'self' data:;
       connect-src 'self' https://www.gstatic.com https://*.googleapis.com https://firestore.googleapis.com wss://*.firebaseio.com https://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://apis.google.com;
       frame-src https://*.firebaseapp.com https://accounts.google.com;
-      worker-src 'self' https://www.gstatic.com;
+      worker-src 'self';
       base-uri 'self';
       form-action 'self';
       object-src 'none';
@@ -296,28 +296,6 @@
       .pin-bio-label{font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;letter-spacing:.3px;}
       @keyframes bioScan{0%,100%{opacity:1;}50%{opacity:.4;}}
     </style>
-    <style>
-      /* Elementos de PC ocultos por defecto, incluidos los primeros milisegundos del arranque. */
-      .desktop-sidebar,.pc-page-title,.pc-search-hint,.pc-search-shortcut,.pc-add-label,.pc-quick-nav{display:none;}
-      .pc-home-columns,.pc-home-primary,.pc-home-secondary{display:contents;}
-      /* En móvil se mantiene el orden que tenía la pantalla Inicio original. */
-      @media (max-width:699px){
-        #screen-inicio.active{display:flex;flex-direction:column;}
-        #screen-inicio .pc-home-primary>:nth-child(1){order:1;}
-        #screen-inicio .pc-home-primary>:nth-child(2){order:2;}
-        #screen-inicio .pc-home-primary>:nth-child(3){order:3;}
-        #screen-inicio .pc-home-primary>:nth-child(4){order:4;}
-        #screen-inicio .pc-home-secondary>:nth-child(1){order:5;}
-        #screen-inicio .pc-home-secondary>:nth-child(2){order:6;}
-        #screen-inicio .pc-home-secondary>:nth-child(3){order:7;}
-        #screen-inicio .pc-home-primary>:nth-child(5){order:8;}
-        #screen-inicio .pc-home-primary>:nth-child(6){order:9;}
-        #screen-inicio .pc-home-primary>:nth-child(7){order:10;}
-        #screen-inicio .pc-home-primary>:nth-child(8){order:11;}
-        #screen-inicio .pc-home-primary>:nth-child(9){order:12;}
-        #screen-inicio .pc-home-secondary>:nth-child(4){order:13;}
-      }
-    </style>
     <link rel="icon" type="image/svg+xml" sizes="any"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f0f0f'/%3E%3Ccircle cx='32' cy='32' r='20' fill='none' stroke='%23c8f060' stroke-width='3'/%3E%3Ctext x='32' y='38' font-family='sans-serif' font-size='22' font-weight='700' fill='%23c8f060' text-anchor='middle'%3E%24%3C/text%3E%3C/svg%3E">
     <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
@@ -386,7 +364,10 @@
          detalle completo de qué quedó ahí y por qué. -->
     <link rel="stylesheet" media="print" data-async-css href="css/styles.css">
     <noscript><link rel="stylesheet" href="css/styles.css"></noscript>
-    <link rel="stylesheet" href="css/desktop.css" media="(min-width: 700px)">
+    <!-- Distribución de PC (≥900 px): solo reglas dentro de @media; en celular no cambia nada. Va DESPUÉS de styles.css (mismo orden de
+         cascada aunque baje antes). Ver docs/version-pc.md. -->
+    <link rel="stylesheet" media="print" data-async-css href="css/pc.css">
+    <noscript><link rel="stylesheet" href="css/pc.css"></noscript>
     <!-- Reemplaza el onload="this.media='all'" inline que tenían estos 3 <link>
          (Font Awesome, Google Fonts, y ahora css/styles.css) — la CSP bloquea
          atributos de evento inline en script-src igual que <script> inline, y
@@ -411,7 +392,6 @@
          este archivo no usa) — funciona igual siendo fonts.googleapis de
          origen cruzado (Font Awesome ya es mismo origen desde que se
          self-hosteó, ver comentario más arriba). -->
-    <script src="js/core/async-css.js" defer></script>
     <!-- Preconnect a los dominios de Firebase: adelanta el handshake DNS/TCP/TLS
          en paralelo, en vez de esperar a que el bloque de módulo de más abajo
          los descubra uno por uno (esta era la cadena de red detrás del LCP de
@@ -472,7 +452,7 @@
           <path d="M15.5 9.2C15.2 8 13.8 7.4 12 7.4 10 7.4 8.6 8.4 8.6 9.9 8.6 11.4 9.8 11.9 12 12.4 14.2 12.9 15.4 13.4 15.4 15 15.4 16.5 14 17.5 12 17.5 10.2 17.5 8.8 16.8 8.5 15.6" />
           </svg>
         </div>
-        <div class="fb-loading-text">Cargando Mis Finanzas</div>
+        <div class="fb-loading-text" role="status">Cargando Mis Finanzas</div>
         <div
           class="fb-loading-dots"><span></span><span></span><span></span></div>
       </div>
@@ -584,13 +564,6 @@
     </div>
 
     <div class="app">
-    <!-- Navegación para pantallas grandes (usa el mismo showScreen de la app móvil). -->
-    <aside class="desktop-sidebar" aria-label="Menú lateral de Mis Finanzas">
-      <div class="pc-brand"><div class="pc-brand-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20M12 15h5"/></svg></div><div><strong>Mis finanzas</strong><small>Control financiero</small></div></div>
-      <nav class="pc-nav" aria-label="Secciones de la aplicación"><div class="pc-nav-heading">Principal</div><button type="button" class="nav-item desktop-nav-item active" data-screen="inicio" aria-label="Ir a Inicio"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M9 21v-8h6v8"/></svg><span>Inicio</span></button><button type="button" class="nav-item desktop-nav-item" data-screen="cuentas" aria-label="Ir a Cuentas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20M12 15h5"/></svg><span>Cuentas</span></button><button type="button" class="nav-item desktop-nav-item" data-screen="gastos" aria-label="Ir a Gastos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg><span>Gastos</span></button><button type="button" class="nav-item desktop-nav-item" data-screen="prestamos" aria-label="Ir a Prestado"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3"/><circle cx="16" cy="9" r="2.5"/><path d="M1 20c0-3.3 3.6-6 8-6s8 2.7 8 6M19 14c2.5.5 4 2 4 4"/></svg><span>Prestado</span></button><div class="pc-nav-heading">Más</div><button type="button" class="nav-item desktop-nav-item" data-screen="spotify" data-modulo="spotify" aria-label="Ir a Spotify"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg><span>Spotify</span></button><button type="button" class="nav-item desktop-nav-item" data-screen="mesada" data-modulo="mesada" aria-label="Ir a Mesada de papás"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/></svg><span>Mesada de papás</span></button><button type="button" class="nav-item desktop-nav-item" data-screen="analisis" aria-label="Ir a Análisis financiero"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 20h18M6 16v-5M11 16V7M16 16v-8M21 16v-3"/></svg><span>Análisis financiero</span></button><button type="button" class="nav-item desktop-nav-item" data-screen="tarjetas" aria-label="Ir a Tarjetas de crédito"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/></svg><span>Tarjetas de crédito</span></button><button type="button" class="nav-item desktop-nav-item" data-screen="encargos" aria-label="Ir a Encargos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 8-9-5-9 5v8l9 5 9-5zM3 8l9 5 9-5M12 13v8"/></svg><span>Encargos</span></button><button type="button" class="nav-item desktop-nav-item" data-screen="comprometida" aria-label="Ir a Plata comprometida"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>Plata comprometida</span></button><button type="button" class="nav-item desktop-nav-item" data-screen="alcancia" aria-label="Ir a Alcancía"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><span>Alcancía</span></button><button type="button" class="nav-item desktop-nav-item" data-screen="personas" aria-label="Ir a Personas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3"/><circle cx="16" cy="9" r="2.5"/><path d="M1 20c0-3.3 3.6-6 8-6s8 2.7 8 6M19 14c2.5.5 4 2 4 4"/></svg><span>Personas</span></button><button type="button" class="nav-item desktop-nav-item" data-screen="historial" aria-label="Ir a Actividad reciente"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg><span>Actividad reciente</span></button><button type="button" class="nav-item desktop-nav-item" data-screen="wrapped" aria-label="Ir a Wrapped"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 2 3 7 7 .6-5.3 4.7 1.6 7.2L12 17.8l-6.3 3.7 1.6-7.2L2 9.6 9 9z"/></svg><span>Wrapped</span></button><button type="button" class="nav-item desktop-nav-item" data-screen="config" aria-label="Ir a Configuración"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M4.9 4.9 7 7m10 10 2.1 2.1M2 12h3m14 0h3M4.9 19.1 7 17M17 7l2.1-2.1"/></svg><span>Configuración</span></button></nav>
-      <div class="pc-sidebar-foot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><div><strong>Tu información</strong><small>Consulta tu estado en Configuración</small></div></div>
-    </aside>
-
       <!-- TOAST CONTAINER -->
       <div id="toast-container"></div>
       <!-- DIALOG PROPIO -->
@@ -629,15 +602,92 @@
           </div>
         </div>
       </div>
+      <!-- MENÚ LATERAL (solo PC, ≥900 px; en celular está oculto y manda la barra inferior). Mismos destinos que la barra inferior y el menú
+           «Más» (data-screen → showScreen). Spotify y Mesada siguen los módulos activos (js/core/mas-menu.js). Ver docs/version-pc.md. -->
+      <aside class="menu-lateral" aria-label="Menú principal">
+        <!-- Solo PC (css/pc.css): logo y nombre de la app arriba del menú, como el prototipo; el título de la cabecera pasa a ser el de la sección. -->
+        <div class="menu-lateral-marca"><span class="menu-lateral-logo"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h16a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7zm0 0V6a2 2 0 012-2h11" /><circle cx="16.5" cy="13.5" r="1.2" /></svg></span><span class="menu-lateral-texto">Mis finanzas</span></div>
+        <nav class="menu-lateral-nav">
+          <div class="menu-lateral-grupo">Mi plata</div>
+          <button type="button" class="menu-lateral-item active" id="lateral-inicio" data-screen="inicio" title="Inicio">
+            <svg aria-hidden="true" class="menu-lateral-icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H5a1 1 0 01-1-1z" /><rect x="9" y="13" width="6" height="8" rx="1" /></svg>
+            <span class="menu-lateral-texto">Inicio</span>
+          </button>
+          <button type="button" class="menu-lateral-item" id="lateral-cuentas" data-screen="cuentas" title="Cuentas">
+            <svg aria-hidden="true" class="menu-lateral-icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="13" rx="2" /><path d="M2 10h20" /><circle cx="7" cy="15" r="1.2" fill="currentColor" stroke="none" /><path d="M12 15h5" /></svg>
+            <span class="menu-lateral-texto">Cuentas</span>
+          </button>
+          <button type="button" class="menu-lateral-item" id="lateral-gastos" data-screen="gastos" title="Gastos">
+            <svg aria-hidden="true" class="menu-lateral-icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 3 14 9 20 9" /><line x1="8" y1="13" x2="16" y2="13" /><line x1="8" y1="17" x2="13" y2="17" /></svg>
+            <span class="menu-lateral-texto">Gastos</span>
+          </button>
+          <button type="button" class="menu-lateral-item" id="lateral-tarjetas" data-screen="tarjetas" title="Tarjetas de crédito">
+            <svg aria-hidden="true" class="menu-lateral-icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="13" rx="2" /><path d="M2 10h20" /><circle cx="7" cy="15" r="1.2" fill="currentColor" stroke="none" /><path d="M12 15h5" /></svg>
+            <span class="menu-lateral-texto">Tarjetas de crédito</span>
+          </button>
+          <div class="menu-lateral-grupo">Con otras personas</div>
+          <button type="button" class="menu-lateral-item" id="lateral-prestamos" data-screen="prestamos" title="Prestado">
+            <svg aria-hidden="true" class="menu-lateral-icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3" /><circle cx="16" cy="9" r="2.5" /><path d="M1 20c0-3.3 3.6-6 8-6s8 2.7 8 6" /><path d="M19 14c2.5.5 4 2 4 4" /></svg>
+            <span class="menu-lateral-texto">Prestado</span>
+          </button>
+          <button type="button" class="menu-lateral-item" id="lateral-encargos" data-screen="encargos" title="Encargos">
+            <svg aria-hidden="true" class="menu-lateral-icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" /><path d="M16 7V5a2 2 0 00-4 0v2" /><path d="M8 7V5a2 2 0 00-4 0v2" /><line x1="12" y1="12" x2="12" y2="17" /><line x1="9.5" y1="14.5" x2="14.5" y2="14.5" /></svg>
+            <span class="menu-lateral-texto">Encargos</span>
+          </button>
+          <button type="button" class="menu-lateral-item" id="lateral-spotify" data-screen="spotify" title="Spotify">
+            <svg aria-hidden="true" class="menu-lateral-icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10" /><path d="M6.4 9.5Q12 7.5 17.6 10.3" /><path d="M7.2 12.8Q12 11.3 16.8 13.4" /><path d="M8.4 16Q12 14.9 15.6 16.4" /></svg>
+            <span class="menu-lateral-texto">Spotify</span>
+          </button>
+          <button type="button" class="menu-lateral-item" id="lateral-mesada" data-screen="mesada" title="Mesada de papás">
+            <svg aria-hidden="true" class="menu-lateral-icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" /></svg>
+            <span class="menu-lateral-texto">Mesada de papás</span>
+          </button>
+          <button type="button" class="menu-lateral-item" id="lateral-personas" data-screen="personas" title="Personas">
+            <svg aria-hidden="true" class="menu-lateral-icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7" /></svg>
+            <span class="menu-lateral-texto">Personas</span>
+          </button>
+          <div class="menu-lateral-grupo">Planear y entender</div>
+          <button type="button" class="menu-lateral-item" id="lateral-comprometida" data-screen="comprometida" title="Plata comprometida">
+            <svg aria-hidden="true" class="menu-lateral-icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="13" rx="2" /><path d="M2 10h20" /><path d="M12 14v2M8 14h2M14 14h2" /><path d="M6 6V4M18 6V4" /></svg>
+            <span class="menu-lateral-texto">Plata comprometida</span>
+          </button>
+          <button type="button" class="menu-lateral-item" id="lateral-alcancia" data-screen="alcancia" title="Alcancía">
+            <svg aria-hidden="true" class="menu-lateral-icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+            <span class="menu-lateral-texto">Alcancía</span>
+          </button>
+          <button type="button" class="menu-lateral-item" id="lateral-analisis" data-screen="analisis" title="Análisis financiero">
+            <svg aria-hidden="true" class="menu-lateral-icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>
+            <span class="menu-lateral-texto">Análisis financiero</span>
+          </button>
+          <button type="button" class="menu-lateral-item" id="lateral-historial" data-screen="historial" title="Actividad reciente">
+            <svg aria-hidden="true" class="menu-lateral-icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15.5 14" /></svg>
+            <span class="menu-lateral-texto">Actividad reciente</span>
+          </button>
+        </nav>
+        <div class="menu-lateral-pie">
+          <button type="button" class="menu-lateral-item" id="lateral-config" data-screen="config" title="Configuración">
+            <svg aria-hidden="true" class="menu-lateral-icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1" /></svg>
+            <span class="menu-lateral-texto">Configuración</span>
+          </button>
+          <div class="menu-lateral-sync" title="Estado de sincronización">
+            <div class="fb-sync-dot" id="lateral-sync-dot"></div>
+            <span class="menu-lateral-texto" id="lateral-sync-text">Sincronizado con Firebase</span>
+          </div>
+        </div>
+      </aside>
       <header class="header">
-        <div class="pc-header-heading"><h1>Mis finanzas</h1><h2 class="pc-page-title" id="pc-page-title">Inicio</h2><p id="hDate"></p></div>
+        <div><h1><span class="encabezado-app">Mis finanzas</span><span class="encabezado-seccion" id="hSeccion"></span></h1><p id="hDate"></p></div>
+        <!-- Solo PC y solo con Mesada abierta (css/pc.css): los 5 años a la vista, como el prototipo (los pinta renderMesada). -->
+        <div class="anio-tira" id="anio-tira"></div>
         <div class="ix-div-001">
           <button class="ix-btn-buscar-global" type="button" id="btn-buscar-global"
-            aria-label="Buscar"><span class="pc-search-hint">Buscar transacciones, personas, cuentas…</span><kbd class="pc-search-shortcut">Ctrl K</kbd>
+            aria-label="Buscar">
             <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none"
               stroke="currentColor" stroke-width="2.5"
               stroke-linecap="round"><circle cx="11" cy="11" r="8" /><line
                 x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+            <!-- Solo PC (css/pc.css): el botón se ve como un campo de búsqueda con su atajo; en celular solo el ícono. -->
+            <span class="buscar-texto">Buscar movimientos, personas, cuentas</span><kbd class="buscar-atajo">Ctrl K</kbd>
           </button>
           <button class="ix-btn-buscar-global" type="button" id="btn-toggle-saldos"
             aria-label="Ocultar/mostrar saldos">
@@ -648,7 +698,7 @@
                 cx="12" cy="12" r="3" /></svg>
           </button>
           <button type="button" class="btn-add" id="btn-header-add"
-            aria-label="Agregar"><span class="pc-add-label">Agregar</span>
+            aria-label="Agregar">
             <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none"
               stroke="#0a0a0a" stroke-width="2.5" stroke-linecap="round"><line
                 x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19"
@@ -666,30 +716,82 @@
                 cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65"
                 y2="16.65" /></svg>
             <input class="ix-busqueda-input" type="text" id="busqueda-input"
-              placeholder="Buscar transacciones, personas, cuentas..."
-              autofocus>
+              placeholder="Buscar transacciones, personas, cuentas...">
           </div>
           <button class="ix-btn-cerrar-busqueda" type="button" id="btn-cerrar-busqueda">Cancelar</button>
         </div>
         <div class="ix-busqueda-resultados" id="busqueda-resultados"></div>
       </div>
 
-      <main class="scroll-area" id="scrollArea">
+      <main class="scroll-area" id="scrollArea" tabindex="0">
 
         <!-- INICIO -->
         <div class="screen active" id="screen-inicio">
-
-<!-- Una sola cuadrícula: Disponible / Prestado / CDTs son fijos y renderCuentasInicio() (js/core/refresh.js) agrega después un
+          <div id="inicio-patrimonio">
+          <div class="hero">
+            <!-- Rediseño (docs/auditoria-tecnica.md, "Reservar espacio para
+                 #hero-alcancia-indicator (CLS)"): el bloque con padding/borde
+                 de abajo reservaba ~28-30px SIEMPRE, incluso sin saldo en
+                 Alcancía — visualmente era un hueco vacío molesto. Se
+                 reemplazó por un ícono chico (14px) inline junto al label
+                 "Patrimonio total"/"Patrimonio visible", que YA existe y ya
+                 cambia de texto según este mismo estado (ver el núcleo).
+                 Al no agregar una fila nueva ni cambiar el alto de esta fila
+                 (el ícono entra en la misma línea, mismo alto que el texto),
+                 alternar su visibility no mueve nada de lo que hay debajo —
+                 cero espacio reservado y cero CLS, sin el trade-off de antes.
+                 El texto "se revela al destapar" quedó como `title` (tooltip)
+                 en vez de texto siempre visible. -->
+            <div class="ix-div-010">
+              <div class="hero-label" id="hero-patrimonio-label">Patrimonio
+                total</div>
+              <span class="ix-hero-alcancia-badge" id="hero-alcancia-badge"
+                title="Hay plata guardada en Alcancía oculta — se revela al destapar">
+                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="12"
+                  viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  stroke-width="2.5" stroke-linecap="round"
+                  stroke-linejoin="round"><rect x="3" y="11" width="18"
+                    height="11" rx="2" ry="2" /><path
+                    d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+              </span>
+            </div>
+            <div class="hero-amount c-green" id="heroTotal">$0</div>
+            <div class="ix-hero-estado" id="hero-estado"></div>
+            <div class="row ix-mt8">
+              <div class="ix-fs11-ctext3" id="hero-formula">Cuentas</div>
+              <div class="ix-hero-change-indicator" id="hero-change-indicator"></div>
+            </div>
+          </div>
+          <!-- Una sola cuadrícula: Disponible / Prestado / CDTs son fijos y renderCuentasInicio() (js/core/refresh.js) agrega después un
                recuadro por cada cuenta activa desde S.cuentas, así todos se reparten en filas sin huecos. -->
-
-
-
-
-
-
-<!-- SALUD FINANCIERA -->
-
-<!-- min-height + skeleton: health-score-card arranca vacío y se llena
+          <div class="grid3" id="inicio-cuentas">
+            <div class="stat"><div class="stat-label">Disponible</div><div
+                class="stat-value c-green" id="s-disp">$0</div></div>
+            <div class="stat"><div class="stat-label">Prestado</div><div
+                class="stat-value c-amber" id="s-prest">$0</div></div>
+            <div class="stat" id="s-cdt-tile"><div class="stat-label">CDTs</div><div
+                class="stat-value c-purple" id="s-cdt">$0</div></div>
+          </div>
+          <div class="ix-s-disp-neto-tc" id="s-disp-neto-tc">
+          </div>
+          </div><!-- /inicio-patrimonio -->
+          <div id="tc-deuda-card" style="display:none;"></div>
+          <div id="inicio-gastos">
+          <div class="sec-title">Gastos del mes</div>
+          <div class="grid2 ix-mb9">
+            <div class="stat"><div class="stat-label">Fijos</div><div
+                class="stat-value c-red" id="s-gf">$0</div></div>
+            <div class="stat"><div class="stat-label">Variables</div><div
+                class="stat-value c-red" id="s-gv">$0</div></div>
+          </div>
+          <div class="card card-sm"><div class="row"><span class="ix-fs12-ctext2">Total gastado este
+                mes</span><span class="row-amount c-red"
+                id="s-gtotal">$0</span></div></div>
+          </div><!-- /inicio-gastos -->
+          <div id="inicio-salud">
+          <!-- SALUD FINANCIERA -->
+          <div class="sec-title">Salud financiera</div>
+          <!-- min-height + skeleton: health-score-card arranca vacío y se llena
                recién cuando Loader.ensureAll() termina de precargar los módulos
                lazy que alimentan el cálculo (Préstamos/Tarjetas/Mesada/Spotify) —
                sin esto, el salto de 0 a su alto real es la causa confirmada del
@@ -713,12 +815,24 @@
                hay contenido real, el alto lo define el contenido mismo, para
                no dejar espacio vacío de sobra cuando el resultado es corto
                (ej. el mensaje de "sin datos"). -->
+          <div id="health-score-card" class="card ix-p16-mb9" style="min-height:148px;">
+            <div class="ix-div-020">
+              <div class="ix-div-021"></div>
+              <div class="ix-fx1">
+                <div class="ix-div-023"></div>
+                <div class="ix-div-024"></div>
+                <div class="ix-div-025"></div>
+              </div>
+            </div>
+          </div>
 
-<!-- PLAN DE DEUDAS (renderPlanDeudas, inicio.js): vacío si no hay deudas propias -->
+          </div><!-- /inicio-salud -->
 
-<!-- PROYECCIÓN -->
 
-<!-- Mismo criterio que health-score-card (ver comentario arriba);
+          <!-- PROYECCIÓN -->
+          <div id="inicio-proyeccion">
+          <div class="sec-title">Proyección financiera</div>
+          <!-- Mismo criterio que health-score-card (ver comentario arriba);
                renderProyeccion() también sobreescribe todo el innerHTML en
                sus dos ramas. 126px ≈ padding real de .card-sm (13px arriba +
                13px abajo, confirmado en styles.css — no 16px como .card) +
@@ -726,68 +840,28 @@
                10px arriba/abajo de cada card, ~50px) + footer "Basado en N
                días..." (~20px). No incluye el aviso opcional de deuda TC
                propia (~20px extra) que solo aparece si hay deuda de TC. -->
+          <div id="proyeccion-card" class="card card-sm ix-proyeccion-card">
+            <div class="ix-div-027"></div>
+            <div class="ix-div-028">
+              <div class="ix-div-029"></div>
+              <div class="ix-div-029"></div>
+              <div class="ix-div-029"></div>
+            </div>
+          </div>
 
-<!-- ATENCIÓN HOY -->
+          </div><!-- /inicio-proyeccion -->
 
-<div class="pc-home-columns"><div class="pc-home-primary"><div class="hero">
-<!-- Rediseño (docs/auditoria-tecnica.md, "Reservar espacio para
-                 #hero-alcancia-indicator (CLS)"): el bloque con padding/borde
-                 de abajo reservaba ~28-30px SIEMPRE, incluso sin saldo en
-                 Alcancía — visualmente era un hueco vacío molesto. Se
-                 reemplazó por un ícono chico (14px) inline junto al label
-                 "Patrimonio total"/"Patrimonio visible", que YA existe y ya
-                 cambia de texto según este mismo estado (ver el núcleo).
-                 Al no agregar una fila nueva ni cambiar el alto de esta fila
-                 (el ícono entra en la misma línea, mismo alto que el texto),
-                 alternar su visibility no mueve nada de lo que hay debajo —
-                 cero espacio reservado y cero CLS, sin el trade-off de antes.
-                 El texto "se revela al destapar" quedó como `title` (tooltip)
-                 en vez de texto siempre visible. -->
-<div class="ix-div-010">
-<div class="hero-label" id="hero-patrimonio-label">Patrimonio
-                total</div>
-<span class="ix-hero-alcancia-badge" id="hero-alcancia-badge" title="Hay plata guardada en Alcancía oculta — se revela al destapar">
-<svg aria-hidden="true" fill="none" height="12" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" viewbox="0 0 24 24" width="12" xmlns="http://www.w3.org/2000/svg"><rect height="11" rx="2" ry="2" width="18" x="3" y="11"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-</span>
-</div>
-<div class="hero-amount c-green" id="heroTotal">$0</div>
-<div class="ix-hero-estado" id="hero-estado"></div>
-<div class="row ix-mt8">
-<div class="ix-fs11-ctext3" id="hero-formula">Cuentas</div>
-<div class="ix-hero-change-indicator" id="hero-change-indicator"></div>
-</div>
-</div><div class="grid3" id="inicio-cuentas">
-<div class="stat"><div class="stat-label">Disponible</div><div class="stat-value c-green" id="s-disp">$0</div></div>
-<div class="stat"><div class="stat-label">Prestado</div><div class="stat-value c-amber" id="s-prest">$0</div></div>
-<div class="stat" id="s-cdt-tile"><div class="stat-label">CDTs</div><div class="stat-value c-purple" id="s-cdt">$0</div></div>
-</div><div class="ix-s-disp-neto-tc" id="s-disp-neto-tc">
-</div><div id="tc-deuda-card" style="display:none;"></div><div class="sec-title">Salud financiera</div><div class="card ix-p16-mb9" id="health-score-card" style="min-height:148px;">
-<div class="ix-div-020">
-<div class="ix-div-021"></div>
-<div class="ix-fx1">
-<div class="ix-div-023"></div>
-<div class="ix-div-024"></div>
-<div class="ix-div-025"></div>
-</div>
-</div>
-</div><div id="plan-deudas-card"></div><div class="sec-title">Proyección financiera</div><div class="card card-sm ix-proyeccion-card" id="proyeccion-card">
-<div class="ix-div-027"></div>
-<div class="ix-div-028">
-<div class="ix-div-029"></div>
-<div class="ix-div-029"></div>
-<div class="ix-div-029"></div>
-</div>
-</div></div><div class="pc-home-secondary"><div class="sec-title">Gastos del mes</div><div class="grid2 ix-mb9">
-<div class="stat"><div class="stat-label">Fijos</div><div class="stat-value c-red" id="s-gf">$0</div></div>
-<div class="stat"><div class="stat-label">Variables</div><div class="stat-value c-red" id="s-gv">$0</div></div>
-</div><div class="card card-sm"><div class="row"><span class="ix-fs12-ctext2">Total gastado este
-                mes</span><span class="row-amount c-red" id="s-gtotal">$0</span></div></div><div id="s-attn-section" style="display:none;">
-<div class="sec-title">Necesita atención</div>
-<div id="s-attn-list"></div>
-</div><div class="pc-quick-nav"><div class="sec-title">Accesos rápidos</div><div class="pc-quick-card"><button class="nav-item pc-quick-link" data-screen="historial" type="button"><svg aria-hidden="true" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewbox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg><span>Ver actividad reciente</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button><button class="nav-item pc-quick-link" data-screen="cuentas" type="button"><svg aria-hidden="true" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewbox="0 0 24 24"><rect height="13" rx="2" width="20" x="2" y="6"></rect><path d="M2 10h20M12 15h5"></path></svg><span>Administrar mis cuentas</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button><button class="nav-item pc-quick-link" data-screen="analisis" type="button"><svg aria-hidden="true" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewbox="0 0 24 24"><path d="M3 20h18M6 16v-5M11 16V7M16 16v-8M21 16v-3"></path></svg><span>Ver análisis financiero</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button></div></div></div></div></div>
-<!-- PANTALLA TARJETAS DE CRÉDITO -->
-        <div class="screen" id="screen-tarjetas">
-          <div class="hero hero-red">
+          <!-- ATENCIÓN HOY -->
+          <div id="s-attn-section" style="display:none;">
+            <div class="sec-title">Necesita atención</div>
+            <div id="s-attn-list"></div>
+          </div>
+        </div>
+
+        <!-- PANTALLA TARJETAS DE CRÉDITO -->
+        <div class="screen" id="screen-tarjetas" data-detalle-abierto="no" data-vacio="no">
+          <div class="tarjetas-resumen">
+            <div class="hero hero-red">
             <div class="hero-label ix-cred">Deuda
               total en TC</div>
             <div class="hero-amount ix-cred"
@@ -798,15 +872,30 @@
               <div class="ix-hero-change-indicator" id="tc-hero-cupo"></div>
             </div>
           </div>
-          <div class="ix-mb10" id="tc-lista"></div>
-          <button type="button" class="btn btn-ghost ix-button-033" id="btn-nueva-tarjeta"
-            data-action="tarjetas:nueva">
-            <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" stroke-width="2.5"
-              stroke-linecap="round"><line x1="12" y1="5" x2="12"
-                y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-            Agregar tarjeta de crédito
-          </button>
+          <div class="tarjetas-cupo-card" id="tc-cupo-card"><div class="tarjetas-cupo-titulo">Cupo total</div><div class="tarjetas-cupo-monto" id="tc-cupo-total">$0</div><div class="tarjetas-cupo-sub" id="tc-cupo-sub"></div></div>
+          </div>
+          <div class="tarjetas-cuerpo">
+            <div class="tarjetas-columna">
+              <!-- Título de la lista + «Agregar tarjeta»: en celular va arriba de todo (título de la pantalla), en PC encima de la lista. Con 0 tarjetas el botón se oculta (el estado vacío trae el suyo). -->
+              <div class="tarjetas-cab">
+                <span class="tarjetas-cab-titulo"><span class="tarjetas-cab-pc">Tarjetas</span><span class="tarjetas-cab-movil">Tarjetas de crédito</span></span>
+                <button type="button" class="tarjetas-btn-nueva" id="btn-nueva-tarjeta" data-action="tarjetas:nueva">
+                  <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                  <span class="tarjetas-nueva-pc">Agregar tarjeta de crédito</span><span class="tarjetas-nueva-movil">Agregar tarjeta</span>
+                </button>
+              </div>
+              <div id="tc-lista"></div>
+            </div>
+            <!-- Compras y pagos de la tarjeta elegida: en PC es la caja de la derecha; en celular es una pantalla propia (con «Volver») que se abre con «Ver». -->
+            <section class="tarjetas-detalle" id="tc-detalle" aria-label="Compras y pagos de la tarjeta">
+              <div class="tc-det-cabmovil">
+                <button type="button" class="tc-det-volver" data-action="tarjetas:cerrarDetalle" data-args="[]" aria-label="Volver"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+                <b id="tc-detalle-nombre"></b>
+              </div>
+              <div class="tc-det-titulo" id="tc-detalle-titulo"></div>
+              <div id="tc-detalle-content"></div>
+            </section>
+          </div>
         </div>
 
         <!-- HISTORIAL DE CAMBIOS -->
@@ -875,9 +964,11 @@
                en cualquier momento (no solo en el instante de destapar) —
                poblado por renderAlcancia(), oculto si hay menos de 2 ciclos
                en el historial (no hay nada que comparar todavía). -->
+          <div id="alcancia-progreso">
           <div class="ix-mb14" id="alcancia-wrapped-progreso" style="display:none;"></div>
           <div class="sec-title ix-mt4" id="alcancia-historial-titulo" style="display:none;">Historial de alcancías</div>
           <div id="alcancia-historial-lista" style="display:none;"></div>
+          </div><!-- /alcancia-progreso -->
         </div>
 
         <!-- PLATA COMPROMETIDA (docs/auditoria-tecnica.md #4 — estaticada para
@@ -900,7 +991,7 @@
           </div>
           <div class="ix-div-057">
             <div class="sec-title ix-m0">Ingresos comprometidos</div>
-            <button class="btn-chip btn-chip-amber" type="button" data-action="cp:abrirNuevo" data-args="[]">
+            <button class="btn-chip btn-chip-amber" type="button" data-action="plata-comprometida:abrirNuevo" data-args="[]">
               <svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               Nuevo
             </button>
@@ -913,9 +1004,9 @@
         </div>
 
         <!-- CUENTAS -->
-        <div class="screen" id="screen-cuentas">
+        <div class="screen" id="screen-cuentas" data-panel-activo="cuentas-selector">
           <!-- Selector de cuenta -->
-          <div id="cuentas-selector">
+          <div id="cuentas-selector" class="cuentas-panel panel-activo">
             <div class="sec-fila">
               <div class="sec-title">Selecciona una
                 cuenta</div>
@@ -937,7 +1028,7 @@
           </div>
 
           <!-- Cuentas archivadas: pantalla aparte (el selector solo trae un botón con la cantidad) -->
-          <div id="cuentas-archivadas" style="display:none;">
+          <div id="cuentas-archivadas" class="cuentas-panel">
             <div class="detail-header">
               <button type="button" class="detail-header-back" id="btn-volver-archivadas" aria-label="Volver">
                 <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6" /></svg>
@@ -951,7 +1042,7 @@
           <!-- Detalle de cuenta simple (banco, billetera, efectivo): una sola pantalla.
                La pinta renderDetalleCuenta() (cuentas.js); el color de la cuenta llega por las
                variables --cuenta / --cuenta-rgb puestas sobre este contenedor. -->
-          <div id="cuentas-detalle-simple" style="display:none;">
+          <div id="cuentas-detalle-simple" class="cuentas-panel">
             <div class="detail-header">
               <button type="button"
                 class="detail-header-back btn-volver-selector" aria-label="Volver">
@@ -1025,7 +1116,7 @@
             <div id="banner-archivada"></div>
             <div id="banner-apertura-cuenta"></div>
             <div id="det-cuenta-encargos"></div>
-            <div class="cuenta-movs-bloque">
+            <div class="cuenta-movs-bloque" id="cuenta-movimientos-simple">
               <div class="sec-title">Movimientos registrados</div>
               <div id="movs-filtros-cuenta" class="movs-filtros-wrap"></div>
               <div id="det-cuenta-movs"></div>
@@ -1033,7 +1124,7 @@
           </div>
 
           <!-- Detalle Nu -->
-          <div id="cuentas-detalle-nu" style="display:none;">
+          <div id="cuentas-detalle-nu" class="cuentas-panel">
             <div class="detail-header">
               <button type="button"
                 class="detail-header-back btn-volver-selector" aria-label="Volver">
@@ -1115,7 +1206,7 @@
             </button>
             <!-- Mismo orden que Nequi y las demás cuentas: Encargos → Movimientos -->
             <div id="det-nu-encargos"></div>
-            <div class="cuenta-movs-bloque">
+            <div class="cuenta-movs-bloque" id="cuenta-movimientos-nu">
               <div class="sec-title">Movimientos de la cuenta</div>
               <div id="movs-filtros-nu" class="movs-filtros-wrap"></div>
               <div id="det-nu-movs"></div>
@@ -1123,7 +1214,7 @@
           </div>
 
           <!-- ══ DETALLE DE CAJITA ══ -->
-          <div id="cuentas-detalle-cajita" style="display:none;">
+          <div id="cuentas-detalle-cajita" class="cuentas-panel">
             <div class="detail-header">
               <button type="button" class="detail-header-back"
                 data-action="nu:volverANu" aria-label="Volver">
@@ -1230,7 +1321,7 @@
           </div>
 
           <!-- ══ SUB-PANTALLA: META DE CAJITA ══ -->
-          <div id="cuentas-sub-meta" style="display:none;">
+          <div id="cuentas-sub-meta" class="cuentas-panel">
             <div class="detail-header">
               <button type="button" class="detail-header-back"
                 data-action="nu:volverADetalleCajita" aria-label="Volver">
@@ -1246,7 +1337,7 @@
           </div>
 
           <!-- ══ SUB-PANTALLA: CDTs DE CAJITA ══ -->
-          <div id="cuentas-sub-cdts" style="display:none;">
+          <div id="cuentas-sub-cdts" class="cuentas-panel">
             <div class="detail-header">
               <button type="button" class="detail-header-back"
                 data-action="nu:volverADetalleCajita" aria-label="Volver">
@@ -1264,13 +1355,20 @@
 
         <!-- GASTOS -->
         <div class="screen" id="screen-gastos">
+          <!-- Resumen del mes (solo PC, ≥900 px): los mismos tres números de «Gastos del mes» de Inicio; los pinta refresh() junto a s-gf/s-gv/s-gtotal. -->
+          <div class="gastos-resumen">
+            <div class="stat"><div class="stat-label">Total gastado este mes</div><div class="stat-value c-red" id="g-resumen-total">$0</div></div>
+            <div class="stat"><div class="stat-label">Variables</div><div class="stat-value c-red" id="g-resumen-variables">$0</div></div>
+            <div class="stat"><div class="stat-label">Fijos</div><div class="stat-value c-red" id="g-resumen-fijos">$0</div></div>
+          </div>
           <div class="tab-bar">
             <div class="tab active" id="tab-var" data-tab="var">Gastos</div>
             <div class="tab" id="tab-fijo" data-tab="fijo">Fijos mensuales</div>
           </div>
           <!-- GASTOS VARIABLES -->
-          <div id="panel-var">
-            <div class="mes-filter" id="mesFilter"></div>
+          <div id="panel-var" class="gastos-panel panel-activo">
+            <div class="sec-title gastos-panel-titulo">Gastos</div>
+            <div class="gastos-filtros"><div class="mes-filter" id="mesFilter"></div><button type="button" class="btn btn-ghost gastos-registrar-arriba" id="btn-gasto-var-arriba"><svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>Registrar gasto</button></div>
             <div id="gastosVarList"></div>
             <div class="card card-sm ix-mt4" id="gvTotalCard"><div
                 class="row"><span class="ix-fs12-ctext2">Total
@@ -1288,7 +1386,8 @@
             </button>
           </div>
           <!-- GASTOS FIJOS -->
-          <div id="panel-fijo" style="display:none;">
+          <div id="panel-fijo" class="gastos-panel">
+            <div class="sec-title gastos-panel-titulo">Fijos mensuales</div>
             <div id="gastosFijosList"></div>
             <div class="card card-sm ix-mt4" id="gfTotalCard"><div
                 class="row"><span class="ix-fs12-ctext2">Total mensual
@@ -1307,19 +1406,31 @@
         </div>
 
         <!-- PRESTAMOS -->
-        <div class="screen" id="screen-prestamos">
+        <div class="screen" id="screen-prestamos" data-panel-activo="deudoresView" data-tab-prestamos="me-deben">
+          <!-- Resumen (solo PC, ≥900 px): totales de Me deben y Yo debo (Deudas.totalPendiente, los mismos de Inicio), su diferencia y la proporción
+               entre los dos. Los pinta refresh(); en celular está oculto. -->
+          <div class="prestamos-resumen">
+            <div class="prestamos-kpis">
+              <div class="prestamos-kpi prestamos-kpi-favor"><div class="stat-label">Me deben</div><div class="prestamos-kpi-monto" id="p-resumen-me-deben">$0</div><div class="prestamos-kpi-sub" id="p-resumen-me-deben-sub"></div></div>
+              <div class="prestamos-kpi prestamos-kpi-contra"><div class="stat-label">Yo debo</div><div class="prestamos-kpi-monto" id="p-resumen-yo-debo">$0</div><div class="prestamos-kpi-sub" id="p-resumen-yo-debo-sub"></div></div>
+              <div class="prestamos-kpi"><div class="stat-label" id="p-resumen-neto-etiqueta">Neto</div><div class="prestamos-kpi-monto" id="p-resumen-neto">$0</div><div class="prestamos-kpi-sub" id="p-resumen-neto-sub"></div></div>
+            </div>
+            <div class="prestamos-proporcion" id="p-resumen-barra"><i class="prestamos-barra-favor" id="p-barra-favor"></i><i class="prestamos-barra-contra" id="p-barra-contra"></i></div>
+            <div class="prestamos-proporcion-texto"><span id="p-texto-favor"></span><span id="p-texto-contra"></span></div>
+          </div>
+          <div class="prestamos-columna" id="prestamos-columna">
           <div class="ix-prestamos-tabs"
             id="prestamos-tabs">
             <button type="button" class="btn ix-tab-me-deben" id="tab-me-deben"
               data-action="prestado:cambiarTabPrestamos" data-args="[&quot;me-deben&quot;]">
-              Me deben
+              Me deben<span class="prestamos-tab-n" id="tab-me-deben-n"></span>
             </button>
             <button type="button" class="btn btn-ghost ix-fx1" id="tab-yo-debo"
               data-action="prestado:cambiarTabPrestamos" data-args="[&quot;yo-debo&quot;]">
-              Yo debo
+              Yo debo<span class="prestamos-tab-n" id="tab-yo-debo-n"></span>
             </button>
           </div>
-          <div id="deudoresView">
+          <div id="deudoresView" class="prestamos-panel panel-activo">
             <div class="sec-title" id="titulo-deudores">Personas a quienes les presté dinero</div>
             <div id="deudoresList"></div>
             <button type="button" class="btn btn-ghost" id="btn-nueva-persona" data-action="prestado:abrirSheetNuevaPersona" data-args="[]">
@@ -1332,7 +1443,22 @@
               </span>
             </button>
           </div>
-          <div id="deudorDetalle" style="display:none;">
+                    <!-- YO DEBO -->
+          <div id="misDeudasView" class="prestamos-panel">
+            <div class="sec-title" id="titulo-mis-deudas">Personas a quienes les debo dinero</div>
+            <div id="misDeudasList"></div>
+            <button type="button" class="btn btn-ghost" id="btn-nueva-deuda" data-action="prestado:abrirSheetNuevaDeuda" data-args="[]">
+              <span class="ix-span-080">
+                <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2.5"
+                  stroke-linecap="round"><line x1="12" y1="5" x2="12"
+                    y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                Agregar persona
+              </span>
+            </button>
+          </div>
+          </div><!-- /prestamos-columna -->
+          <div id="deudorDetalle" class="prestamos-panel">
             <div class="detail-header ix-mb14">
               <button type="button" class="detail-header-back btn-icon"
                 id="btn-volver-deudores" data-action="prestado:volverDeudores" data-args="[]" aria-label="Volver">
@@ -1430,21 +1556,7 @@
             <div id="ddHistorial"></div>
           </div>
 
-          <!-- YO DEBO -->
-          <div id="misDeudasView" style="display:none;">
-            <div class="sec-title" id="titulo-mis-deudas">Personas a quienes les debo dinero</div>
-            <div id="misDeudasList"></div>
-            <button type="button" class="btn btn-ghost" id="btn-nueva-deuda" data-action="prestado:abrirSheetNuevaDeuda" data-args="[]">
-              <span class="ix-span-080">
-                <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none"
-                  stroke="currentColor" stroke-width="2.5"
-                  stroke-linecap="round"><line x1="12" y1="5" x2="12"
-                    y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-                Agregar persona
-              </span>
-            </button>
-          </div>
-          <div id="miDeudaDetalle" style="display:none;">
+<div id="miDeudaDetalle" class="prestamos-panel">
             <div class="detail-header ix-mb14">
               <button type="button" class="detail-header-back btn-icon"
                 id="btn-volver-mis-deudas" data-action="prestado:volverMisDeudas" data-args="[]" aria-label="Volver">
@@ -1494,7 +1606,7 @@
             </div>
             <div class="ix-div-117">
               <button type="button" class="btn btn-primary ix-fx1"
-                id="btn-nueva-deuda-mov" data-action="prestado:abrirMovMiDeudaRecibido" data-args="[]">
+                id="btn-nueva-deuda-mov" data-action="prestado:abrirMovimientoMiDeudaRecibido" data-args="[]">
                 <span class="ix-span-080">
                   <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none"
                     stroke="#0a0a0a" stroke-width="2.5"
@@ -1503,7 +1615,7 @@
                   Nueva deuda
                 </span>
               </button>
-              <button type="button" class="btn ix-btn-registrar-abono" id="btn-pagar-mi-deuda" data-action="prestado:abrirMovMiDeudaPago" data-args="[]">
+              <button type="button" class="btn ix-btn-registrar-abono" id="btn-pagar-mi-deuda" data-action="prestado:abrirMovimientoMiDeudaPago" data-args="[]">
                 <span class="ix-span-080">
                   <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none"
                     stroke="currentColor" stroke-width="2.5"
@@ -1522,40 +1634,45 @@
         <!-- MESADA -->
         <div class="screen" id="screen-mesada">
           <div id="mesadaSection">
-            <div class="sec-title ms-sec-top" data-mesada>Mesada
-              de papás</div>
-            <!-- Navegación año -->
-            <div class="anio-nav ms-mb10">
-              <button type="button" class="anio-btn" id="btn-anio-prev" aria-label="Año anterior"><svg aria-hidden="true"
-                  width="13" height="13" viewBox="0 0 24 24" fill="none"
-                  stroke="currentColor" stroke-width="2.5"
-                  stroke-linecap="round"><polyline
-                    points="15 18 9 12 15 6" /></svg></button>
-              <span class="anio-label" id="anioLabel"></span>
-              <button type="button" class="anio-btn" id="btn-anio-next" aria-label="Año siguiente"><svg aria-hidden="true"
-                  width="13" height="13" viewBox="0 0 24 24" fill="none"
-                  stroke="currentColor" stroke-width="2.5"
-                  stroke-linecap="round"><polyline
-                    points="9 18 15 12 9 6" /></svg></button>
+            <!-- Título de la sección con el selector de año (celular). En PC el título va en la cabecera y la tira de años también (#anio-tira). -->
+            <div class="mesada-titulo-fila">
+              <h2 class="mesada-titulo" data-mesada>Mesada de papás</h2>
+              <div class="anio-nav">
+                <button type="button" class="anio-btn" id="btn-anio-prev" aria-label="Año anterior"><svg aria-hidden="true"
+                    width="15" height="15" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round"><polyline
+                      points="15 18 9 12 15 6" /></svg></button>
+                <span class="anio-label" id="anioLabel"></span>
+                <button type="button" class="anio-btn" id="btn-anio-next" aria-label="Año siguiente"><svg aria-hidden="true"
+                    width="15" height="15" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round"><polyline
+                      points="9 18 15 12 9 6" /></svg></button>
+              </div>
             </div>
             <!-- Resumen año -->
-            <div class="grid2 ms-mb9">
-              <div class="stat"><div class="stat-label">Recibido este
-                  año</div><div class="stat-value c-green"
+            <div class="grid2 mesada-resumen">
+              <div class="stat mesada-stat mesada-stat-verde"><div class="stat-label">Recibido este
+                  año</div><div class="stat-value"
                   id="ms-total">$0</div></div>
-              <div class="stat"><div class="stat-label">Meses pagados</div><div
-                  class="stat-value c-blue" id="ms-count">0/0</div></div>
+              <div class="stat mesada-stat mesada-stat-azul"><div class="stat-label">Meses pagados</div><div
+                  class="stat-value" id="ms-count">0/0</div></div>
             </div>
-            <!-- Banner de mensualidades con pago parcial pendiente -->
-            <div id="ms-pendiente-banner" class="card card-sm attn-card ms-banner" style="display:none;"></div>
+            <!-- Mensualidades con pago parcial pendiente (papá y/o mamá) -->
+            <div id="ms-pendiente-banner" class="mesada-pendiente" style="display:none;"><div class="stat-label">Pendiente</div><div class="mesada-pendiente-texto" id="ms-pendiente-texto"></div></div>
             <!-- Papa -->
-            <div class="card ms-mb9">
+            <div class="card mesada-persona">
               <div class="ms-card-head">
                 <div class="ms-head-left">
                   <div class="avatar ms-avatar ms-avatar-papa">PA</div>
                   <div>
                     <div class="ms-name">Papá</div>
                     <div class="ms-card-sub" id="ms-papa-sub">$0 recibidos</div>
+                    <div class="mesada-persona-fila">
+                      <button type="button" class="mesada-persona-btn" id="ms-papa-persona" data-action="mesada:vincularPersona" data-args='["papa"]'>Vincular persona</button>
+                      <button type="button" class="mesada-persona-btn mesada-persona-quitar" id="ms-papa-persona-quitar" data-action="mesada:desvincularPersona" data-args='["papa"]' hidden>Quitar</button>
+                    </div>
                   </div>
                 </div>
                 <div class="ms-right">
@@ -1569,13 +1686,17 @@
               <div class="mesada-grid" id="mesadaGridPapa"></div>
             </div>
             <!-- Mama -->
-            <div class="card">
+            <div class="card mesada-persona">
               <div class="ms-card-head">
                 <div class="ms-head-left">
                   <div class="avatar ms-avatar ms-avatar-mama">MA</div>
                   <div>
                     <div class="ms-name">Mamá</div>
                     <div class="ms-card-sub" id="ms-mama-sub">$0 recibidos</div>
+                    <div class="mesada-persona-fila">
+                      <button type="button" class="mesada-persona-btn" id="ms-mama-persona" data-action="mesada:vincularPersona" data-args='["mama"]'>Vincular persona</button>
+                      <button type="button" class="mesada-persona-btn mesada-persona-quitar" id="ms-mama-persona-quitar" data-action="mesada:desvincularPersona" data-args='["mama"]' hidden>Quitar</button>
+                    </div>
                   </div>
                 </div>
                 <div class="ms-right">
@@ -1595,6 +1716,7 @@
 
         <!-- SPOTIFY -->
         <div class="screen" id="screen-spotify">
+          <div id="spotify-principal">
           <div class="sec-title">Spotify Premium compartido</div>
           <!-- Costo + Cajita Spotify -->
           <div class="card card-sm ix-mb9">
@@ -1660,16 +1782,19 @@
           <!-- Estadísticas Spotify -->
           <div class="sec-title ix-mt16" id="spStatsTitulo">Estadísticas</div>
           <div id="spStats"></div>
+          </div><!-- /spotify-principal -->
           <!-- Historial pagos Spotify -->
+          <div id="spotify-historial">
           <div class="sec-title ix-mt16">Historial de
             pagos</div>
           <div id="spHistorial"></div>
+          </div><!-- /spotify-historial -->
         </div>
 
         <!-- ENCARGOS -->
-        <div class="screen" id="screen-encargos">
+        <div class="screen" id="screen-encargos" data-panel-activo="encargosListView">
           <!-- Vista lista de encargos -->
-          <div id="encargosListView">
+          <div id="encargosListView" class="encargos-panel panel-activo">
             <div class="sec-title ix-mt4">Plata que
               administro</div>
             <p class="ix-p-130">Plata
@@ -1686,7 +1811,7 @@
             </button>
           </div>
           <!-- Vista detalle de un encargo -->
-          <div id="encargoDetalle" style="display:none;">
+          <div id="encargoDetalle" class="encargos-panel">
             <div class="detail-header ix-mb14">
               <button type="button" class="detail-header-back btn-icon"
                 id="btn-volver-encargos" aria-label="Volver">
@@ -1745,7 +1870,7 @@
               </button>
               <div class="cuenta-actions">
                 <button type="button" class="cuenta-action-btn ix-button-138"
-                  data-action="encargos:abrirMov" data-args='["entrada"]'>
+                  data-action="encargos:abrirMovimiento" data-args='["entrada"]'>
                   <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none"
                     stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round"><line x1="12" y1="5" x2="12"
@@ -1794,6 +1919,7 @@
         <!-- CONFIGURACIÓN -->
         <!-- ANÁLISIS FINANCIERO -->
         <div class="screen" id="screen-analisis">
+          <div id="analisis-resumen">
           <!-- RESUMEN DEL MES -->
           <div class="sec-title ix-mt4">Resumen del mes</div>
           <div class="ix-analisis-balance-hero" id="analisis-balance-hero"></div>
@@ -1820,6 +1946,7 @@
                 variables</span><span class="row-amount c-red"
                 id="an-variables">$0</span></div>
           </div>
+          </div><!-- /analisis-resumen -->
           <!-- INGRESOS FIJOS -->
           <div class="ix-div-143">
             <div class="sec-title ix-m0">Ingresos fijos</div>
@@ -1882,15 +2009,26 @@
         </div>
 
         <!-- PERSONAS -->
-        <div class="screen" id="screen-personas">
+        <div class="screen" id="screen-personas" data-ficha-abierta="no">
+          <!-- Solo celular: volver a Configuración, desde donde se llega a Personas (en PC está el menú lateral). -->
+          <div class="personas-volver"><button class="personas-volver-boton" type="button" data-action="personas:volverConfiguracion" data-args="[]"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6" /></svg>Configuración</button></div>
+          <!-- Resumen (solo PC, ≥900 px): Me deben, Yo debo (Deudas.totalPendiente) y quiénes están en Spotify; lo pinta _renderListaPersonas(). -->
+          <div class="personas-resumen">
+            <div class="prestamos-kpis">
+              <div class="prestamos-kpi prestamos-kpi-favor"><div class="stat-label">Me deben</div><div class="prestamos-kpi-monto" id="pe-resumen-me-deben">$0</div><div class="prestamos-kpi-sub" id="pe-resumen-me-deben-sub"></div></div>
+              <div class="prestamos-kpi prestamos-kpi-contra"><div class="stat-label">Yo debo</div><div class="prestamos-kpi-monto" id="pe-resumen-yo-debo">$0</div><div class="prestamos-kpi-sub" id="pe-resumen-yo-debo-sub"></div></div>
+              <div class="prestamos-kpi"><div class="stat-label">En Spotify</div><div class="prestamos-kpi-monto" id="pe-resumen-spotify">0</div><div class="prestamos-kpi-sub" id="pe-resumen-spotify-sub"></div></div>
+            </div>
+          </div>
+          <div id="personas-lista">
           <div class="ix-div-034">
-            <div class="sec-title ix-m14-0-8">Personas</div>
-            <button class="ix-button-155" type="button" data-action="personas:abrirCrearGlobal" data-args="[true]">
+            <div class="sec-title ix-m14-0-8">Personas<span class="personas-lista-conteo" id="personas-lista-conteo"></span></div>
+            <button class="personas-boton-nueva" type="button" data-action="personas:abrirCrearGlobal" data-args="[true]">
               <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" stroke-width="2.5"
                 stroke-linecap="round"><line x1="12" y1="5" x2="12"
                   y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-              Nueva
+              Nueva<span class="personas-nueva-pc"> persona</span>
             </button>
           </div>
           <div class="ix-lista-personas-body" id="lista-personas-body"></div>
@@ -1905,10 +2043,27 @@
                   d="M16 3.13a4 4 0 0 1 0 7.75" /></svg></div>
             <div class="ix-div-159">Sin
               personas registradas</div>
-            <div class="ix-div-160">Las
-              personas se crean automáticamente cuando agregas un deudor o
-              encargo.</div>
+            <div class="ix-div-160">Crea una con «Nueva persona».
+              Después la eliges al agregar un deudor, una deuda, un encargo o
+              un integrante de Spotify.</div>
           </div>
+          </div><!-- /personas-lista -->
+          <!-- Ficha de la persona elegida (solo PC): en celular el perfil sigue abriéndose en una hoja. Mismo contenido que la hoja (abrirPerfilPersona). -->
+          <aside id="personas-ficha" class="personas-ficha" aria-label="Ficha de la persona">
+            <!-- Solo celular: la ficha es una pantalla y este botón vuelve a la lista (en PC la lista está al lado). -->
+            <button type="button" class="personas-ficha-volver" data-action="personas:cerrarFicha" data-args="[]"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6" /></svg>Personas</button>
+            <div class="pe-perf-cab">
+              <div id="pficha-avatar" class="avatar pe-av-46"></div>
+              <div class="pe-flex1-min0">
+                <div id="pficha-nombre" class="pe-perf-nombre"></div>
+                <div id="pficha-sub" class="pe-perf-sub"></div>
+              </div>
+              <button type="button" class="btn-icon pe-c-accent" data-action="personas:editarDesdePerfil" data-args="[]" title="Editar">
+                <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </button>
+            </div>
+            <div id="pficha-body"></div>
+          </aside>
         </div>
 
         <div class="screen" id="screen-config">
@@ -1976,11 +2131,9 @@
                 stroke="var(--accent)" stroke-width="2.5"
                 stroke-linecap="round"><rect x="3" y="11" width="18" height="11"
                   rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>
-              <span class="ix-fs14-fw600">PIN de acceso</span>
+              <span class="ix-fs14-fw600">Candado de pantalla</span>
             </div>
-            <p class="ix-p-167">Protege
-              la app con un PIN de 4 dígitos. Se pedirá cada vez que abras Mis
-              Finanzas.</p>
+            <p class="ix-p-167">Pide un PIN de 4 dígitos cada vez que abres Mis Finanzas, para que nadie curiosee si toma tu teléfono. Es un candado de pantalla: no cifra tus datos.</p>
             <div id="pin-config-container"></div>
           </div>
           <!-- BIOMETRÍA -->
@@ -2074,6 +2227,7 @@
               datos de los módulos desactivados se conservan. Si vuelves a
               activarlos, todo estará igual.</div>
             <div id="cfg-tamano" class="cfg-tamano"></div>
+            <div id="cfg-errores" class="cfg-tamano"></div>
             <div class="ix-div-177">Copia
               de seguridad</div>
             <div class="ix-div-178">Exporta
@@ -2451,21 +2605,21 @@
           <div class="ix-nc-color-picker"
             id="nc-color-picker">
             <div class="nc-color-opt ix-div-196" data-color="#60b0f0"
-              data-action="cuentas:selColorNC" data-args="[&quot;#60b0f0&quot;]"></div>
+              data-action="cuentas:selColorNuevaCuenta" data-args="[&quot;#60b0f0&quot;]"></div>
             <div class="nc-color-opt ix-div-197" data-color="#c8f060"
-              data-action="cuentas:selColorNC" data-args="[&quot;#c8f060&quot;]"></div>
+              data-action="cuentas:selColorNuevaCuenta" data-args="[&quot;#c8f060&quot;]"></div>
             <div class="nc-color-opt ix-div-198" data-color="#f0b840"
-              data-action="cuentas:selColorNC" data-args="[&quot;#f0b840&quot;]"></div>
+              data-action="cuentas:selColorNuevaCuenta" data-args="[&quot;#f0b840&quot;]"></div>
             <div class="nc-color-opt ix-div-199" data-color="#b090f0"
-              data-action="cuentas:selColorNC" data-args="[&quot;#b090f0&quot;]"></div>
+              data-action="cuentas:selColorNuevaCuenta" data-args="[&quot;#b090f0&quot;]"></div>
             <div class="nc-color-opt ix-div-200" data-color="#f06868"
-              data-action="cuentas:selColorNC" data-args="[&quot;#f06868&quot;]"></div>
+              data-action="cuentas:selColorNuevaCuenta" data-args="[&quot;#f06868&quot;]"></div>
             <div class="nc-color-opt ix-div-201" data-color="#60f0b0"
-              data-action="cuentas:selColorNC" data-args="[&quot;#60f0b0&quot;]"></div>
+              data-action="cuentas:selColorNuevaCuenta" data-args="[&quot;#60f0b0&quot;]"></div>
             <div class="nc-color-opt ix-div-202" data-color="#f090c0"
-              data-action="cuentas:selColorNC" data-args="[&quot;#f090c0&quot;]"></div>
+              data-action="cuentas:selColorNuevaCuenta" data-args="[&quot;#f090c0&quot;]"></div>
             <div class="nc-color-opt ix-div-203" data-color="#f0a060"
-              data-action="cuentas:selColorNC" data-args="[&quot;#f0a060&quot;]"></div>
+              data-action="cuentas:selColorNuevaCuenta" data-args="[&quot;#f0a060&quot;]"></div>
           </div>
         </div>
         <button type="button" class="btn btn-primary ix-mt12"
@@ -2790,7 +2944,7 @@
             <label for="movenc_cuenta" class="il" id="movenc_cuenta_label">¿En qué cuenta está esa
               plata?</label>
             <button type="button" id="movenc_split_toggle"
-              data-action="encargos:movSplitToggle"
+              data-action="encargos:movimientoSplitToggle"
               class="btn-split" style="display:none;">
               Dividir
             </button>
@@ -2804,7 +2958,7 @@
           <!-- Modo dividido (solo visible en salidas) -->
           <div id="movenc_cuenta_split" style="display:none;">
             <div id="movencSplitRows"></div>
-            <button type="button" data-action="encargos:movAgregarSplitRow"
+            <button type="button" data-action="encargos:movimientoAgregarSplitRow"
               class="btn-add-cuenta ix-mt4">
               + Agregar cuenta
             </button>
@@ -2813,7 +2967,7 @@
           <div class="ix-movenc-split-preview" id="movenc_split_preview"></div>
         </div>
         <!-- FALTANTE — el encargo no alcanza para todo el monto de la salida.
-             Solo aplica a salidas simples (no split); ver _movEncActualizarFaltante
+             Solo aplica a salidas simples (no split); ver _movimientoEncargoActualizarFaltante
              en encargos.js y encargos.md §5/§6. -->
         <div class="ix-mt4" id="movenc-faltante-wrap" style="display:none;">
           <div class="ix-div-221">
@@ -2848,7 +3002,7 @@
         <!-- DIFERENCIAL DE SALIDA -->
         <div class="ix-mt4" id="movenc-dif-wrap" style="display:none;">
           <div class="ix-div-227"
-            data-action="encargos:difToggle">
+            data-action="encargos:diferencialToggle">
             <div class="ix-div-228">
               <span class="ix-fs15-camber"><svg aria-hidden="true" class="ix-svg-230"
                   xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path
@@ -2874,7 +3028,7 @@
             <div class="ix-div-235">Quién
               se quedó con qué (opcional)</div>
             <div id="movenc-dif-beneficiarios"></div>
-            <button class="ix-button-236" type="button" data-action="encargos:difAddBenef">
+            <button class="ix-button-236" type="button" data-action="encargos:diferencialAddBenef">
               + Agregar persona
             </button>
             <div class="ix-movenc-dif-resumen" id="movenc-dif-resumen"></div>
@@ -2882,14 +3036,14 @@
             <div class="ix-mt10" id="movenc-dif-mi-cuenta-wrap" style="display:none;">
               <div class="ix-div-239">
                 <label for="movenc_dif_mi_cuenta" class="il ix-caccent-mb0">¿A cuál cuenta entra el sobrante?</label>
-                <button type="button" id="movenc_dif_mi_toggle" data-action="encargos:difMiSplitToggle" class="btn-split">Dividir</button>
+                <button type="button" id="movenc_dif_mi_toggle" data-action="encargos:diferencialMiSplitToggle" class="btn-split">Dividir</button>
               </div>
               <div id="movenc_dif_mi_simple">
                 <div class="select-wrap"><select id="movenc_dif_mi_cuenta"><option value>Sin especificar</option></select></div>
               </div>
               <div id="movenc_dif_mi_split" style="display:none;">
                 <div id="movencDifMiRows"></div>
-                <button type="button" data-action="encargos:difMiAgregarRow" class="btn-add-cuenta ix-mt4">+ Agregar cuenta</button>
+                <button type="button" data-action="encargos:diferencialMiAgregarRow" class="btn-add-cuenta ix-mt4">+ Agregar cuenta</button>
               </div>
               <div class="ix-movenc-dif-mi-preview" id="movenc_dif_mi_preview"></div>
             </div>
@@ -3160,7 +3314,7 @@
         </div>
         <div class="ix-mt4" id="ctc-dif-wrap">
           <div class="ix-div-227"
-            data-action="encargos:ctcDifToggle">
+            data-action="encargos:compraConTcDiferencialToggle">
             <div class="ix-div-228">
               <span class="ix-fs15-camber"><svg aria-hidden="true" class="ix-svg-230"
                   xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path
@@ -3187,7 +3341,7 @@
             <div class="ix-mt10" id="ctc-dif-margen-wrap" style="display:none;">
               <div class="ix-div-239">
               <label for="ctc_dif_margen_cuenta" class="il ix-caccent-mb0">¿A cuál cuenta entra el diferencial?</label>
-              <button type="button" id="ctc_dif_mi_toggle" data-action="encargos:ctcMiSplitToggle" class="btn-split">Dividir</button>
+              <button type="button" id="ctc_dif_mi_toggle" data-action="encargos:compraConTcMiSplitToggle" class="btn-split">Dividir</button>
             </div>
             <div id="ctc_dif_mi_simple">
               <div class="select-wrap"><select
@@ -3196,7 +3350,7 @@
             </div>
             <div id="ctc_dif_mi_split" style="display:none;">
               <div id="ctcDifMiRows"></div>
-              <button type="button" data-action="encargos:ctcMiAgregarRow" class="btn-add-cuenta ix-mt4">+ Agregar cuenta</button>
+              <button type="button" data-action="encargos:compraConTcMiAgregarRow" class="btn-add-cuenta ix-mt4">+ Agregar cuenta</button>
             </div>
             <div class="ix-movenc-dif-mi-preview" id="ctc_dif_mi_preview"></div>
             </div>
@@ -3299,7 +3453,7 @@
 
         <!-- Diferencial opcional -->
         <div class="ix-div-276"
-          data-action="encargos:usarParteDifToggle">
+          data-action="encargos:usarParteDiferencialToggle">
           <div class="ix-div-228">
             <span class="ix-fs15-camber"><svg aria-hidden="true" class="ix-svg-230"
                 xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path
@@ -3376,7 +3530,7 @@
           <div class="field-header">
             <label class="il" for="moverenc_origen">¿De qué cuenta sale?</label>
             <button type="button" id="moverenc_split_toggle"
-              data-action="encargos:moverEncSplitToggle"
+              data-action="encargos:moverEncargoSplitToggle"
               class="btn-split">
               Dividir
             </button>
@@ -3390,7 +3544,7 @@
           <!-- Modo dividido: la plata sale de varias cuentas del encargo a la vez -->
           <div id="moverenc_origen_split" style="display:none;">
             <div id="moverencSplitRows"></div>
-            <button type="button" data-action="encargos:moverEncAgregarSplitRow"
+            <button type="button" data-action="encargos:moverEncargoAgregarSplitRow"
               class="btn-add-cuenta ix-mt4">
               + Agregar cuenta
             </button>
@@ -3493,7 +3647,7 @@
           <div class="field-header">
             <label for="md_cuenta" class="il ix-mb0" id="md_cuenta_label">¿A qué cuenta entró la
               plata?</label>
-            <button type="button" id="md_split_toggle" data-action="prestado:toggleMdSplit" data-args="[]"
+            <button type="button" id="md_split_toggle" data-action="prestado:toggleMisDeudasSplit" data-args="[]"
               class="btn-split">Dividir</button>
           </div>
           <!-- Modo simple -->
@@ -3506,7 +3660,7 @@
           <!-- Modo dividido -->
           <div id="md_cuenta_split" style="display:none;">
             <div id="md_split_rows"></div>
-            <button type="button" id="btn-add-md-split" data-action="prestado:mdAddSplitRow" data-args="[]"
+            <button type="button" id="btn-add-md-split" data-action="prestado:misDeudasAddSplitRow" data-args="[]"
               class="btn-add-cuenta ix-mb4">+ Agregar
               cuenta</button>
             <div class="ix-md-split-resumen" id="md_split_resumen"></div>
@@ -3537,7 +3691,7 @@
           <input type="text" id="md_nota" maxlength="60" placeholder="Ej: Abono parcial">
         </div>
         <button type="button" class="btn btn-primary"
-          id="btn-confirmar-mov-mi-deuda" data-action="prestado:confirmarMovMiDeuda" data-args="[]">Guardar</button>
+          id="btn-confirmar-mov-mi-deuda" data-action="prestado:confirmarMovimientoMiDeuda" data-args="[]">Guardar</button>
         <button type="button" class="btn btn-ghost"
           data-close-sheet="mov-mi-deuda">Cancelar</button>
       </div>
@@ -3606,7 +3760,7 @@
 
         <!-- Diferencial opcional -->
         <div class="ix-div-276"
-          data-action="prestado:prtcDifToggle" data-args="[]">
+          data-action="prestado:prestamoConTcDiferencialToggle" data-args="[]">
           <div class="ix-div-228">
             <span class="ix-fs15-camber"><svg aria-hidden="true" class="ix-svg-230"
                 xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path
@@ -3650,7 +3804,7 @@
             type="text" inputmode="decimal" id="mov_monto" placeholder="0,00"
             class="money-input"></div>
         <!-- Selector de grupo de préstamo — solo visible cuando hay ≥2
-             préstamos abiertos con esta persona (ver _initMovGrupoSelector
+             préstamos abiertos con esta persona (ver _initMovimientoGrupoSelector
              en prestado.js). Con 0 o 1 grupo abierto no se muestra nada. -->
         <div class="ig" id="mov_grupo_wrap" style="display:none;">
           <label class="il" for="mov_grupo">¿A cuál préstamo?</label>
@@ -3704,7 +3858,7 @@
              cobras; "¿Cuánto era en realidad?" = lo que de verdad salió de tu cuenta. -->
         <div class="ix-mb10" id="mov-dif-wrap" style="display:none;">
           <div class="ix-div-276"
-            data-action="prestado:movDifToggle" data-args="[]">
+            data-action="prestado:movimientoDiferencialToggle" data-args="[]">
             <div class="ix-div-228">
               <span class="ix-fs15-camber"><svg aria-hidden="true" class="ix-svg-230"
                   xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path
@@ -3812,7 +3966,7 @@
               <div class="field-header">
                 <label class="il ix-mb0" for="mov_enc_cuenta">¿De
                   qué cuenta del encargo sale?</label>
-                <button type="button" id="mov_enc_cuenta_split_toggle" data-action="prestado:abonoEncCuentaSplitToggle" data-args="[]"
+                <button type="button" id="mov_enc_cuenta_split_toggle" data-action="prestado:abonoEncargoCuentaSplitToggle" data-args="[]"
                   class="btn-split">Dividir</button>
               </div>
               <!-- Modo simple -->
@@ -3825,7 +3979,7 @@
               <!-- Modo dividido: la plata sale de varias cuentas del encargo -->
               <div id="mov_enc_cuenta_split" style="display:none;">
                 <div id="mov_enc_cuenta_split_rows"></div>
-                <button type="button" data-action="prestado:abonoEncCuentaAgregarSplitRow" data-args="[]"
+                <button type="button" data-action="prestado:abonoEncargoCuentaAgregarSplitRow" data-args="[]"
                   class="btn-add-cuenta ix-mb4">+ Agregar
                   cuenta</button>
                 <div class="ix-md-split-resumen" id="mov_enc_cuenta_split_resumen"></div>
@@ -4115,82 +4269,85 @@
     <div class="overlay" id="sheet-mesada-pago" data-sheet-id="mesada-pago">
       <div class="sheet">
         <div class="sheet-handle"></div>
-        <div class="sheet-title" id="mpTitle">Mesada recibida</div>
-        <p class="ms-desc" id="mpDesc">¿Cuándo te pagó y qué hiciste con esa plata?</p>
+        <button type="button" class="sheet-x" data-close-sheet="mesada-pago" aria-label="Cerrar"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg></button>
+        <div class="sheet-title" id="mesadaPagoTitle">Mesada recibida</div>
+        <p class="ms-desc" id="mesadaPagoDesc">¿Cuándo te pagó y qué hiciste con esa plata?</p>
         <div class="ig">
-          <label class="il" for="mpMonto">Monto recibido</label>
-          <input type="text" inputmode="decimal" id="mpMonto"
+          <label class="il" for="mesadaPagoMonto">Monto recibido</label>
+          <input type="text" inputmode="decimal" id="mesadaPagoMonto"
             placeholder="80000" class="money-input">
         </div>
         <!-- ¿Pagó con plata que ya le tenía guardada en un encargo? -->
-        <div id="mpEncargoBox" class="ms-enc-box" style="display:none;">
-          <div class="ms-enc-toggle" id="mpEncargoToggleWrap">
-            <input type="checkbox" id="mpUsarEncargo" class="ms-chk ms-chk-blue">
+        <div id="mesadaPagoEncargoBox" class="ms-enc-box" style="display:none;">
+          <div class="ms-enc-toggle" id="mesadaPagoEncargoToggleWrap">
+            <input type="checkbox" id="mesadaPagoUsarEncargo" class="ms-chk ms-chk-blue">
             <div class="ms-flex-1">
-              <div class="ms-enc-label" id="mpEncargoLabel">Me pagó con plata que ya le tenía
+              <div class="ms-enc-label" id="mesadaPagoEncargoLabel">Me pagó con plata que ya le tenía
                 guardada</div>
-              <div class="ms-sub" id="mpEncargoSub"></div>
+              <div class="ms-sub" id="mesadaPagoEncargoSub"></div>
             </div>
           </div>
-          <div id="mpEncargoDetalle" class="ms-enc-detalle" style="display:none;">
-            <div class="ig ms-mb8" id="mpEncargoSelWrap" style="display:none;">
-              <label class="il" for="mpEncargoSel">¿Cuál encargo?</label>
-              <div class="select-wrap"><select id="mpEncargoSel"></select>
+          <div id="mesadaPagoEncargoDetalle" class="ms-enc-detalle" style="display:none;">
+            <div class="ig ms-mb8" id="mesadaPagoEncargoSelWrap" style="display:none;">
+              <label class="il" for="mesadaPagoEncargoSel">¿Cuál encargo?</label>
+              <div class="select-wrap"><select id="mesadaPagoEncargoSel"></select>
               </div>
             </div>
             <div class="ig ms-mb0">
-              <label class="il" for="mpEncargoCuentaSel">¿De cuál cuenta
+              <label class="il" for="mesadaPagoEncargoCuentaSel">¿De cuál cuenta
                 sale esa plata?</label>
               <div class="select-wrap"><select
-                  id="mpEncargoCuentaSel"></select></div>
+                  id="mesadaPagoEncargoCuentaSel"></select></div>
             </div>
           </div>
         </div>
         <!-- Modo destino: simple o dividido -->
         <div class="field-header ms-mb8">
-          <label for="mpDestino" class="il ms-mb0">¿Qué hiciste con esa
+          <label for="mesadaPagoDestino" class="il ms-mb0">¿Qué hiciste con esa
             plata?</label>
-          <button type="button" id="mpSplitToggle"
+          <button type="button" id="mesadaPagoSplitToggle"
             class="btn-split">Dividir</button>
         </div>
         <!-- Modo simple -->
-        <div id="mpModoSimple" class="ig">
-          <div class="select-wrap"><select id="mpDestino">
+        <div id="mesadaPagoModoSimple" class="ig">
+          <div class="select-wrap"><select id="mesadaPagoDestino">
               <option value>No especificar / lo gasté</option>
             </select></div>
         </div>
         <!-- Modo dividido -->
-        <div id="mpModoDividido" style="display:none;">
-          <div id="mpSplitRows"></div>
+        <div id="mesadaPagoModoDividido" style="display:none;">
+          <div id="mesadaPagoSplitRows"></div>
           <button type="button" id="btn-add-split-row"
             class="btn-add-cuenta ms-mb8">+
             Agregar cuenta</button>
         </div>
-        <div id="mpPreview" class="ms-preview"></div>
+        <div id="mesadaPagoPreview" class="ms-preview"></div>
         <!-- Toggle: la diferencia quedó debiendo -->
-        <div id="mpDebeWrap" class="ms-debe-box" style="display:none;">
-          <input type="checkbox" id="mpQuedaDebiendo" class="ms-chk ms-chk-amber">
+        <div id="mesadaPagoDebeWrap" class="ms-debe-box" style="display:none;">
+          <input type="checkbox" id="mesadaPagoQuedaDebiendo" class="ms-chk ms-chk-amber">
           <div class="ms-flex-1">
-            <div class="ms-debe-label" id="mpDebeLabel">Te está debiendo la diferencia</div>
+            <div class="ms-debe-label" id="mesadaPagoDebeLabel">Te está debiendo la diferencia</div>
             <div class="ms-sub">Si
               no marcas esto, el mes queda cerrado con lo que recibiste — sin
               deuda</div>
           </div>
         </div>
         <div class="ig">
-          <label class="il" for="mpFecha">Fecha en que te pagó</label>
-          <input type="date" id="mpFecha">
+          <label class="il" for="mesadaPagoFecha">Fecha en que te pagó</label>
+          <input type="date" id="mesadaPagoFecha">
         </div>
-        <div id="mpAvisoMes" class="ms-aviso-mes"></div>
+        <div id="mesadaPagoAvisoMes" class="ms-aviso-mes"></div>
         <div class="ig">
-          <label class="il" for="mpNota">Nota (opcional)</label>
-          <input type="text" id="mpNota" maxlength="60"
+          <label class="il" for="mesadaPagoNota">Nota (opcional)</label>
+          <input type="text" id="mesadaPagoNota" maxlength="60"
             placeholder="Ej: 42k Mesada Nu, el resto en Nequi">
         </div>
-        <button type="button" class="btn btn-primary"
-          id="btn-confirmar-mesada">Guardar</button>
-        <button type="button" class="btn btn-ghost"
-          data-close-sheet="mesada-pago">Cancelar</button>
+        <div class="sheet-acciones">
+          <button type="button" class="btn btn-primary"
+            id="btn-confirmar-mesada">Guardar</button>
+          <button type="button" class="btn btn-ghost"
+            data-close-sheet="mesada-pago">Cancelar</button>
+        </div>
       </div>
     </div>
 
@@ -4198,10 +4355,11 @@
     <div class="overlay" id="sheet-mesada-det" data-sheet-id="mesada-det">
       <div class="sheet">
         <div class="sheet-handle"></div>
+        <button type="button" class="sheet-x" data-close-sheet="mesada-det" aria-label="Cerrar"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg></button>
         <div class="sheet-title" id="mdTitle">Detalle mesada</div>
         <div id="mdContent"></div>
-        <button type="button" class="btn btn-ghost"
-          data-close-sheet="mesada-det">Cancelar</button>
+        <button type="button" class="btn btn-ghost sheet-cerrar-movil"
+          data-close-sheet="mesada-det">Cerrar</button>
       </div>
     </div>
 
@@ -4209,57 +4367,60 @@
     <div class="overlay" id="sheet-mesada-pend" data-sheet-id="mesada-pend">
       <div class="sheet">
         <div class="sheet-handle"></div>
-        <div class="sheet-title" id="mppTitle">Pago de lo pendiente</div>
-        <p class="ms-desc" id="mppDesc">¿Cuánto te dio de lo que te quedó debiendo?</p>
+        <button type="button" class="sheet-x" data-close-sheet="mesada-pend" aria-label="Cerrar"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg></button>
+        <div class="sheet-title" id="mesadaPagoPendienteTitle">Pago de lo pendiente</div>
+        <p class="ms-desc" id="mesadaPagoPendienteDesc">¿Cuánto te dio de lo que te quedó debiendo?</p>
         <div class="ig">
-          <label class="il" for="mppMonto">Monto recibido</label>
-          <input type="text" inputmode="decimal" id="mppMonto"
+          <label class="il" for="mesadaPagoPendienteMonto">Monto recibido</label>
+          <input type="text" inputmode="decimal" id="mesadaPagoPendienteMonto"
             placeholder="20000" class="money-input">
         </div>
         <!-- ¿Pagó con plata que ya le tenía guardada en un encargo? -->
-        <div id="mppEncargoBox" class="ms-enc-box" style="display:none;">
-          <div class="ms-enc-toggle" id="mppEncargoToggleWrap">
-            <input type="checkbox" id="mppUsarEncargo" class="ms-chk ms-chk-blue">
+        <div id="mesadaPagoPendienteEncargoBox" class="ms-enc-box" style="display:none;">
+          <div class="ms-enc-toggle" id="mesadaPagoPendienteEncargoToggleWrap">
+            <input type="checkbox" id="mesadaPagoPendienteUsarEncargo" class="ms-chk ms-chk-blue">
             <div class="ms-flex-1">
-              <div class="ms-enc-label" id="mppEncargoLabel">Me pagó con plata que ya le tenía
+              <div class="ms-enc-label" id="mesadaPagoPendienteEncargoLabel">Me pagó con plata que ya le tenía
                 guardada</div>
-              <div class="ms-sub" id="mppEncargoSub"></div>
+              <div class="ms-sub" id="mesadaPagoPendienteEncargoSub"></div>
             </div>
           </div>
-          <div id="mppEncargoDetalle" class="ms-enc-detalle" style="display:none;">
-            <div class="ig ms-mb8" id="mppEncargoSelWrap" style="display:none;">
-              <label class="il" for="mppEncargoSel">¿Cuál encargo?</label>
-              <div class="select-wrap"><select id="mppEncargoSel"></select>
+          <div id="mesadaPagoPendienteEncargoDetalle" class="ms-enc-detalle" style="display:none;">
+            <div class="ig ms-mb8" id="mesadaPagoPendienteEncargoSelWrap" style="display:none;">
+              <label class="il" for="mesadaPagoPendienteEncargoSel">¿Cuál encargo?</label>
+              <div class="select-wrap"><select id="mesadaPagoPendienteEncargoSel"></select>
               </div>
             </div>
             <div class="ig ms-mb0">
-              <label class="il" for="mppEncargoCuentaSel">¿De cuál cuenta
+              <label class="il" for="mesadaPagoPendienteEncargoCuentaSel">¿De cuál cuenta
                 sale esa plata?</label>
               <div class="select-wrap"><select
-                  id="mppEncargoCuentaSel"></select></div>
+                  id="mesadaPagoPendienteEncargoCuentaSel"></select></div>
             </div>
           </div>
         </div>
-        <div class="ig" id="mppDestinoWrap">
-          <label class="il" for="mppDestino">¿Dónde la metiste?</label>
-          <div class="select-wrap"><select id="mppDestino">
+        <div class="ig" id="mesadaPagoPendienteDestinoWrap">
+          <label class="il" for="mesadaPagoPendienteDestino">¿Dónde la metiste?</label>
+          <div class="select-wrap"><select id="mesadaPagoPendienteDestino">
               <option value>No especificar / lo gasté</option>
             </select></div>
         </div>
-        <div id="mppPreview" class="ms-preview ms-preview-amber"></div>
+        <div id="mesadaPagoPendientePreview" class="ms-preview ms-preview-amber"></div>
         <div class="ig">
-          <label class="il" for="mppFecha">Fecha en que te pagó</label>
-          <input type="date" id="mppFecha">
+          <label class="il" for="mesadaPagoPendienteFecha">Fecha en que te pagó</label>
+          <input type="date" id="mesadaPagoPendienteFecha">
         </div>
         <div class="ig">
-          <label class="il" for="mppNota">Nota (opcional)</label>
-          <input type="text" id="mppNota" maxlength="60"
+          <label class="il" for="mesadaPagoPendienteNota">Nota (opcional)</label>
+          <input type="text" id="mesadaPagoPendienteNota" maxlength="60"
             placeholder="Ej: Me dio el resto en efectivo">
         </div>
-        <button type="button" class="btn btn-primary"
-          id="btn-confirmar-mesada-pend">Guardar</button>
-        <button type="button" class="btn btn-ghost"
-          data-close-sheet="mesada-pend">Cancelar</button>
+        <div class="sheet-acciones">
+          <button type="button" class="btn btn-primary"
+            id="btn-confirmar-mesada-pend">Guardar</button>
+          <button type="button" class="btn btn-ghost"
+            data-close-sheet="mesada-pend">Cancelar</button>
+        </div>
       </div>
     </div>
 
@@ -4267,9 +4428,10 @@
     <div class="overlay" id="sheet-mov-detalle" data-sheet-id="mov-detalle">
       <div class="sheet">
         <div class="sheet-handle"></div>
+        <button type="button" class="sheet-x" data-close-sheet="mov-detalle" aria-label="Cerrar"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg></button>
         <div class="sheet-title">Detalle del movimiento</div>
         <div id="mvdContent"></div>
-        <button type="button" class="btn btn-ghost"
+        <button type="button" class="btn btn-ghost sheet-cerrar-movil"
           data-close-sheet="mov-detalle">Cerrar</button>
       </div>
     </div>
@@ -4279,15 +4441,15 @@
       data-sheet-id="agregar-dinero">
       <div class="sheet">
         <div class="sheet-handle"></div>
-        <div class="sheet-title" id="adTitle">Agregar dinero</div>
+        <div class="sheet-title" id="agregarDineroTitle">Agregar dinero</div>
         <p class="ix-div-211">El
           valor que ingreses se <b class="ix-caccent">sumará</b> al
           saldo actual. No reemplaza, solo suma.</p>
         <div class="ig"><div class="il">Saldo actual</div><div class="ix-adsaldoactual"
-            id="adSaldoActual">$0</div></div>
+            id="agregarDineroSaldoActual">$0</div></div>
         <!-- Toggle apertura -->
-        <div class="ix-adaperturawrap" id="adAperturaWrap">
-          <input class="ix-adesapertura" type="checkbox" id="adEsApertura">
+        <div class="ix-adaperturawrap" id="agregarDineroAperturaWrap">
+          <input class="ix-adesapertura" type="checkbox" id="agregarDineroEsApertura" aria-label="Es saldo inicial (ya lo tenía)">
           <div class="ix-fx1-minw0">
             <div class="ix-spextralabel">Es
               saldo inicial (ya lo tenía)</div>
@@ -4295,27 +4457,27 @@
               contará como ingreso del mes ni aparecerá en estadísticas</div>
           </div>
         </div>
-        <label class="ix-adaperturawrap" id="adEsExtraWrap">
-          <input class="ix-adesapertura" type="checkbox" id="adEsExtra">
+        <label class="ix-adaperturawrap" id="agregarDineroEsExtraWrap">
+          <input class="ix-adesapertura" type="checkbox" id="agregarDineroEsExtra">
           <div class="ix-fx1-minw0">
             <div class="ix-spextralabel">Es extraordinario (no se repite)</div>
             <div class="ix-div-310">Aguinaldo, venta, premio: cuenta como ingreso, pero no como tu ritmo normal del mes</div>
           </div>
         </label>
-        <div class="ig"><label class="il" for="adDesc" id="adDescLabel">¿De
+        <div class="ig"><label class="il" for="agregarDineroDesc" id="agregarDineroDescLabel">¿De
             dónde viene esta plata? <span class="ix-cred">*</span></label><input
-            type="text" id="adDesc"
+            type="text" id="agregarDineroDesc"
             placeholder="Ej: Mesada, regalo, venta, sueldo..."
             maxlength="80"></div>
-        <div class="ig"><label class="il" for="adMonto">¿Cuánto
+        <div class="ig"><label class="il" for="agregarDineroMonto">¿Cuánto
             recibiste?</label><input type="text" inputmode="decimal"
-            id="adMonto" placeholder="0,00" class="money-input" autofocus></div>
-        <div class="ig"><label class="il" for="adFecha">Fecha</label><input
-            type="date" id="adFecha"></div>
-        <div class="ig"><label class="il" for="adNota">Nota <span class="ix-span-262">(opcional)</span></label><input
-            type="text" id="adNota" maxlength="60"
+            id="agregarDineroMonto" placeholder="0,00" class="money-input"></div>
+        <div class="ig"><label class="il" for="agregarDineroFecha">Fecha</label><input
+            type="date" id="agregarDineroFecha"></div>
+        <div class="ig"><label class="il" for="agregarDineroNota">Nota <span class="ix-span-262">(opcional)</span></label><input
+            type="text" id="agregarDineroNota" maxlength="60"
             placeholder="Detalle adicional"></div>
-        <div class="ix-adpreview" id="adPreview"></div>
+        <div class="ix-adpreview" id="agregarDineroPreview"></div>
         <button type="button" class="btn btn-primary"
           id="btn-confirmar-agregar-dinero">Agregar al saldo</button>
         <button type="button" class="btn btn-ghost"
@@ -4344,31 +4506,31 @@
                 points="12 5 19 12 12 19" /></svg></button>
         </div>
         <div class="ig">
-          <label class="il" for="adMenuDest">Cuenta destino</label>
-          <div class="select-wrap"><select id="adMenuDest"></select></div>
+          <label class="il" for="agregarDineroMenuDestino">Cuenta destino</label>
+          <div class="select-wrap"><select id="agregarDineroMenuDestino"></select></div>
         </div>
-        <div class="ix-admenusaldo" id="adMenuSaldo"></div>
-        <label class="ix-adaperturawrap" id="adMenuEsExtraWrap">
-          <input class="ix-adesapertura" type="checkbox" id="adMenuEsExtra">
+        <div class="ix-admenusaldo" id="agregarDineroMenuSaldo"></div>
+        <label class="ix-adaperturawrap" id="agregarDineroMenuEsExtraWrap">
+          <input class="ix-adesapertura" type="checkbox" id="agregarDineroMenuEsExtra">
           <div class="ix-fx1-minw0">
             <div class="ix-spextralabel">Es extraordinario (no se repite)</div>
             <div class="ix-div-310">Aguinaldo, venta, premio: cuenta como ingreso, pero no como tu ritmo normal del mes</div>
           </div>
         </label>
-        <div class="ig"><label class="il" for="adMenuDesc">¿De dónde viene esta
+        <div class="ig"><label class="il" for="agregarDineroMenuDesc">¿De dónde viene esta
             plata? <span class="ix-cred">*</span></label><input
-            type="text" id="adMenuDesc"
+            type="text" id="agregarDineroMenuDesc"
             placeholder="Ej: Mesada, regalo, venta, sueldo..."
             maxlength="80"></div>
-        <div class="ig"><label class="il" for="adMenuMonto">¿Cuánto
+        <div class="ig"><label class="il" for="agregarDineroMenuMonto">¿Cuánto
             recibiste?</label><input type="text" inputmode="decimal"
-            id="adMenuMonto" placeholder="0,00" class="money-input"></div>
-        <div class="ig"><label class="il" for="adMenuFecha">Fecha</label><input
-            type="date" id="adMenuFecha"></div>
-        <div class="ig"><label class="il" for="adMenuNota">Nota <span class="ix-span-262">(opcional)</span></label><input
-            type="text" id="adMenuNota" maxlength="60"
+            id="agregarDineroMenuMonto" placeholder="0,00" class="money-input"></div>
+        <div class="ig"><label class="il" for="agregarDineroMenuFecha">Fecha</label><input
+            type="date" id="agregarDineroMenuFecha"></div>
+        <div class="ig"><label class="il" for="agregarDineroMenuNota">Nota <span class="ix-span-262">(opcional)</span></label><input
+            type="text" id="agregarDineroMenuNota" maxlength="60"
             placeholder="Detalle adicional"></div>
-        <div class="ix-adpreview" id="adMenuPreview"></div>
+        <div class="ix-adpreview" id="agregarDineroMenuPreview"></div>
         <button type="button" class="btn btn-primary"
           id="btn-confirmar-agregar-dinero-menu">Agregar al saldo</button>
         <button type="button" class="btn btn-ghost"
@@ -4381,20 +4543,20 @@
     <div class="overlay" id="sheet-nu-movimiento" data-sheet-id="nu-movimiento">
       <div class="sheet">
         <div class="sheet-handle"></div>
-        <div class="sheet-title" id="nuMovTitle">Agregar a la cuenta</div>
-        <p class="ix-div-211" id="nuMovSubtitle">El valor
+        <div class="sheet-title" id="nuMovimientoTitle">Agregar a la cuenta</div>
+        <p class="ix-div-211" id="nuMovimientoSubtitle">El valor
           se <b class="ix-cnu-light">sumará</b> a la cajita que
           elijas.</p>
 
         <!-- Selector de cajita -->
         <div class="ig">
           <div class="il">¿A qué cajita? <span class="ix-cred">*</span></div>
-          <div class="ix-numovcajitaswrap" id="nuMovCajitasWrap"></div>
+          <div class="ix-numovcajitaswrap" id="nuMovimientoCajitasWrap"></div>
         </div>
 
         <!-- Toggle saldo inicial -->
-        <div class="ix-numovaperturawrap" id="nuMovAperturaWrap">
-          <input class="ix-adesapertura" type="checkbox" id="nuMovEsApertura">
+        <div class="ix-numovaperturawrap" id="nuMovimientoAperturaWrap">
+          <input class="ix-adesapertura" type="checkbox" id="nuMovimientoEsApertura" aria-label="Es saldo inicial (ya lo tenía)">
           <div class="ix-fx1-minw0">
             <div class="ix-spextralabel">Es
               saldo inicial (ya lo tenía)</div>
@@ -4404,24 +4566,24 @@
         </div>
 
         <div class="ig">
-          <label for="nuMovDesc" class="il" id="nuMovDescLabel">¿De dónde viene esta plata?
+          <label for="nuMovimientoDesc" class="il" id="nuMovimientoDescLabel">¿De dónde viene esta plata?
             <span class="ix-cred">*</span></label>
-          <input type="text" id="nuMovDesc"
+          <input type="text" id="nuMovimientoDesc"
             placeholder="Ej: Salario, mesada, bono..." maxlength="80">
         </div>
         <div class="ig">
-          <label for="nuMovMonto" class="il" id="nuMovMontoLabel">¿Cuánto recibiste?</label>
-          <input type="text" inputmode="decimal" id="nuMovMonto"
+          <label for="nuMovimientoMonto" class="il" id="nuMovimientoMontoLabel">¿Cuánto recibiste?</label>
+          <input type="text" inputmode="decimal" id="nuMovimientoMonto"
             placeholder="0,00" class="money-input">
         </div>
         <div class="ig">
-          <label class="il" for="nuMovFecha">Fecha</label>
-          <input type="date" id="nuMovFecha">
+          <label class="il" for="nuMovimientoFecha">Fecha</label>
+          <input type="date" id="nuMovimientoFecha">
         </div>
-        <div class="ig"><label class="il" for="nuMovNota">Nota <span class="ix-span-262">(opcional)</span></label><input
-            type="text" id="nuMovNota" maxlength="60"
+        <div class="ig"><label class="il" for="nuMovimientoNota">Nota <span class="ix-span-262">(opcional)</span></label><input
+            type="text" id="nuMovimientoNota" maxlength="60"
             placeholder="Detalle adicional"></div>
-        <div class="ix-adpreview" id="nuMovPreview"></div>
+        <div class="ix-adpreview" id="nuMovimientoPreview"></div>
         <button type="button" class="btn btn-primary ix-btn-confirmar-nu-mov" id="btn-confirmar-nu-mov">Confirmar</button>
         <button type="button" class="btn btn-ghost"
           data-close-sheet="nu-movimiento">Cancelar</button>
@@ -4654,259 +4816,15 @@
       </div>
     </div>
 
-    <!-- `defer` en TODO este bloque (docs/auditoria-tecnica.md #4, paso 3):
-         medido con Lighthouse en producción, el navegador no empezaba a
-         DESCARGAR cada uno de estos ~36 archivos hasta que el anterior
-         terminaba de ejecutar — no solo la ejecución estaba en serie, la
-         propia descarga también (ej. modules/inicio.js, el último del
-         bloque, no arrancaba su fetch hasta los 9.46s). Con `defer`, el
-         navegador descarga los 36 en paralelo apenas los descubre, sin
-         bloquear el parser, y los ejecuta en el mismo orden relativo que
-         hoy — recién al terminar de parsear el documento (misma garantía
-         de orden y de "DOM ya completo" que ya tenían al ser blocking,
-         porque físicamente están todos después de todo el markup real de
-         la app; no hay ningún elemento del HTML que dependa de que uno de
-         estos scripts corra a mitad de parseo). El orden entre ellos
-         importa (ver el comentario de navegacion.js sobre
-         addGastoVar/addGastoFijo y el de prestado.js sobre
-         openSheet) — `defer` preserva el orden del documento, así que no
-         se tocó el orden de los <script>, solo se agregó el atributo.
-         Los tres módulos de Firebase (firebase-init/sync, pin-bio) NO
-         están acá — ya pasaron a `async` en los pasos 1 y 2, con sus
-         propios guards. Ver CHANGELOG.md#arranque para el detalle y las
-         cifras del Lighthouse que motivaron este paso. -->
-    <!-- Sistema centralizado de eventos (Events.on/attr/registerAll) — cargado
-         acá, antes que cualquier otro script, porque no depende de nada (ni de
-         S ni de escHtml, los resuelve recién cuando se usan) y todos los
-         módulos futuros (mesada.js, spotify.js, ...) lo necesitan definido
-         desde el arranque. Ver js/core/events.js y auditoria-tecnica.md #1. -->
-    <script src="js/core/events.js" defer></script>
-    <script src="js/core/diferencial.js" defer></script>
-    <script src="js/core/split.js" defer></script>
-<!--
-// js/core/ui.js — registro de ganchos de ciclo de vida (Ui.hoja / Ui.pantalla / Ui.en). Reemplaza a hookGlobal() y a los
-// `openSheet = function(){…}` de los módulos. No depende de nada: carga primero.
--->
-<script src="js/core/ui.js" defer></script>
-<script src="js/core/formulario.js" defer></script>
-<script src="js/core/sw-registro.js" defer></script>
-<script src="js/core/fecha.js" defer></script>
-<script src="js/core/estado.js" defer></script>
-<script src="js/core/cuentas-fuentes.js" defer></script>
-<script src="js/core/persistencia.js" defer></script>
-<script src="js/core/patrimonio.js" defer></script>
-<script src="js/core/ingresos.js" defer></script>
-<script src="js/core/dialogos.js" defer></script>
-<script src="js/core/utilidades-ui.js" defer></script>
-<script src="js/core/refresh.js" defer></script>
-<script src="js/core/cuenta-efectos.js" defer></script>
-<script src="js/core/cobros.js" defer></script>
-<!--
-// js/core/html-tag.js — primitivo html`` que escapa por defecto (ver
-// auditoria-tecnica.md, "Auditoría exhaustiva de .innerHTML" — solución de
-// fondo dada esta sesión, tras 14 rondas de fixes manuales módulo por
-// módulo). Depende de escHtml(), definida en js/core/estado.js — debe cargar
-// justo después. Núcleo, siempre eager: cualquier módulo lazy (incluido
-// analisis.js, primer piloto de migración) lo necesita ya disponible antes
-// de que el usuario dispare la primera llamada a html()/raw(), sin importar
-// cuándo termine de cargar ese módulo lazy en sí.
--->
-<script src="js/core/html-tag.js" defer></script>
-<script src="js/core/umbrales.js" defer></script>
-<script src="js/core/reglas.js" defer></script>
-<script src="js/core/salud.js" defer></script>
-<script src="js/core/plan-deudas.js" defer></script>
-<script src="js/core/periodo.js" defer></script>
-<script src="js/core/nu-calc.js" defer></script>
-<script src="js/core/calc-helpers.js" defer></script>
-<!--
-// js/core/fuentes-filtro.js — filtros de "de dónde sale la plata" (saldo
-// mínimo por flujo, TC solo con cupo). Usa getSaldoFuente/buildFuentesOptsHtml
-// (el núcleo) y tcCupoDisponible/getTCById (calc-helpers.js) solo al ser
-// llamado, no al cargar. Debe cargar antes de gastos.js (eager) y de los
-// módulos lazy (cuentas, spotify, prestado, tarjetas). Ver CHANGELOG.md.
--->
-<script src="js/core/fuentes-filtro.js" defer></script>
-<!--
-// js/core/reordenable.js — Reordenable.activar(): arrastrar y soltar para reordenar fichas/filas (hoy: cuentas). Núcleo eager y
-// genérico; no depende de nada de la app. Cuentas lo activa al cargar su módulo (lazy).
--->
-<script src="js/core/reordenable.js" defer></script>
-<!--
-// js/core/color-picker.js — marcarColorSeleccionado(): marca el círculo de color elegido en los
-// selectores de color (Cuentas, Tarjetas de crédito, Prestado). Núcleo eager: lo usan tres módulos
-// lazy, así que no puede depender de que uno de ellos haya cargado. Sin este <script>, selColorNC /
-// selIconoNC (cuentas.js) lanzaban ReferenceError y el ícono/color elegido nunca se marcaba.
--->
-<script src="js/core/color-picker.js" defer></script>
-<!--
-// js/core/wait-for.js — helper waitFor() para los <script defer> clásicos.
-// Consumidor directo: personas-init.js. (hook-global.js, que también lo usaba, se eliminó: los ganchos de hojas/pantallas
-// ahora pasan por js/core/ui.js, que no necesita esperar a nada.)
-// pin-bio.js/firebase-sync.js usan su propia copia vía `import` de
-// js/core/wait-for-module.js (no de este archivo) — ver el comentario en
-// ambos archivos y CHANGELOG.md#infraestructura--seguridad para el porqué
-// de la separación.
--->
-<script src="js/core/wait-for.js" defer></script>
-<!--
-// js/core/wrapped-gate.js — ventana de disponibilidad de Wrapped
-// (2026-09-15, resuelve wrapped.md §7decies). Núcleo eager, chico, a
-// propósito aparte de wrapped.js: decide si el grupo lazy 'wrapped' existe
-// para el usuario ESTE momento (muestra/oculta la tarjeta #wrapped-promo, arriba
-// en esta pantalla, y le avisa a Loader.ensureAll() en lazy-loader.js que
-// no lo precargue fuera de la ventana) sin tener que descargar las ~4000
-// líneas del módulo real solo para saber si mostrarlo. Depende de hoy()
-// (js/core/dialogos.js, ya cargado arriba) y de showScreen/toast (núcleo,
-// definidos más abajo pero solo se usan detrás de un click real, nunca al
-// cargar este archivo). Ver ese archivo para el detalle completo.
--->
-<script src="js/core/wrapped-gate.js" defer></script>
-<!--
-// Módulo Mesada — migrado a js/modules/mesada.js (ver docs/mesada.md).
-// Carga LAZY desde esta sesión (docs/auditoria-tecnica.md #4, quinto
-// grupo): no tiene dependencia real de orden de carga (no monkey-patchea
-// nada ajeno) y su único caller externo conocido (inicio.js) ya tiene
-// guard typeof desde la sesión anterior. #screen-mesada y #mas-mesada ya
-// eran HTML estático, no hubo que inyectar nada (mismo caso que
-// Configuración/Actividad Reciente). Se saca de acá el <script>; ahora lo
-// descarga js/core/lazy-loader.js (Loader.ensure('mesada')) la primera
-// vez que alguien entra a la pantalla.
--->
+    <!-- Scripts con `defer`: se descargan en paralelo y se ejecutan en el orden del documento. El orden importa (navegacion.js antes que los módulos que parchean addGastoVar/addGastoFijo; prestado.js sobre openSheet): no lo cambies. Los módulos de Firebase y pin-bio van con `async`. -->
 <!-- mesada.js: ver js/core/lazy-loader.js (Loader.GROUPS.mesada) -->
-<!--
-// Módulo Spotify — migrado a js/modules/spotify.js (ver docs/spotify.md).
-// Carga LAZY desde esta sesión (docs/auditoria-tecnica.md #4, séptimo
-// grupo): auditado línea por línea, sin dependencia real de orden de
-// carga (solo monkey-patchea sus propias funciones y openSheet, del
-// núcleo). Apareció un bug real al auditar (openSheet envuelto en un
-// listener DOMContentLoaded que con carga lazy nunca dispara) — corregido
-// dentro del propio spotify.js. #screen-spotify y #nav-spotify ya eran
-// HTML estático, no hubo que inyectar nada. Se saca el <script> de acá;
-// ahora lo descarga js/core/lazy-loader.js (Loader.ensure('spotify')) la
-// primera vez que alguien entra a la pantalla.
--->
 <!-- spotify.js: ver js/core/lazy-loader.js (Loader.GROUPS.spotify) -->
-<script src="js/modules/gastos.js" defer></script>
-<!-- ═══════════════════════════════════════════════════════════════
-     js/modules/personas.js se movió acá (2026-08-03) — antes cargaba
-     mucho más abajo, cerca del final del documento. Motivo: el
-     archivo fusionado js/modules/prestado.js (ver más abajo, y
-     CHANGELOG.md#préstamos) tiene dependencia real de nivel superior
-     contra personas.js (PERSONA_COLORES, _guardarEditarPersonaGlobal),
-     a diferencia de lo que resultó ser Encargos/Spotify (esos dos NO
-     tenían dependencia real — se fusionaron sin mover nada, ver
-     CHANGELOG.md#encargos y #spotify). Se auditaron los 16 archivos
-     (hoy 14, ver notas) que hoy cargan entre esta posición y la
-     posición vieja de personas.js (navegacion.js, lazy-loader.js,
-     money-input.js, movimientos.js, cuentas.js, bootstrap.js,
-     mas-menu.js, sheet-behavior.js [fusión 2026-09-08 de
-     sheet-viewport.js + sheet-swipe.js — ver ese archivo],
-     gastos-fijos-progress.js, firebase-sync.js,
-     saldos-ocultos.js, arranque-ui.js, formularios-ui.js,
-     busqueda-global.js, pin-bio.js — nav.js retirado, 2026-09-10, ver
-     nota más abajo) — ninguno tiene
-     código de nivel superior que dependa de personas.js, ni
-     personas.js depende de nada de ellos a nivel superior. Detalle
-     completo en CHANGELOG.md#préstamos.
-     ═══════════════════════════════════════════════════════════════ -->
-<script src="js/modules/personas.js" defer></script>
-<!--
-// js/core/navegacion.js — último bloque núcleo inline, extraído esta
-// sesión (ver auditoria-tecnica.md, punto 1 de "Críticos", y el header del
-// propio archivo para el detalle de la restricción de orden de carga).
-// Se carga acá, en la misma posición relativa que tenían los dos bloques
-// inline que reemplaza: después de gastos.js/spotify.js (los overrides de
-// addGastoVar/addGastoFijo necesitan esos globales ya definidos).
--->
-<script src="js/core/navegacion.js" defer></script>
-<script src="js/core/modulos-activos.js" defer></script>
-<script src="js/core/eventos-base.js" defer></script>
-<!-- Módulo Préstamos — js/modules/prestado.js (lazy, grupo 'prestamos'; sin <script> propio).
-     Depende de personas.js y navegacion.js, ambos de entrada, así que ya están cargados cuando
-     el usuario entra a Préstamos. #screen-prestamos y #nav-prestamos son HTML estático. -->
 <!-- prestado.js: ver js/core/lazy-loader.js (Loader.GROUPS.prestamos) -->
-<!--
-// js/core/lazy-loader.js — motor de carga bajo demanda (docs/auditoria-
-// tecnica.md #4, fase 1 de la modularización). Se carga acá, justo después
-// de navegacion.js, porque showScreen() lo referencia (con guard typeof,
-// así que el orden exacto entre estos dos no es estrictamente obligatorio,
-// pero mantenerlos juntos documenta la relación). Ver CHANGELOG.md#modularización-por-pantalla.
--->
-<script src="js/core/lazy-loader.js" defer></script>
-<script src="js/core/money-input.js" defer></script>
-<!--
-// Módulo Encargos — migrado a js/modules/encargos.js (ver docs/encargos.md).
-// Carga LAZY desde esta sesión (docs/auditoria-tecnica.md #4, noveno
-// grupo): auditado línea por línea, sin dependencia real de orden de
-// carga (monkey-patchea refresh() —núcleo, siempre eager— y sus propias
-// funciones, nada de otros dominios). Limpieza de paso: un listener vacío
-// en DOMContentLoaded que no hacía nada se sacó del archivo. #screen-
-// encargos y su entrada en "Más" ya eran HTML estático. Se saca el
-// <script> de acá; ahora lo descarga js/core/lazy-loader.js
-// (Loader.ensure('encargos')) la primera vez que alguien entra.
--->
 <!-- encargos.js: ver js/core/lazy-loader.js (Loader.GROUPS.encargos) -->
-<!--
-
-// Módulo Tarjetas de Crédito migrado a js/modules/tarjetas-credito.js —
-// ver docs/tarjetas-credito.md. Cuando se migró (antes de que
-// abrirDetalleMov()/eliminarMovimiento() se extrajeran a
-// js/core/movimientos.js el 2026-07-26) no tenía dependencia real de
-// orden de carga. ESO YA NO ES CIERTO: tarjetas-credito.js referencia
-// abrirDetalleMov directo en su Events.registerAll('tarjetas', {...}),
-// y ya no importa que cargue antes o después de js/core/movimientos.js
-// (línea de abajo) — el wrapper agregado el 2026-08-03 en
-// tarjetas-credito.js resuelve el nombre recién al hacer click, no al
-// cargar (mismo tipo de wrapper que tuvo leerArchivoImport en
-// configuracion.js hasta 2026-08-30, cuando se sacó al fusionar
-// import-validado.js — ver CHANGELOG.md#configuración; ya no sirve como
-// ejemplo vigente de ese patrón, solo como precedente histórico).
-
-// (2026-08-02, ronda de resolver de raíz el acoplamiento spotify↔
-// tarjetas-credito) Sexto grupo lazy: ver js/core/lazy-loader.js
-// (Loader.GROUPS.tarjetas). #screen-tarjetas y #mas-tarjetas ya eran
-// HTML estático, así que no hubo que copiar/inyectar nada. spotify.js
-// (_spEnsureTC) y js/core/movimientos.js ya esperan Loader.ensure(
-// 'tarjetas') antes de usar getTCById/tcCupoDisponible/tcRecalcular/
-// tcEliminarCompraInterna/tcEliminarPagoInterna — ver auditoria-
-// tecnica.md. El <script> de acá abajo se saca; ahora lo descarga
-// js/core/lazy-loader.js la primera vez que alguien entra a Tarjetas
-// de Crédito.
--->
 <!-- tarjetas-credito.js: ver js/core/lazy-loader.js (Loader.GROUPS.tarjetas) -->
-<script src="js/core/movimientos.js" defer></script>
-<!--
-// abrirDetalleMov()/eliminarMovimiento() y su registro Events.on('core:...')
-// se extrajeron a js/core/movimientos.js — ver cabecera de ese archivo para
-// el porqué de vivir en js/core/ y no en js/modules/.
-
-// Módulo Cuentas — js/modules/cuentas.js, ver docs/cuentas.md.
-//
-// LAZY (2026-08-13, segundo intento — reactivado): el primer intento
-// (docs/auditoria-tecnica.md #4) se revirtió por 3 ReferenceError
-// encadenados en el arranque — el núcleo/firebase-sync.js llamaban al
-// subsistema de Nu (nuTotal/getNuTasaGlobal,
-// definidas acá) sin guard. Se auditaron y corrigieron los 5 archivos
-// núcleo involucrados (el núcleo, firebase-sync.js, pin-bio.js,
-// gastos-fijos-progress.js, mejoras.js — este último fusionado con
-// saldos-ocultos/arranque-ui/formularios-ui) — todo guardado con `typeof`
-// ahora, confirmado contra el código real. #screen-cuentas y #nav-cuentas
-// ya eran HTML estático.
--->
 <!-- cuentas.js: ver js/core/lazy-loader.js (Loader.GROUPS.cuentas) -->
-<script src="js/core/bootstrap.js" defer></script>
 
     <!-- ===== MEJORAS UX MÓVIL JS ===== -->
-<script src="js/core/mas-menu.js" defer></script>
-<!--
-// sheet-swipe.js + sheet-viewport.js fusionados en sheet-behavior.js
-// (2026-09-08): eran mitades de la misma lista numerada de comentarios
-// original, no una separación real de responsabilidad. Ver el comentario
-// de encabezado de js/core/sheet-behavior.js para el detalle completo.
--->
-<script src="js/core/sheet-behavior.js" defer></script>
-<script src="js/core/gastos-fijos-progress.js" defer></script>
 
     <!-- PRESUPUESTOS SHEET -->
     <div class="overlay" id="sheet-presupuestos" data-sheet-id="presupuestos">
@@ -4920,25 +4838,11 @@
           data-close-sheet="presupuestos">Cerrar</button>
       </div>
     </div>
-    <!-- `async` (docs/auditoria-tecnica.md #4, paso 2, mismo criterio que
-         firebase-init.js): deja correr _fbLoadData/onSnapshot en paralelo
-         con el JS clásico en vez de esperar a que termine de parsear todo
-         el documento. El wiring de nivel superior que tocaba el DOM sin
-         guard (overlay de eliminar cuenta, registro de Events('authgate'))
-         ya se blindó — ver CHANGELOG.md#arranque. -->
+    <script type="module" src="js/main.js"></script>
     <script type="module" src="js/core/firebase-sync.js" async></script>
     <!-- Retoques de la interfaz (antes un solo archivo «mejoras-adicionales.js»): ocultar saldos, render tras refresh + fade-in + aria,
          validación de montos + foco automático de las hojas. -->
-    <script src="js/core/saldos-ocultos.js" defer></script>
-    <script src="js/core/arranque-ui.js" defer></script>
-    <script src="js/core/formularios-ui.js" defer></script>
-    <script src="js/core/busqueda-global.js" defer></script>
 
-    <!-- `async` (docs/auditoria-tecnica.md #4, paso 2, mismo criterio que
-         firebase-init.js/firebase-sync.js): el chequeo de
-         window._pendingPinGate y el registro de Events('pin') ya se
-         blindaron con guard de readyState y reintento — ver
-         CHANGELOG.md#arranque. -->
     <script type="module" src="js/core/pin-bio.js" async></script>
     <!-- NUEVA TARJETA DE CRÉDITO -->
     <div class="overlay" id="sheet-nueva-tc" data-sheet-id="nueva-tc">
@@ -5025,6 +4929,7 @@
     <div class="overlay" id="sheet-compra-tc" data-sheet-id="compra-tc">
       <div class="sheet">
         <div class="sheet-handle"></div>
+        <button type="button" class="sheet-x" data-close-sheet="compra-tc" aria-label="Cerrar"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg></button>
         <div class="sheet-title">Registrar compra en TC</div>
         <div class="ix-div-358">
           <div class="ix-div-359">Deuda
@@ -5037,22 +4942,26 @@
         <div class="ig"><label class="il"
             for="tcc_desc">Descripción</label><input type="text" id="tcc_desc" maxlength="80"
             placeholder="Ej: Mercado, Ropa, Amazon..."></div>
+        <div class="sheet-par">
         <div class="ig"><label class="il" for="tcc_monto">Monto</label><input
             type="text" inputmode="decimal" id="tcc_monto" placeholder="0,00"
             class="money-input"></div>
+        <div class="ig"><label class="il" for="tcc_fecha">Fecha</label><input
+            type="date" id="tcc_fecha"></div>
+        </div>
         <div class="ig"><label class="il" for="tcc_cat">Categoría</label>
           <div class="select-wrap"><select id="tcc_cat"></select></div>
         </div>
-        <div class="ig"><label class="il" for="tcc_fecha">Fecha</label><input
-            type="date" id="tcc_fecha"></div>
         <div class="ig"><label class="il" for="tcc_nota">Nota
             (opcional)</label><input type="text" id="tcc_nota" maxlength="60"
             placeholder="Detalle adicional"></div>
-        <button type="button" class="btn btn-red"
-          id="btn-confirmar-compra-tc-tarjetas">Registrar
-          compra</button>
-        <button type="button" class="btn btn-ghost"
-          data-close-sheet="compra-tc">Cancelar</button>
+        <div class="sheet-acciones">
+          <button type="button" class="btn btn-primary"
+            id="btn-confirmar-compra-tc-tarjetas">Registrar
+            compra</button>
+          <button type="button" class="btn btn-ghost"
+            data-close-sheet="compra-tc">Cancelar</button>
+        </div>
       </div>
     </div>
 
@@ -5060,6 +4969,7 @@
     <div class="overlay" id="sheet-pagar-tc" data-sheet-id="pagar-tc">
       <div class="sheet">
         <div class="sheet-handle"></div>
+        <button type="button" class="sheet-x" data-close-sheet="pagar-tc" aria-label="Cerrar"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg></button>
         <div class="sheet-title" id="pagar-tc-title">Pagar tarjeta</div>
 
         <div class="ix-div-362">
@@ -5091,10 +5001,12 @@
             (opcional)</label><input type="text" id="ptc_nota" maxlength="60"
             placeholder="Ej: pago total, abono..."></div>
         <div class="ix-ptc-preview" id="ptc-preview"></div>
-        <button type="button" class="btn btn-primary"
-          id="btn-confirmar-pagar-tc">Confirmar pago</button>
-        <button type="button" class="btn btn-ghost"
-          data-close-sheet="pagar-tc">Cancelar</button>
+        <div class="sheet-acciones">
+          <button type="button" class="btn btn-primary"
+            id="btn-confirmar-pagar-tc">Confirmar pago</button>
+          <button type="button" class="btn btn-ghost"
+            data-close-sheet="pagar-tc">Cancelar</button>
+        </div>
       </div>
     </div>
 
@@ -5142,152 +5054,20 @@
       </div>
     </div>
 
-    <!-- DETALLE TC (historial: saldo inicial + compras + pagos) -->
-    <div class="overlay" id="sheet-detalle-tc" data-sheet-id="detalle-tc">
-      <div class="sheet">
-        <div class="sheet-handle"></div>
-        <div class="sheet-title" id="detalle-tc-title">Detalle de tarjeta</div>
-        <div id="detalle-tc-content"></div>
-        <button type="button" class="btn btn-ghost"
-          data-close-sheet="detalle-tc">Cerrar</button>
-      </div>
-    </div>
-
-<!-- js/core/nav.js retirado (2026-09-10): su única función, navTo(),
-     tenía un solo caller real (tarjetas-credito.js, botón "Ver todo"),
-     que además duplicaba a mano parte de la lógica de showScreen()
-     (navegacion.js) sin la integración con lazy-loader.js/préstamos que
-     showScreen() sí tiene. Se cambió ese caller a
-     `closeMas(); showScreen('tarjetas');` — mismo patrón que ya usa
-     mas-menu.js — y con eso navTo()/nav.js quedaron sin ningún caller
-     conocido. Ver CHANGELOG.md#infraestructura--seguridad. -->
-<!-- ===== FEED "ACTIVIDAD RECIENTE" =====
-     Migrado a js/modules/actividad-reciente.js. Único acceso: el botón
-     dentro de Configuración (#cfg-historial-row) — no hay entrada en el
-     menú "Más" ni en el nav inferior.
-
-     CARGA BAJO DEMANDA (sesión posterior, auditoria-tecnica.md #4):
-     cuarto grupo lazy. #screen-historial y el botón que dispara la
-     carga ya eran HTML estático — no hubo que copiar nada. Requirió
-     un cambio real dentro del propio archivo (no solo sacar el
-     <script>): sus 3 triggers de auto-render (DOMContentLoaded,
-     appDataLoaded, clic en #cfg-historial-row) ya pasaron para cuando
-     este archivo llega a cargar tarde — se agregó un cuarto trigger
-     sin condición de evento al final del archivo. Ver
-     CHANGELOG.md#arranque. ===== -->
 <!-- actividad-reciente.js: ver js/core/lazy-loader.js (Loader.GROUPS.historial) -->
 
-    <!-- ══════════════════════════════════════════════════════════════════
-     MÓDULO: PLATA COMPROMETIDA — migrado a js/modules/plata-comprometida.js
-     (ver docs/plata-comprometida.md). Un solo archivo alcanzó: no depende
-     de nada definido más abajo en este documento (usa S.deudores directo
-     para "Me devuelven", no funciones de Personas) — mismo caso que
-     Tarjetas de Crédito.
-
-     Carga LAZY desde esta sesión (docs/auditoria-tecnica.md #4): no se
-     confirmó ningún otro archivo que llame a sus funciones (nadie
-     depende de que esté cargado de entrada), y sus propias dependencias
-     (prestado.js, tarjetas-credito.js, cuentas.js, inicio.js) ya están
-     forzadas a cargar de entrada de todos modos por el dashboard de
-     Inicio — ver la nota grande al respecto en CHANGELOG.md#arranque.
-     Se saca de acá el <script>; ahora lo descarga js/core/lazy-loader.js
-     (Loader.ensure('comprometida')) la primera vez que alguien entra a
-     la pantalla, disparado por el ítem estático #mas-comprometida
-     (ver index.html, sección del menú "Más", y #screen-comprometida,
-     ambos copiados 1:1 del HTML que este archivo generaba en tiempo de
-     ejecución vía _injectScreen()/_injectMasItem() — esas dos funciones
-     siguen en el archivo, sin cambios, pero ahora son no-op gracias a
-     sus propios guards por id).
-══════════════════════════════════════════════════════════════════ -->
 <!-- plata-comprometida.js: ver js/core/lazy-loader.js (Loader.GROUPS.comprometida) -->
 
     <!-- SISTEMA DE PERSONAS — libreta central vinculada: Encargos, Préstamos y Spotify comparten la
      misma identidad (js/modules/personas.js; su integración vive dentro de cada módulo). -->
-<script src="js/core/personas-init.js" defer></script>
 
-    <!-- Notificaciones push (FCM) — ver docs de la sesión de septiembre 2026.
-         SDK "compat" cargado aparte de firebase-init.js/firebase-sync.js
-         (que usan el SDK modular) a propósito: notificaciones-push.js
-         inicializa una segunda instancia de la app bajo el nombre
-         'messaging' para no interferir con la instancia modular ya en uso.
-         defer + este orden garantiza que firebase-app-compat.js y
-         firebase-messaging-compat.js ya corrieron antes que
-         notificaciones-push.js (los defer se ejecutan en orden de
-         documento). Requiere que Events (js/core/events.js, ya cargado
-         más arriba) exista al momento de correr. -->
     <script src="https://www.gstatic.com/firebasejs/11.1.0/firebase-app-compat.js" defer></script>
     <script src="https://www.gstatic.com/firebasejs/11.1.0/firebase-messaging-compat.js" defer></script>
-    <script src="js/core/notificaciones-push.js" defer></script>
 
-    <!-- ===== MÓDULO ALCANCÍA OCULTA =====
-         Migrado a js/modules/alcancia.js — ver auditoria-tecnica.md,
-         punto 3 (arquitectura monolítica) y punto 1 (migración de
-         onclick inline a Events/data-action).
 
-         PILOTO DE CARGA BAJO DEMANDA (sesión posterior, auditoria-tecnica.md
-         #4, fase 1 de la modularización): este <script> se sacó de la carga
-         de entrada. Ahora lo descarga js/core/lazy-loader.js (Loader.ensure)
-         la primera vez que el usuario entra a la pantalla Alcancía, en vez
-         de siempre, para todos, al arrancar la app. Elegido como piloto por
-         ser chico (~14 KiB) y ya estar completamente migrado, sin enredo
-         con Personas. Ver CHANGELOG.md#modularización-por-pantalla para el
-         detalle completo, incluido por qué Alcancía necesitó un tratamiento
-         distinto al resto (se auto-registra parchando showScreen() en vez
-         de depender de una rama if(name===X) en navegacion.js). ===== -->
-
-    <!-- ===== MÓDULO CONFIGURACIÓN =====
-         Migrado a js/modules/configuracion.js — ver auditoria-tecnica.md,
-         punto 3 (arquitectura monolítica) y punto 1 (migración de onclick
-         inline a Events/data-action). No depende de nada definido más abajo
-         en el documento, pero sí de ids que ya existen en screen-config
-         (cats-var-list, btn-exportar-json, etc.) y de getCatsVar()/
-         getCatsFijo() (compartidas con Gastos), ya definidos más arriba.
-
-         CARGA BAJO DEMANDA (sesión posterior, auditoria-tecnica.md #4):
-         tercer grupo lazy después de Alcancía y Plata Comprometida — el
-         más simple de los tres, porque #screen-config y #mas-config ya
-         eran HTML estático desde antes (a diferencia de Plata
-         Comprometida, no hubo que copiar nada), y su único caller externo
-         (renderCatsConfig, desde navegacion.js) ya tenía guard `typeof`
-         desde el piloto de Alcancía.
-
-         2026-08-30: import-validado.js (validación de estructura del JSON,
-         "MEJORA 5") se fusionó dentro de configuracion.js — ya no es un
-         archivo aparte ni un segundo `<script>` en este grupo. Ver
-         CHANGELOG.md#configuración. ===== -->
 <!-- configuracion.js: ver js/core/lazy-loader.js (Loader.GROUPS.config) -->
 
 
-    <!-- ===== MÓDULO ANÁLISIS =====
-         Migrado a js/modules/analisis.js — pantalla que nunca apareció en
-         auditoria-tecnica.md, descubierta al revisar los onclick restantes
-         tras cerrar Configuración. calcPatrimonioTotal()/snapshotPatrimonio()
-         son núcleo (viven en el núcleo (js/core/persistencia.js), los llama save()), no
-         parte de este módulo.
-
-         Carga LAZY desde esta sesión (docs/auditoria-tecnica.md #4,
-         undécimo y último grupo de esta ronda): auditado línea por línea,
-         sin dependencia real de orden de carga (solo Events.registerAll y
-         wiring propio a nivel superior); sus llamadas a getMesadaData()/
-         _getCuotaAnio() (mesada.js) ya tenían guard typeof desde la ronda
-         del 2026-08-02. Su entrada en "Más" ya era HTML estático. ===== -->
 <!-- analisis.js: ver js/core/lazy-loader.js (Loader.GROUPS.analisis) -->
 
-    <!-- ===== MÓDULO INICIO (Dashboard) =====
-         Migrado a js/modules/inicio.js — ver auditoria-tecnica.md, punto 3
-         (arquitectura monolítica). Se carga al final, después de todos los
-         demás módulos, porque renderAttencion() usa funciones definidas en
-         mesada.js, spotify.js, prestado.js y tarjetas-credito.js
-         (getMesadaData, spNombreDe, spPersonaPagadaVigente, tcCupoUsadoPct).
-         No define ningún data-action nuevo: screen-inicio no tiene onclick
-         inline propios, solo elementos de solo lectura (ver nota en el
-         propio archivo).
-
-         Nota (2026-08-02): las 6 llamadas de arriba ahora tienen guard
-         typeof === 'function' dentro de inicio.js (ver cabecera de ese
-         archivo) — "se carga al final" documenta el orden actual, ya no es
-         un requisito estricto para que la app no reviente. mesada.js pasó
-         a lazy esta misma sesión (Loader.GROUPS.mesada) y este orden
-         siguió sin tocarse a propósito. ===== -->
-<script src="js/modules/inicio.js" defer></script>
   </body></html>

@@ -26,11 +26,11 @@
      sinDatos          true si no hay nada que evaluar todavía
    «Base» (tieneBase): hay con qué evaluar ahorro, flujo y tendencia. Sin base (usuario nuevo) se evalúa solo lo que no necesita historial
    —deudas, liquidez negativa, patrimonio negativo— y lo demás se dice «sin evaluar»: la falta de registros no es una situación negativa.
-   Los límites salen de UMBRALES (js/core/umbrales.js): se pasan como segundo argumento o se leen del global/CommonJS.
+   Los límites salen de UMBRALES (js/core/umbrales.js): se pasan como segundo argumento o se toman de UMBRALES por defecto.
    ================================================================ */
-const Salud = (() => {
-  const _R = () => (typeof Reglas !== 'undefined' ? Reglas : require('./reglas.js'));
-  const _U = () => (typeof UMBRALES !== 'undefined' ? UMBRALES : (typeof require === 'function' ? require('./umbrales.js') : null));
+import { UMBRALES } from './umbrales.js';
+import { Reglas } from './reglas.js';
+export const Salud = (() => {
   const NIVELES = ['verde', 'ambar', 'rojo']; // de menos a más grave: 'sin' (sin datos) queda fuera del orden
   const peor = (a, b) => NIVELES.indexOf(a) >= NIVELES.indexOf(b) ? a : b;
 
@@ -39,7 +39,7 @@ const Salud = (() => {
   // usar la app el 29) NO alcanza: su gasto típico sería ruido. Sin `mesesReferencia` (las pruebas y quien arma `m` a mano) se infiere de
   // si hay gasto típico o balances. `diasDeUso` null = no se sabe: no bloquea.
   function tieneBase(m, umbrales) {
-    const H = ((umbrales || _U()).salud || {}).historial || { mesesCompletos: 2, minDias: 30 };
+    const H = ((umbrales || UMBRALES).salud || {}).historial || { mesesCompletos: 2, minDias: 30 };
     if (m.tendencia) return true;
     const meses = typeof m.mesesReferencia === 'number' ? m.mesesReferencia : ((m.gastoTipico > 0 || (m.balances || []).length) ? 1 : 0);
     if (meses >= H.mesesCompletos) return true;
@@ -53,7 +53,7 @@ const Salud = (() => {
   // Variación del patrimonio visible en los últimos `dias` días del historial. `historial`: [{ fecha, valorVisible|valor, montoBase }].
   // → { dias, delta, pct (null si la base no es positiva), inicio, fin } o null si no hay al menos `minDias` de historial.
   function tendenciaPatrimonio(historial, hoy, opts) {
-    const U = ((opts && opts.umbrales) || _U()).salud.pilares.tendencia;
+    const U = ((opts && opts.umbrales) || UMBRALES).salud.pilares.tendencia;
     const dias = (opts && opts.dias) || U.dias;
     const val = p => (typeof p.valorVisible === 'number' ? p.valorVisible : (p.valor || 0));
     const h = (historial || []).filter(p => p && p.fecha).slice().sort((a, b) => _d(a.fecha) - _d(b.fecha)); // por fecha real, no por texto: '2026-8-10' > '2026-11-05' como string
@@ -76,7 +76,7 @@ const Salud = (() => {
   // (`ruidoGastoPct` % del gasto típico) no cuenta y corta la racha, igual que un mes sin cierre anterior para comparar.
   // → { n, total (suma de las variaciones, negativa), desde ('AAAA-MM' del primer mes de la racha) } con n = 0 si no hay racha.
   function mesesCayendo(cierres, mesActual, opts) {
-    const U = ((opts && opts.umbrales) || _U()).salud.patrimonioCayendo;
+    const U = ((opts && opts.umbrales) || UMBRALES).salud.patrimonioCayendo;
     const c = cierres || {};
     const val = x => (typeof x.valorVisible === 'number' ? x.valorVisible : (x.valor || 0));
     const ruido = Math.max(1, ((opts && opts.gastoTipico) || 0) * U.ruidoGastoPct / 100);
@@ -100,7 +100,7 @@ const Salud = (() => {
   }
 
   function pilares(m, umbrales) {
-    const U = umbrales || _U(), P = U.salud.pilares;
+    const U = umbrales || UMBRALES, P = U.salud.pilares;
     const sb = !tieneBase(m, U);
     const out = [];
 
@@ -114,7 +114,7 @@ const Salud = (() => {
       } else if (m.mesesCubiertos != null) {
         valor = m.mesesCubiertos;
         nivel = m.mesesCubiertos < U.runway.critico ? 'rojo' : m.mesesCubiertos < U.runway.atencion ? 'ambar' : 'verde';
-        texto = 'Cubres ' + _R().fmtMeses(m.mesesCubiertos) + ' de gastos';
+        texto = 'Cubres ' + Reglas.fmtMeses(m.mesesCubiertos) + ' de gastos';
       }
       out.push({ id: 'liquidez', titulo: 'Liquidez', nivel, valor, texto, ir: 'cuentas' });
     }
@@ -124,15 +124,15 @@ const Salud = (() => {
       let nivel, texto, valor = null;
       if (!(m.deudaPropia > 0)) { nivel = 'verde'; texto = 'Sin deudas propias'; }
       else {
-        const xIng = m.ingresoTipico > 0 ? m.deudaPropia / m.ingresoTipico : null;
+        const xIngreso = m.ingresoTipico > 0 ? m.deudaPropia / m.ingresoTipico : null;
         const xAct = m.activosLiquidos > 0 ? m.deudaPropia / m.activosLiquidos : Infinity;
-        const nIng = xIng == null ? null : xIng > P.deuda.ingresoRojo ? 'rojo' : xIng > P.deuda.ingresoAmbar ? 'ambar' : 'verde';
+        const nIngreso = xIngreso == null ? null : xIngreso > P.deuda.ingresoRojo ? 'rojo' : xIngreso > P.deuda.ingresoAmbar ? 'ambar' : 'verde';
         const nAct = xAct > P.deuda.activosRojo ? 'rojo' : xAct > P.deuda.activosAmbar ? 'ambar' : 'verde';
-        nivel = nIng == null ? nAct : peor(nIng, nAct);
-        valor = xIng;
-        texto = xIng == null
+        nivel = nIngreso == null ? nAct : peor(nIngreso, nAct);
+        valor = xIngreso;
+        texto = xIngreso == null
           ? 'Debes ' + _pct(xAct) + ' de tus activos líquidos'
-          : 'Debes ' + _x(xIng) + ' tu ingreso mensual' + (xAct !== Infinity ? ' y ' + _pct(xAct) + ' de tus activos líquidos' : ' y no tienes activos líquidos');
+          : 'Debes ' + _x(xIngreso) + ' tu ingreso mensual' + (xAct !== Infinity ? ' y ' + _pct(xAct) + ' de tus activos líquidos' : ' y no tienes activos líquidos');
       }
       out.push({ id: 'deuda', titulo: 'Deuda', nivel, valor, texto, ir: m.deudaPropia > 0 ? 'prestamos' : '' });
     }
@@ -172,7 +172,7 @@ const Salud = (() => {
   //   creciendo patrimonio subiendo y balance ≥ 0 en 2 de los últimos 3 meses
   //   estable   patrimonio plano (±3 %) y reservas ≥ 3 meses; lo demás con datos, también
   function estado(m, umbrales) {
-    const U = umbrales || _U();
+    const U = umbrales || UMBRALES;
     if (m.sinDatos) return null;
     const dir = _direccion(m.tendencia, m, U.salud.pilares.tendencia);
     const sb = !tieneBase(m, U);
@@ -269,9 +269,9 @@ const Salud = (() => {
 
   // Puntaje 0–100 y consejos tipados. `e`: métricas ya calculadas por inicio.js (calcHealthScore), ver el cuerpo para los campos.
   function puntaje(e){
-  const R = _R(), U0 = _U();
+  const R = Reglas, U0 = UMBRALES;
   const fmt = e.fmt || (n => String(n));
-  const { patrimonio, gastosMes, deudaTC, ingresoRef, liq } = e;
+  const { patrimonio, gastosMes, deudaTC, ingresoRef, liquidez } = e;
   // Sin base (usuario nuevo, ver tieneBase) no se concluye nada de ahorro, flujo ni tendencia: el «gasto típico» sería de tres días de uso y
   // el «déficit» solo la falta de ingresos anotados. Esas medidas se anulan; lo que no necesita historial (deudas, liquidez negativa,
   // lo prestado) se evalúa igual.
@@ -313,19 +313,19 @@ const Salud = (() => {
   // propia, lo que debes a personas (aunque no haya fecha de pago: entre amigos casi nunca la hay, y es plata que te pueden
   // pedir en cualquier momento) y la plata ajena que guardas. NO suma los CDTs (bloqueados) ni lo que te deben (sin fecha
   // cierta no es plata disponible). Ver el bloque «PATRIMONIO Y LIQUIDEZ» del núcleo.
-  const liquidoReal = liq.neta;
-  const cdtVal = liq.cdts;
+  const liquidoReal = liquidez.neta;
+  const cdtVal = liquidez.cdts;
   // patrimonio total sí incluye CDTs para otros cálculos
-  const liquidoConCDTs = liq.conCDTs;
+  const liquidoConCDTs = liquidez.conCDTs;
 
   // ── Plata prestada a otros ────────────────────────────────────────────
-  const prest = liq.meDeben;
+  const prest = liquidez.meDeben;
 
   // ── Hay datos suficientes para evaluar? ───────────────────────────────
   // Cualquier activo o deuda cuenta como dato, también las deudas con personas y la plata ajena: antes solo contaban un patrimonio
   // positivo, lo prestado, la tarjeta o los gastos del mes, y quien solo debía («Yo debo») veía «Registra más datos» justo cuando su
   // situación era más delicada.
-  const tieneAlgo = patrimonio !== 0 || prest > 0 || deudaTC > 0 || liq.yoDebo > 0 || liq.ajeno > 0 || liq.libre !== 0 || liq.cdts > 0 || gastosMes > 0;
+  const tieneAlgo = patrimonio !== 0 || prest > 0 || deudaTC > 0 || liquidez.yoDebo > 0 || liquidez.ajeno > 0 || liquidez.libre !== 0 || liquidez.cdts > 0 || gastosMes > 0;
   const U = U0.salud;
 
   // a) Fondo de emergencia: liquidez real vs gasto mensual TÍPICO
@@ -344,12 +344,12 @@ const Salud = (() => {
   } else if(liquidoReal < 0){
     // Debes más de lo que tienes disponible. Se nombra QUÉ deuda es. Si lo cubren CDTs sin vencer es menos grave (la plata existe, solo está
     // bloqueada). Antes un CDT mandaba este caso a «tus ahorros están en CDTs» y el consejo no decía que la liquidez era negativa.
-    const quien = (liq.yoDebo <= 0 && liq.ajeno <= 0) ? 'Tu deuda en tarjetas supera'
-      : (liq.tcPropia <= 0 && liq.ajeno <= 0) ? 'Lo que debes a personas supera'
+    const quien = (liquidez.yoDebo <= 0 && liquidez.ajeno <= 0) ? 'Tu deuda en tarjetas supera'
+      : (liquidez.tcPropia <= 0 && liquidez.ajeno <= 0) ? 'Lo que debes a personas supera'
       : 'Tus deudas y la plata ajena que guardas superan';
-    avisoDeudaTC = liq.tcPropia > 0;
+    avisoDeudaTC = liquidez.tcPropia > 0;
     // El botón lleva a donde se paga esa deuda: la tarjeta, la pestaña «Yo debo» o (si es mezcla) Préstamos.
-    const irDeuda = (liq.yoDebo <= 0 && liq.ajeno <= 0) ? 'tarjetas' : (liq.tcPropia <= 0 && liq.ajeno <= 0) ? 'prestamos/yo-debo' : 'prestamos';
+    const irDeuda = (liquidez.yoDebo <= 0 && liquidez.ajeno <= 0) ? 'tarjetas' : (liquidez.tcPropia <= 0 && liquidez.ajeno <= 0) ? 'prestamos/yo-debo' : 'prestamos';
     if(liquidoConCDTs >= 0){ score -= 8; add(`${quien} la plata que tienes disponible; lo que cubre la diferencia está en tus CDTs.`,'aviso',irDeuda); }
     else { score -= 15; add(`${quien} la plata que tienes disponible.`,'alerta',irDeuda); }
   } else if((gastosMes > 0 || gastoRef > 0) && liquidoConCDTs > 0){
@@ -374,7 +374,7 @@ const Salud = (() => {
     }
   }
   // Sin deudas propias y con plata disponible: lo único que se premia en endeudamiento.
-  if(deudaTC <= 0 && liq.yoDebo <= 0 && liq.ajeno <= 0 && liquidoReal > 0) score += 5;
+  if(deudaTC <= 0 && liquidez.yoDebo <= 0 && liquidez.ajeno <= 0 && liquidoReal > 0) score += 5;
 
   // c) Plata prestada a otros (riesgo de incobrabilidad / inmovilización)
   // Penalización escalonada por ratio — independiente del bonus de CDTs
@@ -430,7 +430,7 @@ const Salud = (() => {
     const cdtBonusMax = (ratioPrest > U.prestadoSobreLiquidez.comprometido || liquidoReal < 0) ? 3 : 10;
     const pesoCDT = liquidoConCDTs > 0 ? cdtVal / liquidoConCDTs : 0;
     score += Math.round(cdtBonusMax * Math.min(1, pesoCDT / U.cdtPesoCompleto));
-  } else if(tieneAlgo && gastoRef > 0 && deudaTC <= 0 && liq.yoDebo <= 0 && ratioPrest <= U.prestadoSobreLiquidez.comprometido){
+  } else if(tieneAlgo && gastoRef > 0 && deudaTC <= 0 && liquidez.yoDebo <= 0 && ratioPrest <= U.prestadoSobreLiquidez.comprometido){
     // Un CDT bloquea la plata (no cuenta como liquidez), así que solo se sugiere lo que SOBRA por encima del fondo mínimo: sin deudas (ni de
     // tarjeta ni con personas: pagarlas rinde más que cualquier CDT), sin tener prestado más de lo que tienes disponible, y con gasto típico
     // medido (sin él no se sabe cuánto es «de sobra»). Antes se sugería también sin gasto típico, y poner en CDT parte de la reserva la dejaba
@@ -479,5 +479,3 @@ const Salud = (() => {
 
   return { puntaje, simular, fraseTendencia, pilares, estado, tieneBase, tendenciaPatrimonio, mesesCayendo, fechaAgotamiento, accionesUrgentes, ESTADOS };
 })();
-if (typeof window !== 'undefined') window.Salud = Salud;
-if (typeof module !== 'undefined' && module.exports) module.exports = Salud;

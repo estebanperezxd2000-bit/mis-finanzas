@@ -1,14 +1,22 @@
 'use strict';
+const { htmlClasico } = require('./support/html-clasico');
 // M8 — Service Worker: precaché atómico por versión, base derivada del scope, un solo aviso, notificationclick enfoca.
 const { describe, test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const os = require('node:os');
+const { spawnSync } = require('node:child_process');
 const { listaPrecache } = require('../scripts/sellar-sw.js');
 
 const raiz = path.join(__dirname, '..');
-const swSrc = fs.readFileSync(path.join(raiz, 'sw.js'), 'utf8');
+// El sw.js del repo va sin sellar (BUILD 'dev', PRECACHE vacío): lo que se publica es el de dist/. Se prueba ESE: se arma el despliegue
+// en una carpeta temporal con el mismo script que usa el job «deploy» y se lee su sw.js.
+const dist = fs.mkdtempSync(path.join(os.tmpdir(), 'dist-sw-'));
+const armado = spawnSync(process.execPath, [path.join(raiz, 'scripts', 'preparar-despliegue.js'), dist], { encoding: 'utf8' });
+assert.equal(armado.status, 0, 'preparar-despliegue falló: ' + armado.stdout + armado.stderr);
+const swSrc = fs.readFileSync(path.join(dist, 'sw.js'), 'utf8');
 
 // Mini-entorno de Service Worker: caches, clients, registration y un registro de eventos.
 function crearSW({ scope = 'https://x.github.io/mis-finanzas/', red = {} } = {}) {
@@ -35,8 +43,6 @@ function crearSW({ scope = 'https://x.github.io/mis-finanzas/', red = {} } = {})
   const ctx = {
     console, URL, Request: class { constructor(u, o) { this.url = new URL(u, scope).href; this.mode = (o && o.mode) || 'cors'; this.method = 'GET'; this.cache = o && o.cache; } },
     Response: class { constructor(b, o) { this.cuerpo = b; this.status = (o && o.status) || 200; } },
-    importScripts() {},
-    firebase: { initializeApp() {}, messaging: () => ({ onBackgroundMessage(fn) { ctx._bg = fn; } }) },
     fetch: async req => { const u = typeof req === 'string' ? req : req.url; if (red[u] === 'falla') throw new Error('sin red'); return { ok: true, url: u, cuerpo: 'red' }; },
     caches: {
       open: async n => abrir(n),
@@ -60,16 +66,16 @@ function crearSW({ scope = 'https://x.github.io/mis-finanzas/', red = {} } = {})
 }
 
 describe('PRECACHE', () => {
-  test('lo sellado coincide con lo desplegable y cubre index, css, js e iconos', () => {
+  test('lo sellado en dist/ coincide con lo desplegable y cubre index, css, js e iconos', () => {
     const m = /\/\/ <PRECACHE>[\s\S]*?const PRECACHE = (\[[\s\S]*?\]);\n\/\/ <\/PRECACHE>/.exec(swSrc);
     assert.ok(m, 'sw.js debe tener el bloque PRECACHE');
     const enSw = JSON.parse(m[1]);
-    assert.deepEqual(enSw, listaPrecache(raiz), 'PRECACHE desactualizado: corre node scripts/sellar-sw.js');
+    assert.deepEqual(enSw, listaPrecache(raiz), 'el PRECACHE de dist/sw.js no coincide con lo desplegable');
     for (const f of ['./', 'index.html', 'css/styles.css', 'js/core/estado.js', 'js/core/sw-registro.js', 'js/modules/spotify.js', 'manifest.webmanifest']) assert.ok(enSw.includes(f), f);
     assert.ok(!enSw.includes('sw.js'));
   });
   test('todo <script src> de index.html está en el precaché (offline completo)', () => {
-    const html = fs.readFileSync(path.join(raiz, 'index.html'), 'utf8');
+    const html = htmlClasico(fs.readFileSync(path.join(raiz, 'index.html'), 'utf8'));
     const lista = new Set(listaPrecache(raiz));
     const faltan = [...html.matchAll(/<script[^>]+src="(js\/[^"]+)"/g)].map(m => m[1]).filter(f => !lista.has(f));
     assert.deepEqual(faltan, []);
@@ -135,13 +141,41 @@ describe('fetch', () => {
 });
 
 describe('notificaciones', () => {
-  test('el handler muestra UN aviso desde un mensaje solo-datos, con base derivada del scope', async () => {
+  const push = (cuerpo) => ({ data: { json: () => (typeof cuerpo === 'string' ? JSON.parse(cuerpo) : cuerpo), text: () => String(cuerpo) } });
+  test('el evento push muestra UN aviso desde un mensaje solo-datos, con base derivada del scope', async () => {
     const s = crearSW({ scope: 'https://otro.dominio/app/' });
-    await s.ctx._bg({ data: { title: 'T', body: 'B' } });
+    await s.esperar(f => s.eventos.push({ ...push({ data: { title: 'T', body: 'B' }, from: '1', fcmMessageId: 'x' }), waitUntil: f.waitUntil }));
     assert.equal(s.ctx._mostradas.length, 1);
     assert.equal(s.ctx._mostradas[0].t, 'T');
+    assert.equal(s.ctx._mostradas[0].o.body, 'B');
     assert.equal(s.ctx._mostradas[0].o.icon, '/app/icons/icon-192.png');
     assert.equal(s.ctx._mostradas[0].o.data.url, '/app/');
+  });
+  test('push: usa link e icon del mensaje y acepta el campo notification', async () => {
+    const s = crearSW();
+    await s.esperar(f => s.eventos.push({ ...push({ data: { title: 'A', link: '/mis-finanzas/#cuentas', icon: '/i.png' } }), waitUntil: f.waitUntil }));
+    await s.esperar(f => s.eventos.push({ ...push({ notification: { title: 'N', body: 'cuerpo' } }), waitUntil: f.waitUntil }));
+    assert.equal(s.ctx._mostradas[0].o.data.url, '/mis-finanzas/#cuentas');
+    assert.equal(s.ctx._mostradas[0].o.icon, '/i.png');
+    assert.equal(s.ctx._mostradas[1].t, 'N');
+    assert.equal(s.ctx._mostradas[1].o.body, 'cuerpo');
+  });
+  test('push: sin datos o con texto plano igual muestra un aviso (el navegador exige mostrar uno)', async () => {
+    const s = crearSW();
+    await s.esperar(f => s.eventos.push({ data: null, waitUntil: f.waitUntil }));
+    await s.esperar(f => s.eventos.push({ data: { json() { throw new Error('no es JSON'); }, text: () => 'hola' }, waitUntil: f.waitUntil }));
+    assert.equal(s.ctx._mostradas.length, 2);
+    assert.equal(s.ctx._mostradas[0].t, 'Mis Finanzas');
+    assert.equal(s.ctx._mostradas[1].o.body, 'hola');
+  });
+  test('push: con la app abierta y visible no se muestra nada', async () => {
+    const s = crearSW();
+    s.ventanas.push({ url: 'https://x.github.io/mis-finanzas/', visibilityState: 'visible' });
+    await s.esperar(f => s.eventos.push({ ...push({ data: { title: 'T' } }), waitUntil: f.waitUntil }));
+    assert.equal(s.ctx._mostradas.length, 0);
+    s.ventanas[0].visibilityState = 'hidden';
+    await s.esperar(f => s.eventos.push({ ...push({ data: { title: 'T' } }), waitUntil: f.waitUntil }));
+    assert.equal(s.ctx._mostradas.length, 1);
   });
   test('notificationclick enfoca la ventana abierta en vez de abrir otra', async () => {
     const s = crearSW();

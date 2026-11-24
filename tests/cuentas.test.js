@@ -1,4 +1,5 @@
 'use strict';
+const { htmlClasico } = require('./support/html-clasico');
 const { leerEstado, REL: PARTES_ESTADO, esParte } = require('./support/nucleo-estado');
 
 // tests/cuentas.test.js — Cuentas y Nu: historial de cada cuenta, interés de cajitas y CDT, chequeo rápido, Restar dinero.
@@ -67,10 +68,10 @@ describe('historial-cuenta', () => {
       { id: 'm03', tipo: 'entrada', fuente: 'cuenta:efectivo', monto: 800, fecha: D(1) },
       { id: 'm04', tipo: 'salida_manual', fuente: 'cuenta:nequi', monto: 700, fecha: D(1) },
       { id: 'm05', tipo: 'apertura', fuente: 'cuenta:nequi', monto: 60000, fecha: '2026-09-01' },
-      { id: 'm06', tipo: 'transferencia', fuente: 'cuenta:nequi', monto: 30, fecha: D(2), _esIntercambioEncargo: true, _encMovId: 'em1', _intercambioSalida: true, _fuenteDestino: 'cuenta:efectivo' },
-      { id: 'm07', tipo: 'transferencia', fuente: 'cuenta:efectivo', monto: 30, fecha: D(2), _esIntercambioEncargo: true, _encMovId: 'em1', _intercambioEntrada: true, _fuenteDestino: 'cuenta:nequi' },
+      { id: 'm06', tipo: 'transferencia', fuente: 'cuenta:nequi', monto: 30, fecha: D(2), _esIntercambioEncargo: true, _encargoMovimientoId: 'em1', _intercambioSalida: true, _fuenteDestino: 'cuenta:efectivo' },
+      { id: 'm07', tipo: 'transferencia', fuente: 'cuenta:efectivo', monto: 30, fecha: D(2), _esIntercambioEncargo: true, _encargoMovimientoId: 'em1', _intercambioEntrada: true, _fuenteDestino: 'cuenta:nequi' },
       { id: 'm08', tipo: 'transferencia', fuente: 'cuenta:nequi', monto: 12, fecha: D(2), _fuenteDestino: 'cuenta:efectivo' },
-      { id: 'm09', tipo: 'entrada', fuente: 'cuenta:nequi', monto: 50, fecha: D(2), _esReposicionCP: true, desc: 'Reposición: algo' },
+      { id: 'm09', tipo: 'entrada', fuente: 'cuenta:nequi', monto: 50, fecha: D(2), _esReposicionPlataComprometida: true, desc: 'Reposición: algo' },
       { id: 'm10', tipo: 'entrada', fuente: 'cuenta:nequi', monto: 60, fecha: D(2), desc: 'Margen de encargo' },
       { id: 'm11', tipo: 'entrada', fuente: 'cuenta:nequi', monto: 8000, fecha: D(3), desc: 'Mesada papá', _secundario: true, _origenSeccion: 'Mesada' },
       { id: 'm12', tipo: 'entrada', fuente: 'cuenta:nequi', monto: 99, fecha: D(3), _esAlcanciaIngreso: true, desc: 'alc' },
@@ -78,8 +79,8 @@ describe('historial-cuenta', () => {
       { id: 'm14', tipo: 'salida_manual', fuente: 'cajita:k2', monto: 40, fecha: D(3) },
       { id: 'm15', tipo: 'entrada', fuente: 'cuenta:z', monto: 70, fecha: D(3), desc: 'Propina' },
       { id: 'm16', tipo: 'salida_manual', fuente: 'cuenta:z', monto: 80, fecha: D(3), desc: 'Retiro S' },
-      { id: 'm17', tipo: 'transferencia', fuente: 'cuenta:z', monto: 25, fecha: D(4), _esIntercambioEncargo: true, _encMovId: 'em2', _intercambioSalida: true, _fuenteDestino: 'cuenta:nequi' },
-      { id: 'm18', tipo: 'transferencia', fuente: 'cuenta:nequi', monto: 25, fecha: D(4), _esIntercambioEncargo: true, _encMovId: 'em2', _intercambioEntrada: true, _fuenteDestino: 'cuenta:z' },
+      { id: 'm17', tipo: 'transferencia', fuente: 'cuenta:z', monto: 25, fecha: D(4), _esIntercambioEncargo: true, _encargoMovimientoId: 'em2', _intercambioSalida: true, _fuenteDestino: 'cuenta:nequi' },
+      { id: 'm18', tipo: 'transferencia', fuente: 'cuenta:nequi', monto: 25, fecha: D(4), _esIntercambioEncargo: true, _encargoMovimientoId: 'em2', _intercambioEntrada: true, _fuenteDestino: 'cuenta:z' },
       { id: 'm19', tipo: 'entrada', fuente: 'cuenta:z', monto: 6000, fecha: D(4), desc: 'Mesada mamá', _secundario: true, _origenSeccion: 'Mesada' },
       { id: 'm20', tipo: 'entrada', fuente: 'cuenta:z', monto: 99, fecha: D(4), _esAlcanciaIngreso: true },
       { id: 'm21', tipo: 'entrada', fuente: 'cuenta:z', monto: 45, fecha: D(4), desc: 'Encargo X' },
@@ -147,8 +148,8 @@ describe('historial-cuenta', () => {
     return app;
   }
   const filas = (app, tipo) => plano(app.getMovimientosCuenta(tipo));
-  const ids = (app, tipo) => filas(app, tipo).map(m => m._movId || '?');
-  const fila = (app, tipo, id) => filas(app, tipo).find(m => m._movId === id);
+  const ids = (app, tipo) => filas(app, tipo).map(m => m._movimientoId || '?');
+  const fila = (app, tipo, id) => filas(app, tipo).find(m => m._movimientoId === id);
 
   describe('qué filas muestra cada cuenta, y en qué orden (fecha desc; misma fecha: id más reciente primero)', () => {
     const ESPERADO = {
@@ -206,13 +207,13 @@ describe('historial-cuenta', () => {
   describe('reglas que la función debe cumplir', () => {
     test('un ingreso de Alcancía sin cuenta de origen no aparece en el historial', () => {
       const app = cargar();
-      for (const tipo of ['cuenta:nequi', 'cuenta:z']) assert.ok(!filas(app, tipo).some(m => m._movId === 'm12' || m._movId === 'm20'), tipo);
+      for (const tipo of ['cuenta:nequi', 'cuenta:z']) assert.ok(!filas(app, tipo).some(m => m._movimientoId === 'm12' || m._movimientoId === 'm20'), tipo);
     });
     test('un depósito a la alcancía sale como fila "alcancia" con monto oculto, en cuenta estándar y personalizada', () => {
       const app = cargar();
       const e = fila(app, 'cuenta:nequi', 't04'), c = fila(app, 'cuenta:z', 't09');
-      assert.equal(e.tipo, 'alcancia'); assert.equal(e._alcOculto, true);
-      assert.equal(c.tipo, 'alcancia'); assert.equal(c._alcOculto, true);
+      assert.equal(e.tipo, 'alcancia'); assert.equal(e._alcanciaOculto, true);
+      assert.equal(c.tipo, 'alcancia'); assert.equal(c._alcanciaOculto, true);
     });
     test('el cobro de Spotify descuenta los abonos ya recibidos (no cuenta la plata dos veces)', () => {
       const app = cargar();
@@ -399,7 +400,7 @@ describe('calcC-calcCDT', () => {
 
   test('calcCDT — CDT vencido hoy mismo, sin fecha de vencimiento futura, calcula sobre los días transcurridos', () => {
     const ctx = freshApp();
-    const cdt = { monto: 5000000, tasa: 9.5, rte: 4, inicio: daysAgo(90) };
+    const cdt = { monto: 5000000, tasa: 9.5, tasaRetencion: 4, inicio: daysAgo(90) };
     const r = ctx.calcCDT(cdt);
     assert.equal(r.dias, 90);
     assert.ok(r.ganado > 0, 'debería haber ganado algo en 90 días');
@@ -409,7 +410,7 @@ describe('calcC-calcCDT', () => {
 
   test('calcCDT — el bruto se redondea a los $0,50 más cercanos antes de aplicar RTE (regla real de Nu)', () => {
     const ctx = freshApp();
-    const cdt = { monto: 3173456, tasa: 9.12, rte: 4, inicio: daysAgo(47) };
+    const cdt = { monto: 3173456, tasa: 9.12, tasaRetencion: 4, inicio: daysAgo(47) };
     const r = ctx.calcCDT(cdt);
     // El bruto redondeado siempre debe ser múltiplo de 0.5
     const esMultiploDeMedio = Math.abs((r.ganado_bruto * 2) - Math.round(r.ganado_bruto * 2)) < 1e-9;
@@ -493,14 +494,14 @@ describe('cdt-campos', () => {
   const plano = x => JSON.parse(JSON.stringify(x));
 
   const AHORA = new Date('2026-10-05T12:00:00');
-  const base = { tasa: '9,25', rte: '4,00', inicio: '2026-10-01', vence: '2027-01-01', tasaDefecto: 9.25, rteDefecto: 4, inicioDefecto: '2026-10-05' };
+  const base = { tasa: '9,25', tasaRetencion: '4,00', inicio: '2026-10-01', vence: '2027-01-01', tasaDefecto: 9.25, tasaRetencionDefecto: 4, inicioDefecto: '2026-10-05' };
 
   describe('validarCamposCDT', () => {
     const app = loadApp(ARCHIVOS, { permissive: true });
     const v = (campos) => plano(app.validarCamposCDT({ ...base, ...campos }, AHORA));
 
-    test('campos válidos: devuelve tasa, rte y fechas ya interpretadas', () => {
-      assert.deepEqual(v({}), { ok: true, tasa: 9.25, rte: 4, inicio: '2026-10-01', vence: '2027-01-01' });
+    test('campos válidos: devuelve tasa, tasaRetencion y fechas ya interpretadas', () => {
+      assert.deepEqual(v({}), { ok: true, tasa: 9.25, tasaRetencion: 4, inicio: '2026-10-01', vence: '2027-01-01' });
     });
     test('tasa vacía usa el valor por defecto; tasa 0, negativa o texto se rechaza (no se vuelve 9,25 en silencio)', () => {
       assert.equal(v({ tasa: '' }).tasa, 9.25);
@@ -512,15 +513,15 @@ describe('cdt-campos', () => {
       }
     });
     test('RTE: vacía usa el defecto, 0 se respeta, punto o coma valen', () => {
-      assert.equal(v({ rte: '' }).rte, 4);
-      assert.equal(v({ rte: '', rteDefecto: 7 }).rte, 7);
-      assert.equal(v({ rte: '0' }).rte, 0);
-      assert.equal(v({ rte: '3,5' }).rte, 3.5);
-      assert.equal(v({ rte: '3.5' }).rte, 3.5);
+      assert.equal(v({ tasaRetencion: '' }).tasaRetencion, 4);
+      assert.equal(v({ tasaRetencion: '', tasaRetencionDefecto: 7 }).tasaRetencion, 7);
+      assert.equal(v({ tasaRetencion: '0' }).tasaRetencion, 0);
+      assert.equal(v({ tasaRetencion: '3,5' }).tasaRetencion, 3.5);
+      assert.equal(v({ tasaRetencion: '3.5' }).tasaRetencion, 3.5);
     });
     test('RTE no numérica, negativa o mayor a 100 se rechaza', () => {
-      for (const rte of ['abc', '-1', '4%', '4,5,6']) assert.match(v({ rte }).mensaje, /no es un número válido/, `rte ${rte}`);
-      assert.match(v({ rte: '150' }).mensaje, /no puede pasar de 100/);
+      for (const tasaRetencion of ['abc', '-1', '4%', '4,5,6']) assert.match(v({ tasaRetencion: tasaRetencion }).mensaje, /no es un número válido/, `tasaRetencion ${tasaRetencion}`);
+      assert.match(v({ tasaRetencion: '150' }).mensaje, /no puede pasar de 100/);
     });
     test('apertura vacía usa el defecto; una apertura futura se rechaza', () => {
       assert.equal(v({ inicio: '' }).inicio, '2026-10-05');
@@ -547,7 +548,7 @@ describe('cdt-campos', () => {
       aplicar(app.S, { movimientos: [], gastosVar: [], encargos: [], historialTasasNu: [],
         cuentas: [{ id: 'nequi', tipo: 'billetera', nombre: 'Nequi', saldo: 0 }, { id: 'efectivo', tipo: 'efectivo', nombre: 'Efectivo', saldo: 0 }],
         cajitas: [{ id: 'a', cuentaId: 'nu', nombre: 'A', saldo, fecha: app.hoy(),
-          cdts: [{ id: 'd1', monto: 1000000, tasa: 9.25, rte: 4, inicio: '2026-01-01', vence: '2027-01-01' }] }] });
+          cdts: [{ id: 'd1', monto: 1000000, tasa: 9.25, tasaRetencion: 4, inicio: '2026-01-01', vence: '2027-01-01' }] }] });
       const campos = domFalso(app);
       const toasts = [], cerrados = [];
       let guardados = 0;
@@ -595,7 +596,7 @@ describe('cdt-campos', () => {
     test('la RTE 0 se acepta al editar', async () => {
       const e = entorno({ saldo: 0 }); await abrirEdicion(e);
       e.campos.cdt_rte.value = '0'; e.app.confirmarSheetCDT();
-      assert.equal(e.cdt().rte, 0);
+      assert.equal(e.cdt().tasaRetencion, 0);
     });
     test('cancelar la edición y abrir "crear": el sheet vuelve a modo crear y no pisa el CDT anterior', async () => {
       const e = entorno({ saldo: 5000000 }); await abrirEdicion(e);
@@ -721,7 +722,7 @@ describe('chequeo-nu', () => {
       aplicar(app.S, { cajitas: [], movimientos: [], gastosVar: [],
         cuentas: [{ id: 'nequi', tipo: 'billetera', nombre: 'Nequi', saldo: 1000 }, { id: 'efectivo', tipo: 'efectivo', nombre: 'Efectivo', saldo: 0 }] });
       const el = (x = {}) => ({ value: '', textContent: '', innerHTML: '', checked: false, style: {}, focus() {}, ...x });
-      const campos = { adTitle: el(), adSaldoActual: el(), adMonto: el(), adDesc: el(), adFecha: el(), adNota: el(), adPreview: el(), adEsApertura: el(), adDescLabel: el() };
+      const campos = { agregarDineroTitle: el(), agregarDineroSaldoActual: el(), agregarDineroMonto: el(), agregarDineroDesc: el(), agregarDineroFecha: el(), agregarDineroNota: el(), agregarDineroPreview: el(), agregarDineroEsApertura: el(), agregarDineroDescLabel: el() };
       app.document.getElementById = id => campos[id] || null;
       const toasts = [], cerrados = [];
       let guardados = 0;
@@ -733,7 +734,7 @@ describe('chequeo-nu', () => {
       app.fuenteLabel = f => ({ 'cuenta:nequi': 'Nequi' }[f] || f);
       app.abrirAgregarDinero('cuenta:nequi', 'Nequi');
       guardados = 0;
-      campos.adMonto.value = monto; campos.adDesc.value = desc; campos.adFecha.value = '2026-10-05';
+      campos.agregarDineroMonto.value = monto; campos.agregarDineroDesc.value = desc; campos.agregarDineroFecha.value = '2026-10-05';
       return { app, toasts, cerrados, guardados: () => guardados, saldo: () => app.getSaldoFuente('cuenta:nequi') };
     }
     test('un monto válido suma, registra y cierra', () => {
@@ -793,7 +794,7 @@ describe('nu-cdt', () => {
     const campos = domFalso(app);
     // La cajita única se auto-selecciona al abrir: se simula el click que dispara el handler real.
     const cajitaEl = { dataset: { nuCajita: 'cajita:a' }, style: {}, handlers: {}, addEventListener(ev, fn) { this.handlers[ev] = fn; }, click() { this.handlers.click.call(this); } };
-    campos.nuMovCajitasWrap = { innerHTML: '', querySelectorAll: () => [cajitaEl], querySelector: () => cajitaEl };
+    campos.nuMovimientoCajitasWrap = { innerHTML: '', querySelectorAll: () => [cajitaEl], querySelector: () => cajitaEl };
     const toasts = [], cerrados = [];
     let guardados = 0;
     app.toast = (msg, t, ms) => toasts.push({ msg, tipo: t, ms });
@@ -804,7 +805,7 @@ describe('nu-cdt', () => {
     abrirAhorro(app);
     app.abrirNuMovimiento(tipo);
     guardados = 0;
-    campos.nuMovMonto.value = monto; campos.nuMovDesc.value = desc; campos.nuMovFecha.value = '2026-10-05';
+    campos.nuMovimientoMonto.value = monto; campos.nuMovimientoDesc.value = desc; campos.nuMovimientoFecha.value = '2026-10-05';
     const saldoCajita = () => app.getSaldoFuente('cajita:a');
     return { app, toasts, cerrados, guardados: () => guardados, saldoCajita, cajita: () => app.S.cajitas[0] };
   }
@@ -852,7 +853,7 @@ describe('nu-cdt', () => {
   });
 
   describe('confirmarCrearCDT — RTE', () => {
-    function entornoCDT({ rte, monto = '100.000,00', saldo = 1000000 }) {
+    function entornoCDT({ tasaRetencion: tasaRetencion, monto = '100.000,00', saldo = 1000000 }) {
       const app = loadApp(ARCHIVOS, { permissive: true });
       aplicar(app.S, { movimientos: [], gastosVar: [], encargos: [], historialTasasNu: [],
         cuentas: [{ id: 'nequi', tipo: 'billetera', nombre: 'Nequi', saldo: 0 }, { id: 'efectivo', tipo: 'efectivo', nombre: 'Efectivo', saldo: 0 }],
@@ -869,46 +870,46 @@ describe('nu-cdt', () => {
       guardados = 0;
       const venceAnio = String(new Date().getFullYear() + 1) + '-06-15';
       Object.assign(campos.cdt_monto, { value: monto }); Object.assign(campos.cdt_tasa, { value: '9,25' });
-      Object.assign(campos.cdt_rte, { value: rte }); Object.assign(campos.cdt_inicio, { value: app.hoy() });
+      Object.assign(campos.cdt_rte, { value: tasaRetencion }); Object.assign(campos.cdt_inicio, { value: app.hoy() });
       Object.assign(campos.cdt_vence, { value: venceAnio });
       return { app, toasts, cerrados, guardados: () => guardados, cdts: () => app.S.cajitas[0].cdts || [] };
     }
     test('RTE "4,00" (el valor por defecto del formulario) → 4', () => {
-      const e = entornoCDT({ rte: '4,00' }); e.app.confirmarCrearCDT();
-      assert.equal(e.cdts().length, 1); assert.equal(e.cdts()[0].rte, 4);
+      const e = entornoCDT({ tasaRetencion: '4,00' }); e.app.confirmarCrearCDT();
+      assert.equal(e.cdts().length, 1); assert.equal(e.cdts()[0].tasaRetencion, 4);
     });
     test('RTE vacío → 4 (por defecto)', () => {
-      const e = entornoCDT({ rte: '' }); e.app.confirmarCrearCDT();
-      assert.equal(e.cdts().length, 1); assert.equal(e.cdts()[0].rte, 4);
+      const e = entornoCDT({ tasaRetencion: '' }); e.app.confirmarCrearCDT();
+      assert.equal(e.cdts().length, 1); assert.equal(e.cdts()[0].tasaRetencion, 4);
     });
     test('RTE 0 se respeta (antes la creación lo convertía en 4; la edición ya lo aceptaba)', () => {
-      for (const rte of ['0', '0,00']) {
-        const e = entornoCDT({ rte }); e.app.confirmarCrearCDT();
-        assert.equal(e.cdts().length, 1, `rte ${rte}`); assert.equal(e.cdts()[0].rte, 0, `rte ${rte}`);
+      for (const tasaRetencion of ['0', '0,00']) {
+        const e = entornoCDT({ tasaRetencion: tasaRetencion }); e.app.confirmarCrearCDT();
+        assert.equal(e.cdts().length, 1, `tasaRetencion ${tasaRetencion}`); assert.equal(e.cdts()[0].tasaRetencion, 0, `tasaRetencion ${tasaRetencion}`);
       }
     });
     test('RTE con decimales y punto o coma', () => {
-      for (const [rte, esperado] of [['3,5', 3.5], ['3.5', 3.5], ['7', 7]]) {
-        const e = entornoCDT({ rte }); e.app.confirmarCrearCDT();
-        assert.equal(e.cdts()[0].rte, esperado, `rte ${rte}`);
+      for (const [tasaRetencion, esperado] of [['3,5', 3.5], ['3.5', 3.5], ['7', 7]]) {
+        const e = entornoCDT({ tasaRetencion: tasaRetencion }); e.app.confirmarCrearCDT();
+        assert.equal(e.cdts()[0].tasaRetencion, esperado, `tasaRetencion ${tasaRetencion}`);
       }
     });
     test('RTE no numérico, negativo o > 100 se rechaza y no crea nada ni toca el saldo', () => {
-      for (const rte of ['abc', '-1', '4%', '150', '4,5,6']) {
-        const e = entornoCDT({ rte }); e.app.confirmarCrearCDT();
-        assert.equal(e.cdts().length, 0, `rte ${rte}`);
-        assert.equal(e.guardados(), 0, `rte ${rte}`);
-        assert.equal(Math.round(e.app.S.cajitas[0].saldo), 1000000, `rte ${rte}`);
-        assert.equal(e.toasts.at(-1).tipo, 'err', `rte ${rte}`);
+      for (const tasaRetencion of ['abc', '-1', '4%', '150', '4,5,6']) {
+        const e = entornoCDT({ tasaRetencion: tasaRetencion }); e.app.confirmarCrearCDT();
+        assert.equal(e.cdts().length, 0, `tasaRetencion ${tasaRetencion}`);
+        assert.equal(e.guardados(), 0, `tasaRetencion ${tasaRetencion}`);
+        assert.equal(Math.round(e.app.S.cajitas[0].saldo), 1000000, `tasaRetencion ${tasaRetencion}`);
+        assert.equal(e.toasts.at(-1).tipo, 'err', `tasaRetencion ${tasaRetencion}`);
       }
     });
     test('un CDT válido descuenta el monto de la cajita', () => {
-      const e = entornoCDT({ rte: '4,00', monto: '100.000,00' }); e.app.confirmarCrearCDT();
+      const e = entornoCDT({ tasaRetencion: '4,00', monto: '100.000,00' }); e.app.confirmarCrearCDT();
       assert.equal(Math.round(e.app.S.cajitas[0].saldo), 900000);
       assert.equal(e.cdts()[0].monto, 100000);
     });
     test('monto mayor al saldo de la cajita se rechaza', () => {
-      const e = entornoCDT({ rte: '4,00', monto: '2.000.000,00' }); e.app.confirmarCrearCDT();
+      const e = entornoCDT({ tasaRetencion: '4,00', monto: '2.000.000,00' }); e.app.confirmarCrearCDT();
       assert.equal(e.cdts().length, 0);
       assert.match(e.toasts.at(-1).msg, /Saldo insuficiente/);
     });
@@ -1244,32 +1245,32 @@ describe('spotify-cajita', () => {
 
   const NU = { id: 'nu', tipo: 'ahorro', nombre: 'Nu', saldo: 0 };
   const NEQUI = { id: 'nequi', tipo: 'billetera', nombre: 'Nequi', saldo: 0 };
-  const sp = fuenteId => ({ personas: [], costo: 0, fuenteId, historial: [] });
+  const spotify = fuenteId => ({ integrantes: [], costo: 0, fuenteId, historial: [] });
 
-  test('getSpFuenteSaldo — sin cuenta elegida da 0', () => {
-    assert.equal(freshApp({ cajitas: [] }).getSpFuenteSaldo(), 0);
+  test('getSpotifyFuenteSaldo — sin cuenta elegida da 0', () => {
+    assert.equal(freshApp({ cajitas: [] }).getSpotifyFuenteSaldo(), 0);
   });
 
-  test('getSpFuenteSaldo — cajita recién creada (sin fecha) vale su saldo', () => {
-    const ctx = freshApp({ cuentas: [NU], cajitas: [{ id: 's1', cuentaId: 'nu', nombre: 'Para la música', saldo: 12000 }], spotify: sp('cajita:s1') });
-    assert.equal(ctx.getSpFuenteSaldo(), 12000);
+  test('getSpotifyFuenteSaldo — cajita recién creada (sin fecha) vale su saldo', () => {
+    const ctx = freshApp({ cuentas: [NU], cajitas: [{ id: 's1', cuentaId: 'nu', nombre: 'Para la música', saldo: 12000 }], spotify: spotify('cajita:s1') });
+    assert.equal(ctx.getSpotifyFuenteSaldo(), 12000);
   });
 
-  test('getSpFuenteSaldo — suma el interés real de calcC cuando la cajita tiene fecha', () => {
-    const ctx = freshApp({ nuRate: 9.3003, cuentas: [NU], cajitas: [{ id: 's1', cuentaId: 'nu', nombre: 'Spotify', saldo: 1000000, fecha: hace(365) }], spotify: sp('cajita:s1') });
-    assert.ok(ctx.getSpFuenteSaldo() > 1050000);
+  test('getSpotifyFuenteSaldo — suma el interés real de calcC cuando la cajita tiene fecha', () => {
+    const ctx = freshApp({ nuRate: 9.3003, cuentas: [NU], cajitas: [{ id: 's1', cuentaId: 'nu', nombre: 'Spotify', saldo: 1000000, fecha: hace(365) }], spotify: spotify('cajita:s1') });
+    assert.ok(ctx.getSpotifyFuenteSaldo() > 1050000);
   });
 
   test('sirve CUALQUIER cuenta (no solo cajitas): Nequi como cuenta de Spotify', () => {
-    const ctx = freshApp({ cuentas: [NEQUI], spotify: sp('cuenta:nequi') });
+    const ctx = freshApp({ cuentas: [NEQUI], spotify: spotify('cuenta:nequi') });
     ctx.getSaldoFuente = () => 33000;
-    assert.equal(ctx.getSpFuente(), 'cuenta:nequi');
+    assert.equal(ctx.getSpotifyFuente(), 'cuenta:nequi');
   });
 
   test('llamarse «Spotify» NO vincula la cajita; tampoco se auto-asigna', () => {
     const ctx = freshApp({ cuentas: [NU], cajitas: [{ id: 's1', cuentaId: 'nu', nombre: 'Spotify', saldo: 5000 }] });
-    assert.equal(ctx.getSpFuente(), null);
-    assert.equal(ctx.getSpFuenteSaldo(), 0);
+    assert.equal(ctx.getSpotifyFuente(), null);
+    assert.equal(ctx.getSpotifyFuenteSaldo(), 0);
     assert.equal(ctx.S.spotify.fuenteId, '');
   });
 
@@ -1277,17 +1278,17 @@ describe('spotify-cajita', () => {
     const ctx = freshApp({
       cuentas: [NU],
       cajitas: [{ id: 'a', cuentaId: 'nu', nombre: 'Spotify viejo', saldo: 1000 }, { id: 'b', cuentaId: 'nu', nombre: 'Spotify', saldo: 7000 }],
-      spotify: sp('cajita:a'),
+      spotify: spotify('cajita:a'),
     });
-    assert.equal(ctx.getSpFuente(), 'cajita:a');
+    assert.equal(ctx.getSpotifyFuente(), 'cajita:a');
     ctx.S.cajitas[0].nombre = 'Música';
-    assert.equal(ctx.getSpFuente(), 'cajita:a');
-    assert.equal(ctx.getSpFuenteSaldo(), 1000);
+    assert.equal(ctx.getSpotifyFuente(), 'cajita:a');
+    assert.equal(ctx.getSpotifyFuenteSaldo(), 1000);
   });
 
   test('una referencia rota (cajita inexistente, cuenta archivada) cuenta como «sin elegir»', () => {
-    assert.equal(freshApp({ cajitas: [], spotify: sp('cajita:fantasma') }).getSpFuente(), null);
-    assert.equal(freshApp({ cuentas: [{ ...NEQUI, archivada: true }], spotify: sp('cuenta:nequi') }).getSpFuente(), null);
+    assert.equal(freshApp({ cajitas: [], spotify: spotify('cajita:fantasma') }).getSpotifyFuente(), null);
+    assert.equal(freshApp({ cuentas: [{ ...NEQUI, archivada: true }], spotify: spotify('cuenta:nequi') }).getSpotifyFuente(), null);
   });
 
   test('las acciones del botón «Elegir» están registradas (en el primer bloque del módulo)', () => {
@@ -1296,15 +1297,15 @@ describe('spotify-cajita', () => {
     const primer = t.slice(t.indexOf("Events.registerAll('spotify', {"));
     const hasta = primer.indexOf('\n});');
     assert.ok(primer.slice(0, hasta).includes('abrirElegirFuente') && primer.slice(0, hasta).includes('guardarFuente'));
-    const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+    const html = htmlClasico(fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8'));
     for (const a of ['spotify:abrirElegirFuente', 'spotify:guardarFuente']) assert.ok(html.includes('data-action="' + a + '"'), a);
   });
 
   test('el código ya no busca la cajita (ni el gasto de Spotify) por el texto «spotify» en un nombre', () => {
     const fs = require('node:fs');
-    const sp = fs.readFileSync(path.join(MODULES_DIR, 'spotify.js'), 'utf8');
+    const spotify = fs.readFileSync(path.join(MODULES_DIR, 'spotify.js'), 'utf8');
     const ga = fs.readFileSync(path.join(MODULES_DIR, 'gastos.js'), 'utf8');
-    assert.ok(!/nombre&&x\.nombre\.toLowerCase\(\)\.includes\('spotify'\)/.test(sp));
+    assert.ok(!/nombre&&x\.nombre\.toLowerCase\(\)\.includes\('spotify'\)/.test(spotify));
     assert.ok(!/gv\.desc[^;]*includes\('spotify'\)/.test(ga));
     assert.ok(!/__spotify__|_virtual/.test(ga), 'Gastos fijos ya no inventa una fila virtual de Spotify');
   });
@@ -1385,7 +1386,7 @@ describe('eliminar-movimiento', () => {
     return { app, dialogos: () => dialogos, saldo: id => app.getSaldoFuente(id) };
   }
   // La fila que pinta la pantalla: los datos del movimiento viajan en dataset, y el botón sabe encontrar su fila.
-  const boton = (tipo, id, fuente, monto) => { const item = { dataset: { movId: id, movTipo: tipo, movFuente: fuente, movMonto: String(monto), movFecha: HOY } }; return { closest: () => item }; };
+  const boton = (tipo, id, fuente, monto) => { const item = { dataset: { movimientoId: id, movimientoTipo: tipo, movimientoFuente: fuente, movimientoMonto: String(monto), movimientoFecha: HOY } }; return { closest: () => item }; };
   const neto = S => { const t = {}; S.libro.forEach(e => { t[e.cuenta] = (t[e.cuenta] || 0) + e.monto; }); return t; };
 
   test('saldo inicial: eliminar lo deja en 0 (no en −10), con UN solo diálogo', async () => {
@@ -1492,7 +1493,7 @@ describe('eliminar-movimiento', () => {
     e.app.S.gastosVar.push(g);
     e.app.descontarFuente('cuenta:nequi', 2000, { origen: { modulo: 'gastos', ref: 'gs1' } });
     e.app.descontarFuente('cuenta:efectivo', 1000, { origen: { modulo: 'gastos', ref: 'gs1' } });
-    const fila = (cuenta) => plano(e.app.getMovimientosCuenta(cuenta)).filter(m => m._movId === 'gs1');
+    const fila = (cuenta) => plano(e.app.getMovimientosCuenta(cuenta)).filter(m => m._movimientoId === 'gs1');
     const fn = fila('cuenta:nequi'), fe = fila('cuenta:efectivo');
     assert.equal(fn.length, 1, 'aparece en Nequi'); assert.equal(fe.length, 1, 'aparece en Efectivo');
     assert.equal(fn[0].monto, -2000); assert.equal(fe[0].monto, -1000);
@@ -1507,8 +1508,8 @@ describe('eliminar-movimiento', () => {
 
 describe('cuenta-iconos-colores', () => {
   // "Nueva cuenta" / "Editar cuenta": el ícono y el color elegidos se marcan (cuentas.js + js/core/color-picker.js).
-  // Causa del bug: color-picker.js no tenía <script> en index.html, así que selColorNC() lanzaba ReferenceError antes de
-  // que selIconoNC() terminara de pintar; la cuenta se guardaba bien pero la pantalla seguía mostrando "Otra".
+  // Causa del bug: color-picker.js no tenía <script> en index.html, así que selColorNuevaCuenta() lanzaba ReferenceError antes de
+  // que selIconoNuevaCuenta() terminara de pintar; la cuenta se guardaba bien pero la pantalla seguía mostrando "Otra".
   const { test, describe } = require('node:test');
   const assert = require('node:assert/strict');
   const fs = require('node:fs');
@@ -1529,17 +1530,17 @@ describe('cuenta-iconos-colores', () => {
     return { circulos, botones };
   }
 
-  test('index.html carga color-picker.js (sin ese <script>, selColorNC no existía en la página)', () => {
-    const html = fs.readFileSync(path.join(RAIZ, 'index.html'), 'utf8');
+  test('index.html carga color-picker.js (sin ese <script>, selColorNuevaCuenta no existía en la página)', () => {
+    const html = htmlClasico(fs.readFileSync(path.join(RAIZ, 'index.html'), 'utf8'));
     assert.match(html, /<script src="js\/core\/color-picker\.js" defer><\/script>/);
   });
 
   test('elegir un color marca solo ese círculo', () => {
     const app = loadApp(ARCHIVOS, { permissive: true });
     const p = pantalla(app, { colores: ['#60b0f0', '#f06868', '#b090f0'] });
-    app.selColorNC('#f06868');
+    app.selColorNuevaCuenta('#f06868');
     assert.deepEqual(p.circulos.map(c => c.style.border), ['2px solid transparent', ACENTO, '2px solid transparent']);
-    app.selColorNC('#b090f0');
+    app.selColorNuevaCuenta('#b090f0');
     assert.deepEqual(p.circulos.map(c => c.style.border), ['2px solid transparent', '2px solid transparent', ACENTO]);
   });
 
@@ -1550,7 +1551,7 @@ describe('cuenta-iconos-colores', () => {
     const grid = { innerHTML: '' };
     const getReal = app.document.getElementById;
     app.document.getElementById = id => (id === 'nc-icon-grid' ? grid : getReal.call(app.document, id));
-    assert.doesNotThrow(() => app.selIconoNC('nequi'));
+    assert.doesNotThrow(() => app.selIconoNuevaCuenta('nequi'));
     const sel = [...String(grid.innerHTML).matchAll(/class="[^"]*cuenta-ico-op-sel[^"]*"\s+data-icono="([^"]+)"/g)].map(m => m[1]);
     assert.deepEqual(sel, ['nequi'], 'solo el ícono elegido queda marcado (no "Otra")');
     assert.equal(p.circulos[1].style.border, ACENTO, 'el color de la marca queda marcado');
@@ -1636,7 +1637,7 @@ describe('nu-tasa-global', () => {
     });
     test('un CDT conserva su tasa propia aunque cambie la global', () => {
       const a = app({ nuRate: 12 });
-      const cdt = { monto: 100000, tasa: 5, rte: 0, inicio: hace(73), vence: hace(-300) };
+      const cdt = { monto: 100000, tasa: 5, tasaRetencion: 0, inicio: hace(73), vence: hace(-300) };
       const esperado = Math.round(100000 * (Math.pow(1.05, 73 / 365) - 1) * 2) / 2;
       assert.equal(a.calcCDT(cdt).ganado_bruto, esperado);
       a.getCuenta('nu').tasaEA = 30;
@@ -1870,9 +1871,9 @@ describe('nu-acciones', () => {
   describe('Chequeo rápido con encargos: se muestra y se anota el TOTAL que marca Nu', () => {
     // Una cajita con plata propia y plata de encargos (física en la misma cajita). Nu muestra la suma; antes el chequeo mostraba
     // solo lo propio y obligaba a restar los encargos a mano (y adivinaba qué número había anotado el usuario).
-    const conEncargos = (propio = 100000, enc = 200000) => {
+    const conEncargos = (propio = 100000, encargo = 200000) => {
       const e = entorno({ cajitas: [caja('a', propio, hace(3))] });
-      e.app.S.encargos = [{ id: 'e1', nombre: 'Papá', saldoInicial: enc, cuentaInicial: 'cajita:a', movimientos: [] }];
+      e.app.S.encargos = [{ id: 'e1', nombre: 'Papá', saldoInicial: encargo, cuentaInicial: 'cajita:a', movimientos: [] }];
       e.app.dialogo = async () => true;
       return e;
     };
@@ -2033,7 +2034,7 @@ describe('cuentas-textos', () => {
   const path = require('node:path');
   const RAIZ = path.join(__dirname, '..');
   const leer = f => fs.readFileSync(path.join(RAIZ, f), 'utf8');
-  const index = leer('index.html');
+  const index = htmlClasico(leer('index.html'));
   const etiquetaDe = id => { const i = index.indexOf('id="' + id + '"'); return /cuenta-action-btn-label">([^<]+)</.exec(index.slice(i))[1].trim(); };
 
   test('Nu usa los mismos botones que las demás cuentas', () => {
@@ -2049,7 +2050,7 @@ describe('cuentas-textos', () => {
   test('los sheets y mensajes del retiro y del movimiento de Nu usan "retirar"/"agregar", no "restar"/"entró"/"salió"', () => {
     assert.match(index, /id="rdTitle">Retirar dinero</);
     assert.match(index, /id="btn-confirmar-restar">\s*Retirar\s+del saldo/);
-    assert.match(index, /id="nuMovTitle">Agregar a la cuenta</);
+    assert.match(index, /id="nuMovimientoTitle">Agregar a la cuenta</);
     for (const f of ['js/modules/cuentas.js', 'js/modules/nu.js']) assert.doesNotMatch(leer(f), /'Entró plata a |'Salió plata de |'Restar de /, f);
   });
   const etiquetaInput = id => { const i = index.indexOf('id="' + id + '"'); return index.slice(index.lastIndexOf('<', i), index.indexOf('>', i)); };
@@ -2115,7 +2116,7 @@ describe('cuentas-nu-archivos', () => {
   });
 
   test('cada función vive en UN solo archivo: nada declarado a nivel superior en los dos', () => {
-    const nombres = f => [...leer(f).matchAll(/^(?:async function |function |let |const |var )([A-Za-z_$][\w$]*)/gm)].map(m => m[1]);
+    const nombres = f => [...leer(f).matchAll(/^(?:export )?(?:async function |function |let |const |var )([A-Za-z_$][\w$]*)/gm)].map(m => m[1]);
     const enNu = new Set(nombres('js/modules/nu.js'));
     const repetidas = nombres('js/modules/cuentas.js').filter(n => enNu.has(n));
     assert.deepEqual(repetidas, []);
@@ -2123,7 +2124,7 @@ describe('cuentas-nu-archivos', () => {
 
   // Frontera entre las dos capas. Se lee el código SIN comentarios ni cadenas de documentación, porque lo que cuenta es qué usa de verdad.
   const sinComentarios = t => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1');
-  const declaradas = t => new Set([...t.matchAll(/^(?:async function |function |let |const |var )([A-Za-z_$][\w$]*)/gm)].map(m => m[1]));
+  const declaradas = t => new Set([...t.matchAll(/^(?:export )?(?:async function |function |let |const |var )([A-Za-z_$][\w$]*)/gm)].map(m => m[1]));
   const usadasDe = (codigo, nombres) => [...nombres].filter(n => new RegExp('(?<![\\w$.])' + n.replace(/\$/g, '\\$') + '(?![\\w$])').test(codigo)).sort();
 
   test('la dependencia va en UN solo sentido: cuentas.js no usa nada de nu.js (Nu se le presenta registrándose en CuentaPantallas)', () => {
@@ -2137,7 +2138,7 @@ describe('cuentas-nu-archivos', () => {
     const usadas = usadasDe(sinComentarios(leer('js/modules/nu.js')), declaradas(leer('js/modules/cuentas.js')));
     assert.deepEqual(usadas, ['_MIN_RETIRO', '_aperturaToggleUI', '_descriptorDeCuenta', '_pintarAdministrarCuenta', '_setBtnEstado', '_setBtnTransferir', '_showCuentasPanel',
       '_tituloCuentaHtml', 'abrirAgregarDinero', 'abrirRestarDinero', 'abrirTransferir', 'actualizarBotonRetirar', 'actualizarBotonesTransferir',
-      'cuentaActual', 'getMovimientosCuenta', 'registrarEntradaConApertura', 'registrarSalida', 'renderMovsCuenta']);
+      'cuentaActual', 'getMovimientosCuenta', 'registrarEntradaConApertura', 'registrarSalida', 'renderMovimientosCuenta']);
   });
 
   test('todo botón data-action="cuentas:…" / "nu:…" (en index.html y en el HTML que arman los módulos) está registrado en su namespace', () => {
@@ -2153,15 +2154,15 @@ describe('cuentas-nu-archivos', () => {
       }
       return claves;
     };
-    const reg = { cuentas: registrado('cuentas'), nu: registrado('nu') };
-    assert.ok(reg.cuentas.size > 3 && reg.nu.size > 10, 'no se pudieron leer los registros');
+    const registros = { cuentas: registrado('cuentas'), nu: registrado('nu') };
+    assert.ok(registros.cuentas.size > 3 && registros.nu.size > 10, 'no se pudieron leer los registros');
     const usadas = [];
     for (const f of fuentes) {
       const t = leer(f);
       for (const m of t.matchAll(/(?:data-action="|Events\.attr\(\s*')(cuentas|nu):([A-Za-z_]\w*)/g)) usadas.push([f, m[1], m[2]]);
     }
     assert.ok(usadas.length > 20, 'no se encontraron usos');
-    const rotas = usadas.filter(([, ns, nombre]) => !reg[ns].has(nombre)).map(([f, ns, n]) => f + ' → ' + ns + ':' + n);
+    const rotas = usadas.filter(([, ns, nombre]) => !registros[ns].has(nombre)).map(([f, ns, n]) => f + ' → ' + ns + ':' + n);
     assert.deepEqual([...new Set(rotas)], []);
   });
 
@@ -2187,14 +2188,14 @@ describe('cuentas-abono-con-extra', () => {
     .concat(['nu.js', 'cuentas.js'].map(f => path.join(RAIZ, 'js', 'modules', f)));
   const espejo = (id, fuente, monto, parte, extra = {}) => ({ id, tipo: 'entrada', fuente, monto, fecha: '2026-10-20', desc: parte === 'extra' ? 'Extra de pago — Ana' : 'Abono de deuda — Ana',
     clase: parte === 'extra' ? 'ingreso' : 'neutro', _abonoId: 'a1', _parteAbono: parte, _secundario: true, _origenSeccion: 'Prestado · Me deben', ...extra });
-  const cargar = movs => { const app = loadApp(ARCH, { permissive: true }); app.S.movimientos = movs; return app; };
+  const cargar = movimientos => { const app = loadApp(ARCH, { permissive: true }); app.S.movimientos = movimientos; return app; };
 
   test('abono y extra a la misma cuenta: una sola fila por el total', () => {
     const app = cargar([espejo('m1', 'cuenta:nequi', 50000, 'abono'), espejo('m2', 'cuenta:nequi', 5000, 'extra')]);
     const filas = Array.from(app.getMovimientosCuenta('cuenta:nequi'));
     assert.equal(filas.length, 1);
     assert.equal(filas[0].monto, 55000);
-    assert.equal(filas[0]._movId, 'm1');
+    assert.equal(filas[0]._movimientoId, 'm1');
     assert.equal(filas[0]._secundario, true, 'se sigue borrando desde el préstamo, no desde la cuenta');
   });
 
@@ -2234,10 +2235,10 @@ describe('nu-cambio-de-tasa', () => {
     const hoy = app.hoy();
     const hace = n => { const d = new Date(hoy + 'T00:00:00'); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
     app.S.cuentas = [{ id: 'nu', tipo: 'ahorro', nombre: 'Nu', tasaEA: 9.25, historialTasas: [{ fecha: hace(30), tasa: 9.25 }] }];
-    app.S.cajitas = [{ id: 'k1', cuentaId: 'nu', nombre: 'Ahorros', saldo: 1000000, fecha: hace(20), cdts: [{ id: 'c1', monto: 500000, tasa: 11, fechaInicio: hace(10), dias: 90, rte: 7 }] }];
+    app.S.cajitas = [{ id: 'k1', cuentaId: 'nu', nombre: 'Ahorros', saldo: 1000000, fecha: hace(20), cdts: [{ id: 'c1', monto: 500000, tasa: 11, fechaInicio: hace(10), dias: 90, tasaRetencion: 7 }] }];
     return { app, hoy, hace };
   }
-  const foto = app => JSON.stringify({ val: app.calcC(app.S.cajitas[0]).val, cdt: app.calcCDT(app.S.cajitas[0].cdts[0]).val, saldo: app.S.cajitas[0].saldo, movs: (app.S.movimientos || []).length });
+  const foto = app => JSON.stringify({ val: app.calcC(app.S.cajitas[0]).val, cdt: app.calcCDT(app.S.cajitas[0].cdts[0]).val, saldo: app.S.cajitas[0].saldo, movimientos: (app.S.movimientos || []).length });
 
   test('una tasa nueva se anota desde hoy y no cambia saldos, intereses ya ganados ni el CDT', () => {
     const { app, hoy } = cargar(); const antes = foto(app);
@@ -2265,12 +2266,12 @@ describe('nu-cambio-de-tasa', () => {
     app.registrarTasaHistorial('nu', hace(8), 10.5);
     const despues = JSON.parse(foto(app));
     assert.ok(despues.val > antes.val, 'el interés pendiente se recalcula con la tasa corregida');
-    assert.equal(despues.saldo, antes.saldo); assert.equal(despues.movs, antes.movs); assert.equal(despues.cdt, antes.cdt);
+    assert.equal(despues.saldo, antes.saldo); assert.equal(despues.movimientos, antes.movimientos); assert.equal(despues.cdt, antes.cdt);
   });
 
   test('el mensaje del historial de tasas ya no existe en la pantalla ni en el código', () => {
     const fs = require('node:fs');
-    assert.ok(!fs.readFileSync(path.join(RAIZ, 'index.html'), 'utf8').includes('nuTasaHistorialTag'));
+    assert.ok(!htmlClasico(fs.readFileSync(path.join(RAIZ, 'index.html'), 'utf8')).includes('nuTasaHistorialTag'));
     assert.ok(!fs.readFileSync(path.join(RAIZ, 'js', 'modules', 'nu.js'), 'utf8').includes('_renderTasaHistorialTag'));
   });
 });
@@ -2311,7 +2312,6 @@ describe('cuentas-modelo-unico', () => {
       assert.deepEqual(plano(app.cuentasActivas()), []);
       assert.equal(app.saldoCuentas({ soloActivas: true }), 0);
       assert.equal(app.ahorroTotalGeneral(), 0);
-      assert.equal(app.mejorTasaAhorro(), null);
       assert.equal(app.getCuenta('nequi'), undefined);
       assert.deepEqual(plano(app.getMovimientosCuenta('cuenta:nequi')), []);
     });
@@ -2400,7 +2400,7 @@ describe('cuentas-modelo-unico', () => {
       const el = id => (campos[id] = campos[id] || { value: '', style: {}, dataset: {}, closest: () => null, textContent: '' });
       app.document.getElementById = el;
       app.document.querySelectorAll = () => [];
-      app.selIconoNC('cajasocial');
+      app.selIconoNuevaCuenta('cajasocial');
       assert.equal(campos.nc_nombre.value, 'Banco Caja Social');
     });
     test('el id de la cuenta creada sale del nombre y los repetidos no chocan', async () => {
@@ -2409,7 +2409,7 @@ describe('cuentas-modelo-unico', () => {
       e.app.document.getElementById = id => campos[id] || { value: '', style: {}, dataset: {}, closest: () => null };
       e.app.document.querySelectorAll = () => [];
       e.app.closeSheet = () => {};
-      e.app.selIconoNC('cajasocial');
+      e.app.selIconoNuevaCuenta('cajasocial');
       campos.nc_nombre.value = 'Banco Caja Social';
       await e.app.crearCuenta();
       assert.equal(e.app.cuentasTodas().length, 1);
@@ -2447,13 +2447,12 @@ describe('cuentas-modelo-unico', () => {
       assert.equal(app.getCuenta('lulo').historialTasas.at(-1).tasa, 13.5);
       assert.equal(app.calcC(app.S.cajitas[0]).tasa, 9);
     });
-    test('el total de cada cuenta suma solo sus cajitas, y la mejor tasa es la mayor', () => {
+    test('el total de cada cuenta suma solo sus cajitas', () => {
       const { app } = dosAhorros();
       assert.deepEqual(plano(app.cajitasDeCuenta('nu')).map(c => c.id), ['k1']);
       assert.deepEqual(plano(app.cajitasDeCuenta('lulo')).map(c => c.id), ['k2']);
       assert.ok(app.ahorroTotal('lulo') > app.ahorroTotal('nu'));
       assert.ok(Math.abs(app.ahorroTotalGeneral() - (app.ahorroTotal('nu') + app.ahorroTotal('lulo'))) < 0.01);
-      assert.equal(app.mejorTasaAhorro(), 12);
     });
     test('una cuenta de ahorro con cajitas no se elimina ni se archiva con plata dentro', async () => {
       const e = dosAhorros();
@@ -2522,7 +2521,7 @@ describe('cuentas-efectivo-permanente-y-administracion', () => {
     assert.equal(app._motivoNoArchivar(app.getCuenta('nu')), '');
     await app.archivarCuenta('nu');
     assert.equal(app.getCuenta('nu').archivada, true);
-    const html = fs.readFileSync(path.join(RAIZ, 'index.html'), 'utf8');
+    const html = htmlClasico(fs.readFileSync(path.join(RAIZ, 'index.html'), 'utf8'));
     const i = html.indexOf('id="cuentas-detalle-nu"');
     const bloque = html.slice(i, i + 4000);
     for (const id of ['btn-archivar-cuenta-ah', 'btn-editar-cuenta-ah', 'btn-eliminar-cuenta-ah', 'banner-archivada-ah']) assert.ok(bloque.includes('id="' + id + '"'), id);
@@ -2531,7 +2530,7 @@ describe('cuentas-efectivo-permanente-y-administracion', () => {
   test('al crear no se ofrece "Efectivo" como preset (y el tipo es un solo interruptor de ahorro); Caja Social usa el rojo y el azul de la marca', () => {
     const app = entorno();
     const src = fs.readFileSync(path.join(RAIZ, 'js/modules/cuentas.js'), 'utf8');
-    assert.ok(/filter\(ic=>_ncModoEdicion\|\|ic\.tipo!=='efectivo'\)/.test(src) && !/>Efectivo<\/button>/.test(src));
+    assert.ok(/filter\(ic=>_nuevaCuentaModoEdicion\|\|ic\.tipo!=='efectivo'\)/.test(src) && !/>Efectivo<\/button>/.test(src));
     const cs = app.getIconoData('cajasocial');
     assert.equal(cs.color, '#E2222E');
     assert.ok(cs.svg.includes('#008FD1') && cs.svg.includes('#E2222E'));
@@ -2563,7 +2562,7 @@ describe('cuentas-efectivo-permanente-y-administracion', () => {
     const bloque = { style: { display: '' } };
     app.document.getElementById = id => (id === 'nc-tipos' ? { closest: () => bloque, style: {} } : { value: '', style: {}, dataset: {}, closest: () => null, textContent: '' });
     app.document.querySelectorAll = () => [];
-    const visible = id => { app.selIconoNC(id); return bloque.style.display === ''; };
+    const visible = id => { app.selIconoNuevaCuenta(id); return bloque.style.display === ''; };
     assert.equal(visible('otro'), true);
     assert.equal(visible('cajasocial'), true);
     assert.equal(visible('nu'), false);
@@ -2804,7 +2803,7 @@ describe('cuentas-orden-personalizable', () => {
   });
 
   test('la interfaz está cableada: botón Ordenar, acciones registradas y estilos', () => {
-    const html = fs.readFileSync(path.join(RAIZ, 'index.html'), 'utf8');
+    const html = htmlClasico(fs.readFileSync(path.join(RAIZ, 'index.html'), 'utf8'));
     assert.ok(html.includes('id="btn-ordenar-cuentas"') && html.includes('data-action="cuentas:alternarOrdenCuentas"'));
     const js = fs.readFileSync(modulo('cuentas.js'), 'utf8');
     assert.match(js, /alternarOrdenCuentas,/);

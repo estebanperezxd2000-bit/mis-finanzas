@@ -5,7 +5,7 @@
       import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
       import { initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence, browserPopupRedirectResolver, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, deleteUser, reauthenticateWithPopup }
         from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
-      import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, setDoc, deleteDoc, onSnapshot, runTransaction, arrayUnion, collection, getDocs }
+      import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, getDocFromServer, setDoc, deleteDoc, onSnapshot, runTransaction, arrayUnion, collection, getDocs }
         from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
 
       // NOTA DE SEGURIDAD: Esta API Key de Firebase es de dominio público por diseño
@@ -15,12 +15,12 @@
       //    → API restrictions: solo Firebase APIs necesarias
       // 2. Las reglas de seguridad de Firestore son la barrera real de acceso.
       const firebaseConfig = {
-        apiKey: "AIzaSyAH4c4gt4IDdiEaNLzHcorGB3m0fBxMMB4",
-        authDomain: "mis-finanzas-d5887.firebaseapp.com",
-        projectId: "mis-finanzas-d5887",
-        storageBucket: "mis-finanzas-d5887.firebasestorage.app",
-        messagingSenderId: "627629085197",
-        appId: "1:627629085197:web:c1be55dfc920d64444fb44"
+        apiKey: "AIzaSyBNGhKxrd6nuUXamRytHEgrv3ggrafr4HU",
+        authDomain: "mis-finanzas-z.firebaseapp.com",
+        projectId: "mis-finanzas-z",
+        storageBucket: "mis-finanzas-z.firebasestorage.app",
+        messagingSenderId: "469399538471",
+        appId: "1:469399538471:web:adaf95bc43b3355b087702"
       };
 
       const app = initializeApp(firebaseConfig);
@@ -31,7 +31,7 @@
       // CADA carga, aunque el usuario ya tenga sesión y nunca vaya a abrir un
       // popup. initializeAuth() SIN resolver los difiere: solo se cargan al
       // llamar signInWithPopup/reauthenticateWithPopup, que reciben el
-      // resolver explícito (ver window._fb.popupResolver, usado en
+      // resolver explícito (ver window._firebase.popupResolver, usado en
       // firebase-sync.js). El resto de la config es idéntica a la que trae
       // getAuth() por defecto (mismo orden de persistencia).
       //
@@ -51,14 +51,14 @@
       });
       const db = initializeFirestore(app, {
         experimentalAutoDetectLongPolling: true,  // Evita ERR_QUIC_PROTOCOL_ERROR sin forzar long-polling siempre (ver auditoria-tecnica.md, punto de rendimiento #1)
-        // FIX (2026-08-17): persistentLocalCache() por defecto solo permite
+        // FIX: persistentLocalCache() por defecto solo permite
         // UNA pestaña a la vez tener acceso exclusivo al cache de IndexedDB
         // — una segunda pestaña (olvidada en otro dispositivo, o accidental
         // en el mismo) rompe con "Failed to obtain exclusive access to the
         // persistence layer" y esa pestaña cae a memoria (pierde el cache
         // offline). persistentMultipleTabManager() hace que Firestore
         // coordine el cache entre pestañas en vez de pelear por él. Ver
-        // CHANGELOG.md#infraestructura--seguridad para el hallazgo completo
+        // changelog/infraestructura-seguridad.md para el hallazgo completo
         // (Lighthouse ya avisaba de esto: "There may be stored data
         // affecting loading performance in this location: IndexedDB").
         localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
@@ -66,16 +66,16 @@
       const provider = new GoogleAuthProvider();
 
       // Exponer globalmente para que el código existente pueda usar.
-      // collection/getDocs (2026-11-09): solo los usa js/core/respaldos.js para borrar respaldos huérfanos al eliminar la cuenta.
-      // runTransaction (2026-09-19): lo usa firebase-sync.js para leer el
+      // collection/getDocs: solo los usa js/core/respaldos.js para borrar respaldos huérfanos al eliminar la cuenta.
+      // runTransaction: lo usa firebase-sync.js para leer el
       // documento DIRECTO del servidor, sin pasar por la caché local ni por
       // el listener (ver _leerDocEnServidor).
-      window._fb = { auth, db, provider, popupResolver: browserPopupRedirectResolver, signInWithPopup, signOut, doc, getDoc, setDoc, deleteDoc, deleteUser, reauthenticateWithPopup, onAuthStateChanged, onSnapshot, runTransaction, arrayUnion, collection, getDocs };
+      window._firebase = { auth, db, provider, popupResolver: browserPopupRedirectResolver, signInWithPopup, signOut, doc, getDoc, getDocFromServer, setDoc, deleteDoc, deleteUser, reauthenticateWithPopup, onAuthStateChanged, onSnapshot, runTransaction, arrayUnion, collection, getDocs };
 
       // Escuchar estado de auth y arrancar la app
       //
       // NOTA (arranque async, ver docs/auditoria-tecnica.md #4 y
-      // CHANGELOG.md#arranque): este archivo ahora carga con `async` en vez
+      // changelog/arranque.md): este archivo ahora carga con `async` en vez
       // de dejarlo como <script type="module"> normal (que el navegador
       // trata como defer). Esto deja correr la resolución de auth de
       // Firebase en paralelo con el JS clásico de la app, en vez de esperar
@@ -92,7 +92,7 @@
       // defensivo que ya usa el resto de la cadena (window._pendingPinGate,
       // window._authgateReadyTimeout) — sin él, esto sería exactamente el
       // tipo de carrera que causó el bug real de `window.Events` vs
-      // `typeof Events` documentado en CHANGELOG.md#infraestructura--seguridad.
+      // `typeof Events` documentado en changelog/infraestructura-seguridad.md.
       onAuthStateChanged(auth, (user) => {
         if (document.readyState === 'loading') {
           document.addEventListener('DOMContentLoaded', () => _onAuthState(user), { once: true });
@@ -104,7 +104,7 @@
       function _onAuthState(user) {
         // Marca de sesión para el próximo arranque (ver comentario de
         // initializeAuth arriba). En la rama "sin usuario" se borra ANTES de
-        // que _fbSignOut/_fbDeleteAccount hagan su location.reload(), así
+        // que _firebaseSignOut/_firebaseDeleteAccount hagan su location.reload(), así
         // que la carga siguiente ya vuelve al camino con resolver precargado.
         try {
           if (user) localStorage.setItem('mf_auth_hint', '1');
@@ -114,7 +114,7 @@
           // Usuario logueado
           document.getElementById('fb-login-screen').style.display = 'none';
           document.getElementById('fb-loading-screen').style.display = 'flex';
-          window._fbUser = user;
+          window._firebaseUser = user;
           // Actualizar avatar/nombre en config
           const nameEl = document.getElementById('fb-user-name');
           const emailEl = document.getElementById('fb-user-email');
@@ -138,7 +138,7 @@
               if (window._pendingPinGate) {
                 console.warn('[Auth] Módulo PIN no cargó en 5s — arrancando app directamente.');
                 window._pendingPinGate = false;
-                if (typeof window._fbLoadData === 'function') window._fbLoadData();
+                if (typeof window._firebaseLoadData === 'function') window._firebaseLoadData();
               }
             }, 5000);
           }
@@ -150,7 +150,7 @@
           // el HTML) hasta que firebase-sync.js confirme que Events.registerAll
           // ('authgate', ...) ya corrió — evita la ventana en la que el botón
           // es visible pero su handler todavía no se registró (ver
-          // CHANGELOG.md#infraestructura--seguridad para el bug real que esto
+          // changelog/infraestructura-seguridad.md para el bug real que esto
           // reemplaza — no era una carrera de timing, pero la precaución
           // sigue siendo válida para cuando firebase-sync.js vuelva a ser un
           // archivo externo). Si en 8s no se confirma, se habilita igual con

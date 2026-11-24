@@ -1,6 +1,6 @@
 # Libro de movimientos
 
-Infraestructura transversal del núcleo: la lista de entradas de plata de las cuentas con saldo. Explica cómo funciona **hoy**; el historial de cambios vive en [`CHANGELOG.md`](./CHANGELOG.md#libro-de-movimientos).
+Infraestructura transversal del núcleo: la lista de entradas de plata de las cuentas con saldo. Explica cómo funciona **hoy**; el historial de cambios vive en [`changelog/libro-de-movimientos.md`](./changelog/libro-de-movimientos.md).
 
 ---
 
@@ -23,8 +23,8 @@ El libro responde "¿cuánta plata hay en cada cuenta y por qué?". No responde 
 
 ## 3. Reglas que nunca se rompen
 
-1. **Saldo == suma del libro**, por cuenta (`Libro.verificar`). `save()` lo comprueba y avisa una vez por sesión si algo no cuadra.
-2. **Nadie escribe `c.saldo` directamente.** Solo la puerta única. Un código que lo haga rompe la regla 1 y se ve al guardar.
+1. **El saldo ES la suma del libro**, por cuenta y cajita. No se guarda: `Libro.hidratar` pone en cada una una propiedad `saldo` accesora y no enumerable que lee un índice en centavos enteros (por eso `JSON.stringify`, el guardado, los respaldos y los clones nunca la incluyen). `Libro.verificar` queda como comprobación de coherencia.
+2. **Nadie escribe `c.saldo` directamente.** Solo la puerta única. Si alguien lo hace, no descuadra: `_asignarSaldo` registra un ajuste `asignacion-directa` por la diferencia (visible en el historial) y, con `Libro.estricto = true` (modo de las pruebas), lanza error.
 3. **Toda llamada a la puerta única lleva `origen`** (`{ modulo, ref }`). Excepciones sin `ref`: intereses de Nu, chequeo rápido, CDT y destape de la alcancía, que no nacen de un registro suelto.
 4. **Deshacer = una entrada `reversion`**, no borrar. Quien revierte pasa el mismo `ref` con `rev: true` (o envuelve el bloque en `Libro.conOrigen({ …, rev: true }, fn)`).
 5. **El saldo nunca se recorta.** Una salida mayor que el saldo se registra completa y la cuenta queda negativa y visible (los selectores ya solo ofrecen cuentas con saldo suficiente, así que un negativo es un movimiento mal registrado).
@@ -58,13 +58,13 @@ S.libro = [{
 
 `c.saldo` (de cuentas y cajitas) se guarda como dato de lectura rápida; el libro es contra lo que se verifica.
 
-**Versión del esquema:** `S.schemaVersion` (hoy 9; `SCHEMA_BASE` = 9 es la primera compatible y `MIGRACIONES` está vacía). La app no migra datos de versiones anteriores a 9: `aplicarMigraciones` los marca (`S._esquemaAnterior`) y el import de un backup así se rechaza. El mecanismo de `MIGRACIONES` queda para cambios futuros del modelo; ver §6.
+**Versión del esquema:** `S.schemaVersion` (hoy 12; `SCHEMA_BASE` = 12 es la primera compatible y `MIGRACIONES` está vacía: la v11 se plegó el 2026-11-13 y la v12 el 2026-11-14). La app no migra datos de versiones anteriores a 12: `aplicarMigraciones` los marca (`S._esquemaAnterior`) y el import de un backup así se rechaza. El mecanismo de `MIGRACIONES` queda para cambios futuros del modelo; ver §6.
 
 ## 5. Flujo
 
 **Escribir.** Un módulo crea su registro y llama `sumarFuente(cuenta, monto, { origen: { modulo, ref } })` o `descontarFuente(…)`. La puerta única cambia `c.saldo` y llama `Libro.registrar`. Intereses, chequeo y CDT usan `ajustarSaldoCuenta(cuenta, nuevoSaldo, opts)`, que registra la *diferencia*.
 
-**Revertir.** Borrar un movimiento principal lo deshace todo lo que generó (cuentas, espejos y márgenes de "El valor era diferente"), como si no hubiera pasado; por eso todo efecto secundario se enlaza al principal (`_encMovId` / `linkId` en `diffAplicar`). Al borrar un movimiento, el módulo devuelve el saldo con `origen: { …, rev: true }`; queda una `reversion` con el mismo `ref`. Cada módulo tiene su helper (`_og…(ref, rev)`) y los que revierten en varios pasos usan `Libro.conOrigen`.
+**Revertir.** Borrar un movimiento principal lo deshace todo lo que generó (cuentas, espejos y márgenes de "El valor era diferente"), como si no hubiera pasado; por eso todo efecto secundario se enlaza al principal (`_encargoMovimientoId` / `linkId` en `diffAplicar`). Al borrar un movimiento, el módulo devuelve el saldo con `origen: { …, rev: true }`; queda una `reversion` con el mismo `ref`. Cada módulo tiene su helper (`_origenLibro…(ref, rev)`) y los que revierten en varios pasos usan `Libro.conOrigen`.
 
 **Verificar.** `save()` llama `Libro.verificar()`; si alguna cuenta no cuadra, avisa una vez por sesión (consola y aviso en pantalla) y deja el detalle en `window._libroDescuadres`.
 
@@ -85,11 +85,11 @@ S.libro = [{
 - **Libro de patas de caja, no partida doble.** Cada módulo conserva su historia propia (a quién, qué deuda, qué abonos); el libro solo guarda el efecto en las cuentas.
 - **Dos vistas, no una.** El ingreso y gasto del mes incluyen hechos sin pata de caja, así que `Periodo` sigue leyendo los registros de los módulos. El libro no clasifica ingreso/gasto.
 - **Las tarjetas de crédito no son cuenta del libro.** Su deuda ya se deriva de sus propios registros (`tcRecalcular`: saldo inicial + compras + cargos externos − pagos, en cada `refresh`); duplicarla en el libro no aportaría nada.
-- **Saldo guardado + verificación**, en lugar de calcularlo siempre: la lectura es instantánea y cualquier código que cambie un saldo sin pasar por el libro se detecta al guardar. Derivarlo en cada refresh habría escondido el error.
+- **Saldo derivado del libro, con índice** (2026-11-23; antes: saldo guardado + verificación). Con dos copias del dinero había que vigilar que no se separaran (`verificar`, `recalcularSaldos` tras fusionar, `_fijarSaldoReconciliado`); con una sola fuente de verdad el descuadre es imposible por construcción y la fusión entre dispositivos es solo unión del libro. La objeción de entonces («derivarlo escondería el error») se cubre con el modo estricto y con los ajustes `asignacion-directa`, que dejan rastro. La lectura sigue siendo instantánea: `registrar` mantiene un índice por libro en centavos enteros (se reconstruye solo si el largo del libro cambia por fuera). Un respaldo viejo con `saldo` guardado se importa sin pérdida: la diferencia queda como ajuste «Saldo importado». Diseño completo: `docs/diseno-saldo-derivado-y-cierre.md`.
 - **Revertir añade, no borra.** Deja rastro auditable de qué se deshizo y por qué módulo.
 - **Una sola lista de historial.** Evita que una pantalla o un cálculo se olvide de una lista (el origen de varios descuadres silenciosos) y que cada módulo tenga que saber en cuál escribir.
 - **El libro vive en el núcleo (`el núcleo`)**, no en un archivo aparte: la puerta única que lo usa está ahí y tiene que funcionar en cualquier pantalla y en cualquier test que cargue el núcleo.
-- **Sin migraciones: la app nació limpia en el esquema 9 (2026-10-18).** No quedan datos de usuario que migrar, así que las migraciones de las versiones 8 (tasa única de Nu) y 9 (Spotify en `S.spotify`) se plegaron en el modelo actual en vez de arrastrarse como código que transforma formas anteriores. El mecanismo (`MIGRACIONES`, vacío) se usará para el próximo cambio de forma de los datos.
+- **Sin migraciones: la app nació limpia en el esquema 9 (2026-10-18).** No quedan datos de usuario que migrar, así que las migraciones de las versiones 8 (tasa única de Nu) y 9 (Spotify en `S.spotify`) se plegaron en el modelo actual en vez de arrastrarse como código que transforma formas anteriores. El mecanismo (`MIGRACIONES`) se usó en la v11 (2026-11-12) y en la v12 (2026-11-14); como nadie usa la app y no hay datos que migrar, ambas se plegaron (`SCHEMA_BASE` = 12, `MIGRACIONES` vacía) y el mecanismo queda para cambios futuros del modelo.
 - **No existe una función única "mover plata + espejo".** Se evaluó (`Libro.mover`): hay solo 9 pares saldo+espejo (Préstamos 6, Mesada 1, Spotify 1, y la definición) frente a 86 llamadas de saldo que van con los registros propios de cada módulo (gastos, encargos, tarjetas, alcancía). Unificar 9 pares no justifica una puerta nueva; la puerta única ya es `sumarFuente`/`descontarFuente`.
 - **La clasificación es un campo (`clase`), no un libro de partida doble.** Ingreso, gasto, neutro y ajuste se escriben en el movimiento al crearlo y `Periodo` los lee; así desaparecieron la cascada de ~12 condiciones sobre ~30 etiquetas y los fallbacks por texto de la descripción. Se descartó la partida doble (cada hecho como asiento Debe/Haber): obligaba a reescribir cómo registra cada módulo (Préstamos solo ya es ~3.000 líneas) y a reinterpretar todo el historial, y solo compensaría si hicieran falta reportes por cuenta contable. `clase` equivale al tipo de la cuenta contraparte, así que la puerta sigue abierta. El libro actual (patas de caja) cubre lo que la partida doble daba para saldos: reversión por asiento y saldo explicable. Pendiente conocido y deliberado: los movimientos de Encargos (plata de terceros) llevan `neutro`; solo importaría una clase propia (`tercero`) si algún día se hace contabilidad por cuenta.
 - **Las entradas del libro sin fila propia se muestran como filas con candado** en el historial: no se pueden borrar desde ahí, porque no las originó un módulo.
@@ -99,10 +99,10 @@ S.libro = [{
 | Qué | Dónde |
 |---|---|
 | El libro (`Libro`: `registrar`, `conOrigen`, `verificar`, `entradasVisibles`, `saldo`), la puerta única (`sumarFuente`, `descontarFuente`, `ajustarSaldoCuenta`, `_libroPata`), la verificación en `save()`, y la versión del esquema (`SCHEMA_BASE`, `MIGRACIONES`, `aplicarMigraciones`) | `js/core/ (núcleo)` |
-| Espejo en el historial (`registrarMovEspejo`, `borrarMovEspejo`): siempre en `S.movimientos` con `fuente` | `js/core/cuenta-efectos.js` |
+| Espejo en el historial (`registrarMovimientoEspejo`, `borrarMovimientoEspejo`): siempre en `S.movimientos` con `fuente` | `js/core/cuenta-efectos.js` |
 | Historial de una cuenta con las entradas del libro sin fila | `getMovimientosCuenta` en `js/modules/cuentas.js` |
 | Borrado desde el feed o el historial de una cuenta | `eliminarMovimiento` en `js/core/movimientos.js` |
-| Origen por módulo | Cada módulo declara el suyo con `Libro.origen('modulo')` (núcleo): `_ogGastoVariable` (gastos), `_ogEnc` (encargos), `_ogSp` (spotify), `_ogMes` (mesada), `_ogTc` (tarjetas), `_ogAlc` (alcancía), `_ogCta` (cuentas), `_ogCp` (plata comprometida), `_ogCobro` (ingresos fijos), `_ogMov` (borrado desde el historial), `_og`/`_enReversion` (préstamos). `_og(ref)` aplica; `_og(ref, true)` revierte. Un módulo nuevo solo añade su línea; una guarda en `tests/nucleo.test.js` impide volver a copiar la función |
+| Origen por módulo | Cada módulo declara el suyo con `Libro.origen('modulo')` (núcleo): `_origenLibroGastoVariable` (gastos), `_origenLibroEncargo` (encargos), `_origenLibroSpotify` (spotify), `_origenLibroMes` (mesada), `_origenLibroTc` (tarjetas), `_origenLibroAlcancia` (alcancía), `_origenLibroCta` (cuentas), `_origenLibroPlataComprometida` (plata comprometida), `_origenLibroCobro` (ingresos fijos), `_origenLibroMovimiento` (borrado desde el historial), `_origenLibro`/`_enReversion` (préstamos). `_origenLibro(ref)` aplica; `_origenLibro(ref, true)` revierte. Un módulo nuevo solo añade su línea; una guarda en `tests/nucleo.test.js` impide volver a copiar la función |
 | Validación al importar un backup (versión del esquema, `libro` debe ser array) | `_validarEstructuraJSON` en `js/modules/configuracion.js` |
 | Pruebas | `tests/libro.test.js` (suites `libro` y `libro-modulos`), `tests/cuentas.test.js` (suite `historial-cuenta`), `tests/nucleo.test.js` (suites `migraciones`, `clase-movimientos` y `clase-cobertura`) |
 | Guardia de las reglas 2 y 3 (nadie escribe `.saldo`; toda llamada de saldo con `origen`) | `tests/libro.test.js` (suite `puerta-unica`) |

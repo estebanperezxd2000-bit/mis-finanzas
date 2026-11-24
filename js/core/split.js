@@ -12,11 +12,11 @@
    para no tener que tocar el resto del archivo ni el HTML, que
    siguen llamando a esas funciones por su nombre de toda la vida.
 
-   crearSplitWidget(instId, cfg):
+   crearSplitWidget(instanciaId, cfg):
      simpleId, splitId, toggleId, rowsId : ids de los elementos del DOM
      getModo()/setModo(v)  : leer/escribir el flag de modo split.
                               Es un closure sobre el `let` propio de
-                              cada módulo (mpSplitMode, etc.) — así el
+                              cada módulo (mesadaPagoSplitMode, etc.) — así el
                               resto del archivo, que lee esa variable
                               directamente, sigue funcionando sin tocar
                               una sola línea más.
@@ -28,7 +28,7 @@
    Nota: las filas ahora usan input type="text" + class="money-input"
    (igual que el resto de la app, parseMoney) en vez del type="number"
    + parseFloat que tenía Mesada — eso era una inconsistencia real
-   preexistente (mpMonto, el campo padre, ya usaba money-input), no
+   preexistente (mesadaPagoMonto, el campo padre, ya usaba money-input), no
    un cambio de comportamiento que se inventa este refactor.
 
    ── QUÉ CAMBIÓ EN ESTA MIGRACIÓN (respecto a index.html) ─────────
@@ -71,45 +71,49 @@
    cada módulo — la exclusión se hace en runtime sobre las <option>
    que ya devuelve cfg.getFuentesFn.
    ═══════════════════════════════════════════════════════════════ */
-var _splitInstancias = _splitInstancias || {}; // `var`: cargarlo dos veces (tests con varios cargadores) no falla
+import { exponerGlobales, exponerVariables } from './puente.js';
+// Puente global (js/core/puente.js): las funciones se hoistean, así que quedan en window desde el principio.
+exponerGlobales({ crearSplitWidget, splitCuentasValidas, splitToggle, splitAgregarRow, splitActualizarBotones, splitOpcionesUsadas, splitActualizarOpciones, splitReset, splitGetData, splitPreview });
+
+export var _splitInstancias = _splitInstancias || {}; // `var`: cargarlo dos veces (tests con varios cargadores) no falla
 
 // Devuelve la API completa de la instancia: { toggle, addRow, data, reset, preview }. Cada módulo la guarda en una constante
 // (`const gastoVariableSplit = crearSplitWidget('gv', {...})`) y llama `gastoVariableSplit.toggle()` / `gastoVariableSplit.data()`, en vez de escribir (y registrar) 4–5
 // envoltorios de una línea por instancia. Las instancias que aún tienen los envoltorios de siempre siguen funcionando igual: las funciones
-// `splitToggle(instId)` & co. no cambiaron.
+// `splitToggle(instanciaId)` & co. no cambiaron.
 // `cfg.fuentes` (declarativo, A2): objeto —o función que lo devuelve, para lo que cambia con la pantalla— con las opciones de
 // opcionesCuenta(); reemplaza a `getFuentesFn` escrito a mano. `getFuentesFn` sigue valiendo para casos especiales.
-function crearSplitWidget(instId, cfg){
+export function crearSplitWidget(instanciaId, cfg){
   if (!cfg.getFuentesFn && cfg.fuentes) {
     const decl = cfg.fuentes;
     cfg.getFuentesFn = sel => opcionesCuenta({ ...(typeof decl === 'function' ? decl() : decl), selectedVal: sel });
   }
-  _splitInstancias[instId] = cfg;
+  _splitInstancias[instanciaId] = cfg;
   return {
-    instId,
-    toggle: () => splitToggle(instId),
-    addRow: () => splitAgregarRow(instId),
-    data: () => splitGetData(instId),
-    reset: () => splitReset(instId),
-    preview: () => splitPreview(instId),
+    instanciaId,
+    toggle: () => splitToggle(instanciaId),
+    addRow: () => splitAgregarRow(instanciaId),
+    data: () => splitGetData(instanciaId),
+    reset: () => splitReset(instanciaId),
+    preview: () => splitPreview(instanciaId),
   };
 }
 
 // Cuántas cuentas distintas ofrece la instancia: las <option> con valor que devuelve cfg.getFuentesFn.
 // El motor no sabe de filtros (cada módulo decide qué cuentas valen para su sheet), así que cuenta lo
 // que ese sheet ofrece de verdad. Es el tope de filas y el requisito (mínimo 2) para poder dividir.
-function splitCuentasValidas(instId){
-  const cfg = _splitInstancias[instId]; if(!cfg) return 0;
+export function splitCuentasValidas(instanciaId){
+  const cfg = _splitInstancias[instanciaId]; if(!cfg) return 0;
   const tmp = document.createElement('select');
   tmp.innerHTML = cfg.getFuentesFn('');
   return Array.from(tmp.options).filter(o => o.value).length;
 }
 
-function splitToggle(instId){
-  const cfg = _splitInstancias[instId]; if(!cfg) return;
+export function splitToggle(instanciaId){
+  const cfg = _splitInstancias[instanciaId]; if(!cfg) return;
   const modo = !cfg.getModo();
   // Dividir pide al menos dos cuentas distintas: con una sola no hay nada que repartir.
-  if(modo && splitCuentasValidas(instId) < 2){ toast('Necesitas al menos dos cuentas para dividir', 'err'); return; }
+  if(modo && splitCuentasValidas(instanciaId) < 2){ toast('Necesitas al menos dos cuentas para dividir', 'err'); return; }
   cfg.setModo(modo);
   const simple = document.getElementById(cfg.simpleId);
   const split  = document.getElementById(cfg.splitId);
@@ -124,19 +128,19 @@ function splitToggle(instId){
   }
   const rows = document.getElementById(cfg.rowsId);
   if(modo && rows && rows.children.length===0){
-    splitAgregarRow(instId);
-    splitAgregarRow(instId);
+    splitAgregarRow(instanciaId);
+    splitAgregarRow(instanciaId);
   }
-  splitActualizarBotones(instId);
+  splitActualizarBotones(instanciaId);
   cfg.onPreview && cfg.onPreview();
 }
 
-function splitAgregarRow(instId){
-  const cfg = _splitInstancias[instId]; if(!cfg) return;
+export function splitAgregarRow(instanciaId){
+  const cfg = _splitInstancias[instanciaId]; if(!cfg) return;
   const container = document.getElementById(cfg.rowsId);
   if(!container) return;
   // Tope: una fila por cuenta disponible (la misma cuenta no se puede elegir dos veces).
-  if(container.children.length >= splitCuentasValidas(instId)){ toast('Ya usaste todas las cuentas disponibles', 'err'); return; }
+  if(container.children.length >= splitCuentasValidas(instanciaId)){ toast('Ya usaste todas las cuentas disponibles', 'err'); return; }
   const id = 'spr_'+uid();
   const div = document.createElement('div');
   div.id = id;
@@ -154,24 +158,24 @@ function splitAgregarRow(instId){
   const sel = div.querySelector('select');
   const inp = div.querySelector('input');
   const btn = div.querySelector('button');
-  if (sel) sel.addEventListener('change', () => { splitActualizarOpciones(instId); splitPreview(instId); });
-  if (inp) inp.addEventListener('input', () => splitPreview(instId));
+  if (sel) sel.addEventListener('change', () => { splitActualizarOpciones(instanciaId); splitPreview(instanciaId); });
+  if (inp) inp.addEventListener('input', () => splitPreview(instanciaId));
   if (btn) btn.addEventListener('click', () => {
     // Guarda de más: aunque el botón queda deshabilitado/oculto en <=2
     // filas (ver splitActualizarBotones), no confiamos solo en el CSS.
     if (container.children.length <= 2) return;
     div.remove();
-    splitActualizarOpciones(instId);
-    splitActualizarBotones(instId);
-    splitPreview(instId);
+    splitActualizarOpciones(instanciaId);
+    splitActualizarBotones(instanciaId);
+    splitPreview(instanciaId);
   });
 
   container.appendChild(div);
   // la fila nueva entra con la cuenta en blanco, pero de todos modos se
   // resincroniza acá para que respete cualquier cuenta ya usada en las
   // filas existentes (por si getFuentesFn cambia entre llamadas).
-  splitActualizarOpciones(instId);
-  splitActualizarBotones(instId);
+  splitActualizarOpciones(instanciaId);
+  splitActualizarBotones(instanciaId);
 }
 
 // Con el total de filas de la instancia en 2 (el mínimo), el botón de borrar
@@ -179,8 +183,8 @@ function splitAgregarRow(instId){
 // pasa a 2 columnas (cuenta + monto) — así no queda un hueco vacío de 28px
 // (+ gap) a la derecha del input. En cuanto hay 3 o más filas, el botón vuelve
 // y la grilla a 3 columnas. Se llama tras cualquier alta o baja de fila.
-function splitActualizarBotones(instId){
-  const cfg = _splitInstancias[instId]; if(!cfg) return;
+export function splitActualizarBotones(instanciaId){
+  const cfg = _splitInstancias[instanciaId]; if(!cfg) return;
   const rows = document.getElementById(cfg.rowsId);
   if(!rows) return;
   const puedeBorrar = rows.children.length > 2;
@@ -195,8 +199,8 @@ function splitActualizarBotones(instId){
 
 // Devuelve las cuentas (values) ya elegidas en las filas de la instancia,
 // excluyendo la fila que se pasa en rowExcluir (para no autobloquearse).
-function splitOpcionesUsadas(instId, rowExcluir){
-  const cfg = _splitInstancias[instId]; if(!cfg) return [];
+export function splitOpcionesUsadas(instanciaId, rowExcluir){
+  const cfg = _splitInstancias[instanciaId]; if(!cfg) return [];
   const rows = document.getElementById(cfg.rowsId);
   if(!rows) return [];
   const usadas = [];
@@ -211,15 +215,15 @@ function splitOpcionesUsadas(instId, rowExcluir){
 // Reconstruye el <select> de cada fila quitando las cuentas que ya estén
 // elegidas en OTRA fila de la misma instancia, conservando siempre la
 // opción vacía ("elige cuenta") y el valor propio de cada fila.
-function splitActualizarOpciones(instId){
-  const cfg = _splitInstancias[instId]; if(!cfg) return;
+export function splitActualizarOpciones(instanciaId){
+  const cfg = _splitInstancias[instanciaId]; if(!cfg) return;
   const rows = document.getElementById(cfg.rowsId);
   if(!rows) return;
   for(const row of rows.children){
     const sel = row.querySelector('select');
     if(!sel) continue;
     const valorActual = sel.value;
-    const usadasEnOtras = splitOpcionesUsadas(instId, row);
+    const usadasEnOtras = splitOpcionesUsadas(instanciaId, row);
     sel.innerHTML = cfg.getFuentesFn(valorActual);
     for(const opt of Array.from(sel.options)){
       if(opt.value && usadasEnOtras.includes(opt.value) && opt.value !== valorActual){
@@ -232,8 +236,8 @@ function splitActualizarOpciones(instId){
 
 // Devuelve un widget a su estado base: modo simple, sin filas, botón "Dividir".
 // Se usa al reabrir un sheet (para que no quede un split viejo de la vez anterior).
-function splitReset(instId){
-  const cfg = _splitInstancias[instId]; if(!cfg) return;
+export function splitReset(instanciaId){
+  const cfg = _splitInstancias[instanciaId]; if(!cfg) return;
   cfg.setModo(false);
   const simple = document.getElementById(cfg.simpleId);
   const split  = document.getElementById(cfg.splitId);
@@ -250,8 +254,8 @@ function splitReset(instId){
   }
 }
 
-function splitGetData(instId){
-  const cfg = _splitInstancias[instId]; if(!cfg) return [];
+export function splitGetData(instanciaId){
+  const cfg = _splitInstancias[instanciaId]; if(!cfg) return [];
   const rows = document.getElementById(cfg.rowsId);
   if(!rows) return [];
   const result = [];
@@ -265,7 +269,7 @@ function splitGetData(instId){
   return result;
 }
 
-function splitPreview(instId){
-  const cfg = _splitInstancias[instId]; if(!cfg) return;
+export function splitPreview(instanciaId){
+  const cfg = _splitInstancias[instanciaId]; if(!cfg) return;
   cfg.onPreview && cfg.onPreview();
 }

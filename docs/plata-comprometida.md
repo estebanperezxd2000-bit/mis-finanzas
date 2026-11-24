@@ -2,7 +2,7 @@
 
 Documentación de la sección **Plata Comprometida** de `mis-finanzas` (`index.html` → `js/modules/plata-comprometida.js`). Pensada para volver a leerla en unos meses y entender el módulo sin releer el código: qué problema resuelve, qué reglas no se deben romper, qué datos guarda y por qué, cómo fluye la información, y qué decisiones de diseño se tomaron. Los detalles de implementación (funciones, ids de sheets) aparecen al final, como referencia rápida — no como el foco del documento.
 
-El historial de bugs corregidos vive en [`CHANGELOG.md`](./CHANGELOG.md#plata-comprometida), no acá.
+El historial de bugs corregidos vive en [`changelog/plata-comprometida.md`](./changelog/plata-comprometida.md), no acá.
 
 ---
 
@@ -21,13 +21,13 @@ Registra dinero que **todavía no llegó** pero que ya se sabe que va a entrar (
 - **Sobrante / "le sobra":** lo que queda del monto total después de sumar todos los destinos. Es la única parte del ingreso que se convierte en **ingreso libre real** al recibirse — todo lo demás ya tenía un destino planeado, no es ganancia nueva.
 - **Adelanto (`yaSaque`, solo en Reposición):** decisión explícita de que la plata ya salió de la cuenta *antes* de que llegue el ingreso que la va a reponer (ej. "ya saqué 50mil de la cajita para cubrir esto, cuando llegue el reembolso se repone"). Descuenta la cuenta en el momento de marcarlo, no cuando llega el ingreso.
 - **Ya pagado (`yaPague`, en Gasto y Otro):** igual que el adelanto pero para gastos — indica que el gasto ya se cubrió (con plata de una cajita ya guardada, o cargado a una TC) antes de que el ingreso llegue formalmente.
-- **Favor (gasto con TC):** cuando un destino tipo Gasto se cubre cargándolo a una tarjeta de crédito, esa deuda se marca `_esFavor`/`_desdeCP` — es deuda que vas a cubrir con la plata de este ingreso, no deuda propia real. El resto de la app (`calcDeudaTcPropia()`) la excluye de "cuánto debo realmente" — ver `analisis-financiero.md`/`salud-financiera.md`.
+- **Favor (gasto con TC):** cuando un destino tipo Gasto se cubre cargándolo a una tarjeta de crédito, esa deuda se marca `_esFavor`/`_desdePlataComprometida` — es deuda que vas a cubrir con la plata de este ingreso, no deuda propia real. El resto de la app (`calcDeudaTcPropia()`) la excluye de "cuánto debo realmente" — ver `analisis-financiero.md`/`salud-financiera.md`.
 - **Recibido:** el momento en que el ingreso deja de ser una promesa y se convierte en movimientos reales — cada destino ejecuta su efecto (reponer, pagar, abonar) y el sobrante entra como ingreso libre a la cuenta que se elija en ese momento.
 
 ## 3. Reglas que nunca deben romperse
 
 - **Mientras un ingreso no está "recibido", no es patrimonio disponible.** Ni el monto total ni ningún destino cuentan como plata libre hasta que el usuario confirma explícitamente que llegó.
-- **La plata ajena que ya llegó pero todavía no se pagó sí se resta del patrimonio**, aunque esté físicamente en una cuenta propia (`_saldoCPAjeno()`, en `js/core/patrimonio.js`) — no es tuya solo porque esté de paso en tu cajita.
+- **La plata ajena que ya llegó pero todavía no se pagó sí se resta del patrimonio**, aunque esté físicamente en una cuenta propia (`_saldoPlataComprometidaAjeno()`, en `js/core/patrimonio.js`) — no es tuya solo porque esté de paso en tu cajita.
 - **Marcar un adelanto o un pago como hecho es siempre una decisión explícita del usuario** (`yaSaque`/`yaPague`), nunca se infiere automáticamente por fecha o por monto — mismo principio que ya usa Mesada para "quedó debiendo".
 - **Un adelanto nunca se cuenta dos veces.** Si se marcó `yaSaque`, la cuenta ya se descontó en ese momento; al recibirse el ingreso, esa misma cuenta se vuelve a acreditar el mismo monto — el neto a través del tiempo es cero, la plata solo estuvo "prestada" de la propia cuenta mientras se esperaba el ingreso real.
 - **Un gasto cargado a tarjeta de crédito por este módulo nunca aparece como deuda propia** en los cálculos de salud financiera o análisis — es un favor cubierto por el ingreso que se está esperando, no una compra propia.
@@ -84,9 +84,9 @@ Todo vive en `S.plataComprometida[]`:
 
 ### Clase de los movimientos (2026-10-09)
 
-Desde 2026-10-09 todo movimiento de ingreso/gasto lleva `clase` (`ingreso` · `gasto` · `neutro` · `ajuste`), escrita al crearlo, y los totales del mes (`Periodo`) la leen en vez de deducirla de etiquetas. Ver `libro-de-movimientos.md` (el libro no clasifica: lo hace `clase`) y `CHANGELOG.md#infraestructura--seguridad`.
+Desde 2026-10-09 todo movimiento de ingreso/gasto lleva `clase` (`ingreso` · `gasto` · `neutro` · `ajuste`), escrita al crearlo, y los totales del mes (`Periodo`) la leen en vez de deducirla de etiquetas. Ver `libro-de-movimientos.md` (el libro no clasifica: lo hace `clase`) y `changelog/infraestructura-seguridad.md`.
 
-- Reposiciones de plata comprometida a una cajita (`_esReposicionCP`): `neutro` (reponer lo que ya tenías comprometido no es plata nueva).
+- Reposiciones de plata comprometida a una cajita (`_esReposicionPlataComprometida`): `neutro` (reponer lo que ya tenías comprometido no es plata nueva).
 - Ingreso libre (`_esSobrante`) y el ingreso de la cuenta personalizada de una ganancia: `ingreso`.
 - Los adelantos y pagos (`tipo: 'salida'`) no llevan `clase`: no son gasto del mes.
 
@@ -153,16 +153,16 @@ Si corresponde, chequear antigüedad de los movimientos afectados
 Confirmar → revertir → sacar el ingreso de S.plataComprometida
 ```
 
-Las reversiones que restan saldo (reposición a cada destino, cajita usada para pagar TC, reposición de un gasto de cajita) usan `descontarFuente(..., { exacto: true })`, sin piso en 0 — ver `CHANGELOG.md#patrimonio-y-cálculos-globales` (2026-09-30).
+Las reversiones que restan saldo (reposición a cada destino, cajita usada para pagar TC, reposición de un gasto de cajita) usan `descontarFuente(..., { exacto: true })`, sin piso en 0 — ver `changelog/patrimonio-y-calculos-globales.md` (2026-09-30).
 
 ## 6. Casos especiales
 
 - **Reposición adelantada vs. no adelantada, al recibir:** en los dos casos la cuenta termina sumando el mismo monto — la única diferencia es el texto del movimiento generado ("Reposición" vs. "Reposición (adelantada)"). El adelanto ya había descontado la cuenta por separado, así que el efecto neto a través del tiempo es el mismo, solo cambia cuándo se sintió la baja de saldo.
 - **Gasto sin origen definido** (ni cajita ni TC elegidos): el destino queda como puro registro informativo, sin ningún efecto en saldos ni al marcarlo pagado ni al recibir el ingreso.
-- **Botón Eliminar no visible para ingresos ya recibidos con pagos pendientes** (solo aparece "Marcar como pagado" en esa sección de la pantalla) — pero `_cpEliminar()` sabe revertir un ingreso recibido si se llega a invocar por otro camino; es código defensivo, no una ruta normal de uso.
+- **Botón Eliminar no visible para ingresos ya recibidos con pagos pendientes** (solo aparece "Marcar como pagado" en esa sección de la pantalla) — pero `_plataComprometidaEliminar()` sabe revertir un ingreso recibido si se llega a invocar por otro camino; es código defensivo, no una ruta normal de uso.
 - **Errores parciales al recibir:** cada destino se ejecuta dentro de su propio `try/catch` — si uno falla, los demás se siguen procesando igual, y al final se avisa con un solo toast qué destinos tuvieron problemas, en vez de frenar toda la distribución por un error puntual.
 - **Protección por antigüedad al eliminar:** no hay una fecha propia guardada por cada adelanto/marca individual (solo el booleano `yaSaque`/`yaPague`), así que se usa `fechaRecibido` (si ya se recibió) o `fechaLlegada` como mejor aproximación disponible para decidir si el movimiento es demasiado viejo para revertir con confianza.
-- **Marcar "ya pagué" en un Gasto, al crearlo, mueve la plata en el acto** — igual que marcar "ya saqué" en una Reposición. No siempre fue así: hasta el 2026-09-10 esa rama solo existía para Reposición; un Gasto marcado como pagado al momento de crearlo guardaba el flag pero nunca descontaba la cajita ni cargaba la tarjeta, y como el sheet "Marcar pagos" solo actúa sobre transiciones (pendiente→pagado), un destino que ya nacía marcado jamás pasaba por ahí — la plata quedaba "pagada" solo en apariencia, sin ningún movimiento real detrás, sin ningún error visible. Corregido — ver `CHANGELOG.md#plata-comprometida`.
+- **Marcar "ya pagué" en un Gasto, al crearlo, mueve la plata en el acto** — igual que marcar "ya saqué" en una Reposición. No siempre fue así: hasta el 2026-09-10 esa rama solo existía para Reposición; un Gasto marcado como pagado al momento de crearlo guardaba el flag pero nunca descontaba la cajita ni cargaba la tarjeta, y como el sheet "Marcar pagos" solo actúa sobre transiciones (pendiente→pagado), un destino que ya nacía marcado jamás pasaba por ahí — la plata quedaba "pagada" solo en apariencia, sin ningún movimiento real detrás, sin ningún error visible. Corregido — ver `changelog/plata-comprometida.md`.
 - **Alertas en "Necesita atención":** un ingreso pendiente que llega en ≤3 días (o que ya debería haber llegado) genera un aviso; un gasto de cajita ya recibido pero sin pagar con fecha de pago próxima genera otro, por separado — ambos llevan directo a la pantalla al tocarlos.
 
 ## 7. Decisiones de diseño
@@ -177,7 +177,7 @@ Las reversiones que restan saldo (reposición a cada destino, cajita usada para 
 
   El costo real de esta decisión: mientras dura la espera, el patrimonio muestra una caída que no es un empobrecimiento real — es exactamente la misma situación que un préstamo a un tercero sin cuenta especificada (ver `proyeccion-financiera.md` §5), solo que en sentido contrario. La Proyección financiera ya absorbe este tipo de bache con su *trimmed mean* (descarta el día más alto y el más bajo antes de promediar, ver `proyeccion-financiera.md` §2), así que un adelanto puntual no debería distorsionar la tendencia de forma visible salvo que sea muy grande en relación al patrimonio total.
 
-  Si en el futuro este bache llega a sentirse como un problema real de uso (no solo teórico), la extensión más simple sería un helper aislado y aditivo — simétrico a `_saldoCPAjeno()`, que ya existe en `js/core/patrimonio.js` para el caso inverso (plata ajena recibida y sin pagar, que sí se resta) — en vez de tocar `calcPatrimonioTotal()` a mano en el medio de sus otras sumas.
+  Si en el futuro este bache llega a sentirse como un problema real de uso (no solo teórico), la extensión más simple sería un helper aislado y aditivo — simétrico a `_saldoPlataComprometidaAjeno()`, que ya existe en `js/core/patrimonio.js` para el caso inverso (plata ajena recibida y sin pagar, que sí se resta) — en vez de tocar `calcPatrimonioTotal()` a mano en el medio de sus otras sumas.
 - **¿Por qué el HTML de la pantalla y del ítem del menú "Más" se copiaron como estático a `index.html`, pero el sheet de crear/editar no?** Porque el ítem de menú que dispara la carga lazy del módulo tiene que existir *antes* de que el módulo cargue — si solo lo inyectaba el propio script, sería un círculo vicioso (hace falta el botón para cargar el script que crea el botón). El sheet de crear/editar no tiene ese problema: nadie puede abrirlo antes de que la pantalla esté activa, y la pantalla no se activa hasta que el módulo ya cargó.
 
 ## 8. Referencia de implementación
@@ -188,30 +188,30 @@ Las reversiones que restan saldo (reposición a cada destino, cajita usada para 
 
 | Sheet | id del overlay | Función que abre |
 |---|---|---|
-| Nuevo / editar ingreso | `cp-nuevo` | `_cpAbrirNuevo()` / `_cpAbrirEditar(id)` |
-| Agregar destino | `cp-destino` | `_cpAgregarDestino()` |
-| Recibir ingreso | `cp-recibir` | `_cpAbrirRecibir(id)` |
-| Marcar pagos (dinámico, creado la primera vez que hace falta) | `cp-marcar` | `_cpMarcarPagos(id)` |
+| Nuevo / editar ingreso | `cp-nuevo` | `_plataComprometidaAbrirNuevo()` / `_plataComprometidaAbrirEditar(id)` |
+| Agregar destino | `cp-destino` | `_plataComprometidaAgregarDestino()` |
+| Recibir ingreso | `cp-recibir` | `_plataComprometidaAbrirRecibir(id)` |
+| Marcar pagos (dinámico, creado la primera vez que hace falta) | `cp-marcar` | `_plataComprometidaMarcarPagos(id)` |
 
 ### Funciones
 
 | Función | Qué hace |
 |---|---|
-| `_cpData()` | Devuelve `S.plataComprometida`, garantizando que exista |
-| `_cpRenderLista()` | Pinta la pantalla completa: stats hero, pendientes con su barra de compromiso, y recibidos con pagos de cajita aún abiertos |
-| `_cpDiasHastaStr(fecha)` | Texto relativo ("Mañana", "En 3 días", "Vencido") para una fecha |
-| `_cpAbrirNuevo()` / `_cpAbrirEditar(id)` | Abren el sheet de creación/edición, poblando destinos si corresponde |
-| `_cpGuardar()` | Valida y guarda el ingreso (nuevo o editado) |
-| `_cpdSetTipo(tipo)` / `_cpdTipoChange()` | Cambian el tipo de destino en construcción y qué campos se muestran |
-| `_cpdSetGastoOrigen(val)` | Alterna la UI entre gasto de cajita y gasto con TC |
-| `_cpdSetYaSaque(val)` / `_cpdSetYaPague(val)` | Togglean el estado de adelanto/pago del destino en construcción |
-| `_cpdConfirmar()` | Valida y agrega el destino a la lista temporal; si es adelanto, descuenta la cuenta ya mismo |
-| `_cpAgregarDestino()` / `_cpRenderDestinosTmp()` / `_cpQuitarDestino(i)` | Manejo de la lista de destinos mientras se arma el ingreso |
-| `_cpAbrirRecibir(id)` | Arma el plan de distribución (qué le pasa a cada destino) antes de confirmar |
-| `_cpConfirmarRecibir()` | Ejecuta la distribución real: reposiciones, abonos, gastos, sobrante |
-| `_cpMarcarPagos(id)` / `_cpRenderMarcarList()` / `_cpToggleMarcar(i,val)` / `_cpGuardarMarcados()` | Sheet dinámico para marcar/desmarcar adelantos y pagos de un ingreso ya existente |
-| `_cpEliminar(id)` | Revierte todo lo que corresponda (según recibido/adelantado) y borra el registro |
-| `_cpInit()` / `_cpInitSwipe()` | Inicialización del módulo: inyecta pantalla/sheets si hace falta, conecta swipe |
+| `_plataComprometidaData()` | Devuelve `S.plataComprometida`, garantizando que exista |
+| `_plataComprometidaRenderLista()` | Pinta la pantalla completa: stats hero, pendientes con su barra de compromiso, y recibidos con pagos de cajita aún abiertos |
+| `_plataComprometidaDiasHastaStr(fecha)` | Texto relativo ("Mañana", "En 3 días", "Vencido") para una fecha |
+| `_plataComprometidaAbrirNuevo()` / `_plataComprometidaAbrirEditar(id)` | Abren el sheet de creación/edición, poblando destinos si corresponde |
+| `_plataComprometidaGuardar()` | Valida y guarda el ingreso (nuevo o editado) |
+| `_destinoNuevoSetTipo(tipo)` / `_destinoNuevoTipoChange()` | Cambian el tipo de destino en construcción y qué campos se muestran |
+| `_destinoNuevoSetGastoOrigen(val)` | Alterna la UI entre gasto de cajita y gasto con TC |
+| `_destinoNuevoSetYaSaque(val)` / `_destinoNuevoSetYaPague(val)` | Togglean el estado de adelanto/pago del destino en construcción |
+| `_destinoNuevoConfirmar()` | Valida y agrega el destino a la lista temporal; si es adelanto, descuenta la cuenta ya mismo |
+| `_plataComprometidaAgregarDestino()` / `_plataComprometidaRenderDestinosTmp()` / `_plataComprometidaQuitarDestino(i)` | Manejo de la lista de destinos mientras se arma el ingreso |
+| `_plataComprometidaAbrirRecibir(id)` | Arma el plan de distribución (qué le pasa a cada destino) antes de confirmar |
+| `_plataComprometidaConfirmarRecibir()` | Ejecuta la distribución real: reposiciones, abonos, gastos, sobrante |
+| `_plataComprometidaMarcarPagos(id)` / `_plataComprometidaRenderMarcarList()` / `_plataComprometidaToggleMarcar(i,val)` / `_plataComprometidaGuardarMarcados()` | Sheet dinámico para marcar/desmarcar adelantos y pagos de un ingreso ya existente |
+| `_plataComprometidaEliminar(id)` | Revierte todo lo que corresponda (según recibido/adelantado) y borra el registro |
+| `_plataComprometidaInit()` / `_plataComprometidaInitSwipe()` | Inicialización del módulo: inyecta pantalla/sheets si hace falta, conecta swipe |
 
 ### Integración con `renderAttencion()` y `refresh()`
 
@@ -219,4 +219,4 @@ El módulo agrega sus propias alertas con `Ui.en('atencion', …)` (el evento qu
 
 ### Dependencias externas
 
-`escHtml`, `html`/`raw`, `toast`, `save`, `refresh`, `openSheet`, `closeSheet`, `dialogo`, `uid`, `hoy`, `fmt`, `fmtInput`, `parseMoney`, `sumarFuente`, `descontarFuente`, `buildFuentesOptsHtml`, `fuenteLabel`, `materializarIntereses`, `getDeudorSaldo`, `logCambio`, `Events`, `showScreen`, `nivelAntiguedadMovimiento`/`avisarMovimientoBloqueado`/`_cuentaOpsPosteriores`/`_tcOpsPosteriores` (protección por antigüedad). De Tarjetas de Crédito: `tcCrearCompra`, `tcEliminarCompraInterna`, `tcBuscarCompraPorIdOMatch`. `_saldoCPAjeno()` (definida en `el núcleo`) es quien realmente resta esta plata ajena del patrimonio total — este módulo solo guarda los datos que esa función lee.
+`escHtml`, `html`/`raw`, `toast`, `save`, `refresh`, `openSheet`, `closeSheet`, `dialogo`, `uid`, `hoy`, `fmt`, `fmtInput`, `parseMoney`, `sumarFuente`, `descontarFuente`, `buildFuentesOptsHtml`, `fuenteLabel`, `materializarIntereses`, `getDeudorSaldo`, `logCambio`, `Events`, `showScreen`, `nivelAntiguedadMovimiento`/`avisarMovimientoBloqueado`/`_cuentaOperacionesPosteriores`/`_tcOperacionesPosteriores` (protección por antigüedad). De Tarjetas de Crédito: `tcCrearCompra`, `tcEliminarCompraInterna`, `tcBuscarCompraPorIdOMatch`. `_saldoPlataComprometidaAjeno()` (definida en `el núcleo`) es quien realmente resta esta plata ajena del patrimonio total — este módulo solo guarda los datos que esa función lee.

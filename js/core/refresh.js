@@ -1,11 +1,20 @@
 // js/core/refresh.js
 //
 // Refresh: repintado de la app: Refresh.registrar/refresh(), el repintado de Inicio (_refreshNucleo, renderCuentasInicio) y saveAndRefresh.
-// Parte del antiguo core-state.js (dividido por responsabilidad). Clásico (<script defer>), sin type="module": sus globales son
-// léxicos de script clásico. El ORDEN de carga en index.html es el de esta lista: estado → cuentas-fuentes → persistencia →
+// Parte del antiguo core-state.js (dividido por responsabilidad). Módulo ES. El ORDEN de carga (js/main.js) es el de esta lista: estado → cuentas-fuentes → persistencia →
 // patrimonio → ingresos → dialogos → utilidades-ui → refresh.
 
-const Refresh = (() => {
+import { exponerGlobales, exponerVariables } from './puente.js';
+import { asegurarEfectivo, cajitasDeCuenta, colorCuenta, cuentasActivas, cuentasAhorro, esCuentaAhorro, esCuentaFija, saldoCuentas } from './cuentas-fuentes.js';
+import { S, fmt, fmtNoCents } from './estado.js';
+import { Events } from './events.js';
+import { mesActual } from './ingresos.js';
+import { calcPatrimonioDesglose, patrimonioFormulaTexto } from './patrimonio.js';
+import { save } from './persistencia.js';
+// Puente global (js/core/puente.js): las funciones se hoistean, así que quedan en window desde el principio.
+exponerGlobales({ refresh, _colorSeguro, renderCuentasInicio, _refreshNucleo, saveAndRefresh });
+
+export const Refresh = (() => {
   const partes = []; // { id, fn, pantallas, orden, n }
   let n = 0;
   const activa = nombre => { const el = typeof document !== 'undefined' && document.getElementById('screen-' + nombre); return !!(el && el.classList.contains('active')); };
@@ -30,7 +39,7 @@ const Refresh = (() => {
 })();
 if (typeof window !== 'undefined') window.Refresh = Refresh;
 
-function refresh(){
+export function refresh(){
   asegurarEfectivo(); // Efectivo siempre existe; se guarda con el próximo save()
   _refreshNucleo();
   Refresh.ejecutar();
@@ -38,8 +47,8 @@ function refresh(){
 
 /* Resumen de cuentas de Inicio: un recuadro por cada cuenta activa (con su color), más «Prestado» y los CDTs si hay una cuenta de
    ahorro. Se pinta desde S.cuentas, no desde HTML fijo: quien tiene dos cuentas ve dos recuadros, quien tiene seis ve seis. */
-function _colorSeguro(c){return /^#[0-9a-fA-F]{6}$/.test(String(c||''))?c:'var(--text2)';}
-function renderCuentasInicio(){
+export function _colorSeguro(c){return /^#[0-9a-fA-F]{6}$/.test(String(c||''))?c:'var(--text2)';}
+export function renderCuentasInicio(){
   const el=document.getElementById('inicio-cuentas');
   if(!el)return;
   // El contenedor ES la cuadrícula (con Disponible/Prestado/CDTs ya dentro): se quitan los recuadros de la vez anterior y se
@@ -62,7 +71,7 @@ function renderCuentasInicio(){
   el.querySelectorAll('[data-color]').forEach(n=>{n.style.color=n.dataset.color;}); // color calculado: se asigna por DOM
 }
 
-function _refreshNucleo(){
+export function _refreshNucleo(){
   // Auto-sanación de tarjetas de crédito: agrega campos nuevos, infiere el
   // saldo inicial de tarjetas migradas y recalcula la deuda de cada una a
   // partir de sus movimientos (regla de consistencia). Es idempotente.
@@ -70,17 +79,41 @@ function _refreshNucleo(){
   // NOTA: ya NO se resta plata de encargos guardada en las cuentas con saldo — mismo criterio y misma razón que en
   // calcPatrimonioTotal().
   const cuentasSaldo=saldoCuentas({soloActivas:true});
-  // FIX 2026-08-13: totalPrestadoPendiente (prestado.js, grupo lazy) sin
+  // FIX: totalPrestadoPendiente (prestado.js, grupo lazy) sin
   // guard — mismo patrón de fallback (0) que ya usa inicio.js línea ~253
   // (window.totalPrestadoPendiente?...:0) para el mismo caso.
   const prest=typeof Deudas!=='undefined'?Deudas.totalPendiente('favor'):0;
+  // Resumen de la pantalla Préstamos (solo se ve en PC, css/pc.css): mismos totales que Inicio y el patrimonio.
+  if(typeof Deudas!=='undefined'){
+    const debo=Deudas.totalPendiente('contra'),neto=prest-debo,total=prest+debo;
+    const personas=dir=>Deudas.lista(dir).filter(d=>Deudas.saldo(d)>0).length;
+    const nFavor=personas('favor'),nContra=personas('contra');
+    const poner=(id,texto)=>{const el=document.getElementById(id);if(el)el.textContent=texto;};
+    // Cuántas personas tiene cada pestaña (solo se ve en PC, junto al nombre de la pestaña).
+    poner('tab-me-deben-n',' · '+Deudas.lista('favor').length);
+    poner('tab-yo-debo-n',' · '+Deudas.lista('contra').length);
+    poner('p-resumen-me-deben',fmtNoCents(prest));
+    poner('p-resumen-yo-debo',fmtNoCents(debo));
+    poner('p-resumen-neto',fmtNoCents(neto));
+    poner('p-resumen-me-deben-sub',nFavor?nFavor+(nFavor===1?' persona':' personas'):'Nadie te debe');
+    poner('p-resumen-yo-debo-sub',nContra?nContra+(nContra===1?' persona':' personas'):'No debes nada');
+    poner('p-resumen-neto-etiqueta',neto>0?'Neto a favor':neto<0?'Neto en contra':'Neto');
+    poner('p-resumen-neto-sub',total>0?'Me deben − yo debo':'Sin préstamos registrados');
+    const pFavor=total>0?Math.round(prest/total*100):0;
+    poner('p-texto-favor',total>0?pFavor+' % a favor':'');
+    poner('p-texto-contra',total>0?(100-pFavor)+' % en contra':'');
+    const barra=document.getElementById('p-resumen-barra');
+    if(barra){barra.classList.toggle('prestamos-proporcion-vacia',total<=0);
+      const bf=document.getElementById('p-barra-favor'),bc=document.getElementById('p-barra-contra');
+      if(bf)bf.style.flexGrow=prest>0?prest:0; if(bc)bc.style.flexGrow=debo>0?debo:0;}
+  }
   // CDTs value comes from calcCDT nested in cajitas
   const cdts=(S.cajitas||[]).reduce((a,c)=>a+(c.cdts||[]).reduce((b,cdt)=>b+calcCDT(cdt).val,0),0);
   const cajitasLibres=(S.cajitas||[]).reduce((a,c)=>a+calcC(c).val,0);
   const disp=cajitasLibres+cuentasSaldo;
   // Expuesto para que inicio.js (Neto de TC) reste la deuda de TC de este
   // MISMO número en vez de recalcular "disponible" por su cuenta — evita
-  // que ambos cálculos se desalineen (ver CHANGELOG.md#inicio, 2026-09-20).
+  // que ambos cálculos se desalineen (ver changelog/inicio.md, 2026-09-20).
   window._dispActualHoy = disp;
   const mes=mesActual();
   // Gasto del mes: definición única en periodo.js (gastos fijos pagados con su monto pagado +
@@ -103,9 +136,9 @@ function _refreshNucleo(){
   // cuenta que usan el historial, la gráfica de Análisis, la Proyección y Salud. Así el hero no puede desalinearse de ellos
   // (antes tenía su propia fórmula y no restaba «Yo debo»). `visible` = sin Alcancía, que se oculta para mantener la sorpresa.
   const _pat=calcPatrimonioDesglose();
-  const _alcSaldo=_pat.alcancia;
+  const _alcanciaSaldo=_pat.alcancia;
   const _patrimonioVisible=_pat.visible;
-  // Red de seguridad (2026-09-26): fmt()/fmtNoCents() hacen `n||0`, así que un
+  // Red de seguridad: fmt()/fmtNoCents() hacen `n||0`, así que un
   // NaN acá se mostraría como "$0" silencioso, indistinguible de un patrimonio
   // real en cero — exactamente lo que pasó con el bug de fecha sin padear en
   // un CDT (ver _fechaSafe() más arriba). Esto no arregla la causa, pero deja
@@ -124,14 +157,14 @@ function _refreshNucleo(){
   // label, alternar su visibility no reserva ni desplaza nada — cero CLS sin
   // el hueco vacío permanente que tenía la versión anterior (bloque con
   // padding/borde debajo, ver historial de este archivo).
-  const _heroAlcBadge = document.getElementById('hero-alcancia-badge');
+  const _heroAlcanciaBadge = document.getElementById('hero-alcancia-badge');
   const _heroLabel    = document.getElementById('hero-patrimonio-label');
-  if(_heroAlcBadge){
-    if(_alcSaldo > 0){
-      _heroAlcBadge.style.visibility = 'visible';
+  if(_heroAlcanciaBadge){
+    if(_alcanciaSaldo > 0){
+      _heroAlcanciaBadge.style.visibility = 'visible';
       if(_heroLabel) _heroLabel.textContent = 'Patrimonio visible';
     } else {
-      _heroAlcBadge.style.visibility = 'hidden';
+      _heroAlcanciaBadge.style.visibility = 'hidden';
       if(_heroLabel) _heroLabel.textContent = 'Patrimonio total';
     }
   }
@@ -143,6 +176,8 @@ function _refreshNucleo(){
   document.getElementById('s-gf').textContent=fmtNoCents(gastoFijoTotal);
   document.getElementById('s-gv').textContent=fmtNoCents(gastoVariableMes);
   document.getElementById('s-gtotal').textContent=fmtNoCents(gastoFijoTotal+gastoVariableMes);
+  // Mismos tres números en el resumen de la pantalla Gastos (solo se ve en PC, css/pc.css).
+  [['g-resumen-total',gastoFijoTotal+gastoVariableMes],['g-resumen-variables',gastoVariableMes],['g-resumen-fijos',gastoFijoTotal]].forEach(([id,v])=>{const el=document.getElementById(id);if(el)el.textContent=fmtNoCents(v);});
   // El total de la cuenta de ahorro abierta y sus intereses de hoy los pinta su pantalla (nu.js, renderDetalleAhorro).
 
   // Si hay una cuenta abierta, actualizar su detalle
@@ -152,7 +187,7 @@ function _refreshNucleo(){
   // refresh() tras cargar el módulo bajo demanda). Mismo patrón defensivo
   // ya usado para renderMesada/_refreshCajitaDet/renderTCScreen — no cambia
   // el comportamiento actual (todo sigue cargando de entrada).
-  // FIX 2026-08-13: cuentaActual es una VARIABLE (no
+  // FIX: cuentaActual es una VARIABLE (no
   // función) que vive en cuentas.js, grupo lazy — a diferencia de las
   // llamadas de función de acá abajo (que sí tenían guard con
   // typeof fn==='function'), estas se referenciaban bare (if(cuentaActual)),
@@ -162,7 +197,7 @@ function _refreshNucleo(){
   if(typeof renderDetalleCuenta==='function' && typeof cuentaActual!=='undefined' && cuentaActual) renderDetalleCuenta(cuentaActual);
   // Siempre actualizar el detalle/sub-pantallas de cajita si hay una abierta
   if(typeof _refreshCajitaDet==='function') _refreshCajitaDet();
-  // FIX (2026-08-17, hallazgo nuevo al confirmar contra gastos.md):
+  // FIX:
   // renderGastosVar() se llamaba acá Y OTRA VEZ más abajo, indirecto, vía
   // renderMesFiltros() — gastos.md documenta que "renderMesFiltros() arma
   // los chips de filtro por mes y dispara renderGastosVar()". Resultado:
@@ -171,7 +206,7 @@ function _refreshNucleo(){
   // veces seguidas), sin ningún efecto visible distinto — trabajo tirado,
   // no un bug de datos. Se saca la llamada directa; sigue ejecutándose,
   // una sola vez, vía renderMesFiltros() más abajo.
-  // OPTIMIZACIÓN TBT (2026-08-15/17, ver auditoria-tecnica.md #12): estas
+  // OPTIMIZACIÓN TBT: estas
   // llamadas re-renderizaban su pantalla completa en CADA refresh() — sin
   // importar si el usuario la estaba viendo. Ya se re-renderizan al ENTRAR
   // a su pantalla (showScreen(), ver navegacion.js) — Cuentas y Gastos
@@ -255,7 +290,10 @@ function _refreshNucleo(){
 // exigente ya esté satisfecha.
 
 // Guarda y repinta: lo que casi todo handler de escritura termina llamando.
-function saveAndRefresh() {
+export function saveAndRefresh() {
   save();
   refresh();
 }
+
+// Puente global (js/core/puente.js): constantes y clases ya inicializadas, y variables que otros archivos leen por nombre.
+exponerGlobales({ Refresh });

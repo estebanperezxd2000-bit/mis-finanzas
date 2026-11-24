@@ -4,16 +4,43 @@
 // (Loader). Esta es la ÚNICA pieza que conoce el ciclo; lo que cada hoja o pantalla hace al abrirse lo registra su módulo dueño:
 //   · Ui.hoja(id, fn, {fase})     al abrir la hoja `id`;
 //   · Ui.pantalla(nombre, fn)     cuando showScreen(nombre) terminó (re-pintar la lista, resetear un detalle…).
-// Ver js/core/ui.js. Carga como <script> clásico, después del núcleo y antes de los módulos que llaman openSheet/showScreen.
+// Ver js/core/ui.js. Módulo ES, después del núcleo y antes de los módulos que llaman openSheet/showScreen.
+
+import { exponerGlobales, exponerVariables } from './puente.js';
+import { Ui } from './ui.js';
+import { toast } from './dialogos.js';
+// Puente global (js/core/puente.js): las funciones se hoistean, así que quedan en window desde el principio.
+exponerGlobales({ _sheetAccesible, openSheet, closeSheet, showScreen, _showScreenLoading, _hideScreenLoading });
 
 /* ── Sheet stack manager ────────────────────────────────────────────────────
    Permite apilar sheets: cuando se abre uno sobre otro, el anterior se
    "empuja" hacia atrás con escala+opacidad reducida. Al cerrar el superior,
    el anterior recupera el foco automáticamente.
    ─────────────────────────────────────────────────────────────────────── */
-const _sheetStack = [];
+export const _sheetStack = [];
 
-function openSheet(id){
+// Accesibilidad de las hojas (sheets). Se hace aquí, una vez por hoja, en vez de repetirlo en las ~150 hojas del HTML:
+//  · la hoja es un diálogo modal con nombre (el de su .sheet-title) para los lectores de pantalla;
+//  · al abrir, el foco entra a la hoja (si ningún campo lo tomó ya) y al cerrar vuelve a lo que lo tenía, para que quien navega con teclado
+//    no pierda el lugar. No se devuelve a un campo de texto: en el celular eso volvería a abrir el teclado.
+export const _sheetOrigenFoco = {};
+export function _sheetAccesible(overlay, id){
+  const hoja = overlay.querySelector('.sheet');
+  if(!hoja) return null;
+  if(!hoja.hasAttribute('role')){
+    hoja.setAttribute('role', 'dialog');
+    hoja.setAttribute('aria-modal', 'true');
+    hoja.setAttribute('tabindex', '-1');
+    const titulo = hoja.querySelector('.sheet-title');
+    if(titulo && !hoja.hasAttribute('aria-label')){
+      if(!titulo.id) titulo.id = 'sheet-' + id + '-titulo';
+      hoja.setAttribute('aria-labelledby', titulo.id);
+    }
+  }
+  return hoja;
+}
+
+export function openSheet(id){
   // Ganchos registrados por los módulos (Ui.hoja, fase 'antes'). Si alguno devuelve false, la hoja no se abre.
   if(Ui.antesDeAbrirHoja(id)===false) return;
   // Si ya estaba en la pila, sacarlo para reposicionarlo al tope
@@ -27,20 +54,29 @@ function openSheet(id){
   }
   _sheetStack.push(id);
   const _ssEl = document.getElementById('sheet-' + id);
-  if(_ssEl){ _ssEl.classList.add('open'); _ssEl.classList.remove('sheet-background'); }
+  let _ssHoja = null;
+  if(_ssEl){
+    _ssHoja = _sheetAccesible(_ssEl, id);
+    if(!_ssEl.classList.contains('open')) _sheetOrigenFoco[id] = document.activeElement; // si ya estaba abierta (se reposiciona) se conserva el origen
+    _ssEl.classList.add('open'); _ssEl.classList.remove('sheet-background');
+  }
   Ui.despuesDeAbrirHoja(id);
+  if(_ssHoja && !_ssHoja.contains(document.activeElement)) { try { _ssHoja.focus({ preventScroll: true }); } catch(_) {} }
 }
 
-function closeSheet(id){
+export function closeSheet(id){
   const _csEl = document.getElementById('sheet-' + id);
   if(_csEl){
     // Si el foco (y con él el teclado) está dentro del sheet que se cierra, soltarlo
     // de forma explícita: así el teclado se cierra siempre a la vez que el sheet y
     // no depende de cuándo decida el navegador limpiar el foco de un nodo oculto.
-    const _csAe = document.activeElement;
-    if(_csAe && _csAe !== document.body && _csEl.contains(_csAe) && typeof _csAe.blur === 'function') _csAe.blur();
+    const _csElementoActivo = document.activeElement;
+    if(_csElementoActivo && _csElementoActivo !== document.body && _csEl.contains(_csElementoActivo) && typeof _csElementoActivo.blur === 'function') _csElementoActivo.blur();
     _csEl.classList.remove('open'); _csEl.classList.remove('sheet-background');
   }
+  const _csOrigen = _sheetOrigenFoco[id]; delete _sheetOrigenFoco[id];
+  if(_csOrigen && _csOrigen !== document.body && document.contains(_csOrigen) && typeof _csOrigen.focus === 'function'
+     && !/^(INPUT|TEXTAREA|SELECT)$/.test(_csOrigen.tagName)) { try { _csOrigen.focus({ preventScroll: true }); } catch(_) {} }
   // Quitar de la pila
   const _csIdx = _sheetStack.indexOf(id);
   if(_csIdx !== -1) _sheetStack.splice(_csIdx, 1);
@@ -52,31 +88,13 @@ function closeSheet(id){
   }
 }
 
-function showScreen(name){
+export function showScreen(name){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
   document.getElementById('screen-'+name).classList.add('active');
   const navEl=document.getElementById('nav-'+name);
   if(navEl)navEl.classList.add('active');
-  // La navegación lateral de PC comparte el mismo estado que el menú móvil.
-  document.querySelectorAll('.desktop-nav-item[data-screen]').forEach(btn => {
-    const seleccionada = btn.dataset.screen === name;
-    btn.classList.toggle('active', seleccionada);
-    if (seleccionada) btn.setAttribute('aria-current', 'page');
-    else btn.removeAttribute('aria-current');
-  });
-  const pcTitulo = document.getElementById('pc-page-title');
-  if (pcTitulo) {
-    const titulos = {
-      inicio:'Inicio', cuentas:'Cuentas', gastos:'Gastos', prestamos:'Prestado',
-      spotify:'Spotify', mesada:'Mesada de papás', analisis:'Análisis financiero',
-      tarjetas:'Tarjetas de crédito', encargos:'Encargos', comprometida:'Plata comprometida',
-      alcancia:'Alcancía', personas:'Personas', historial:'Actividad reciente',
-      wrapped:'Wrapped', config:'Configuración'
-    };
-    pcTitulo.textContent = titulos[name] || 'Mis finanzas';
-  }
-
+  document.querySelectorAll('.menu-lateral-item').forEach(b=>b.classList.toggle('active',b.dataset.screen===name)); // menú lateral de PC
   document.getElementById('scrollArea').scrollTop=0;
   // Carga bajo demanda (docs/auditoria-tecnica.md #4, fase 1 de la
   // modularización — piloto: solo Alcancía por ahora, ver
@@ -112,7 +130,7 @@ function showScreen(name){
 // solo grupo en el piloto (Alcancía, ~14 KiB) la descarga es rápida en la
 // enorme mayoría de las conexiones; si el piloto se extiende a módulos más
 // pesados (Cuentas, Encargos) vale la pena revisar si esto sigue alcanzando.
-function _showScreenLoading(name) {
+export function _showScreenLoading(name) {
   const scr = document.getElementById('screen-' + name);
   if (!scr || scr.querySelector('.screen-loading')) return;
   const el = document.createElement('div');
@@ -121,8 +139,11 @@ function _showScreenLoading(name) {
   el.textContent = 'Cargando…';
   scr.appendChild(el);
 }
-function _hideScreenLoading(name) {
+export function _hideScreenLoading(name) {
   const scr = document.getElementById('screen-' + name);
   const el = scr && scr.querySelector('.screen-loading');
   if (el) el.remove();
 }
+
+// Puente global (js/core/puente.js): constantes y clases ya inicializadas, y variables que otros archivos leen por nombre.
+exponerGlobales({ _sheetStack, _sheetOrigenFoco });

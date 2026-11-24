@@ -4,6 +4,11 @@
 //   · validación de montos (.money-input): sin negativos y sin cifras absurdas (> 1e12);
 //   · foco automático del primer campo al abrir cada hoja (un solo gancho comodín de Ui).
 // (La validación por campo con mensaje vive en Formulario, js/core/formulario.js.)
+import { exponerGlobales, exponerVariables } from './puente.js';
+import { Ui } from './ui.js';
+// Puente global (js/core/puente.js): las funciones se hoistean, así que quedan en window desde el principio.
+exponerGlobales({ mostrarAlertaFuente });
+
 (function(){
   // ── Validación de montos ──
   document.addEventListener('change', e => {
@@ -28,7 +33,7 @@
     'spotify': 'sp_n',
     'nuevo-encargo': 'enc_nombre',
     'nueva-cuenta': 'nc_nombre',
-    'agregar-dinero': 'adDesc',
+    'agregar-dinero': 'agregarDineroDesc',
     'restar-dinero': 'rdDesc',
     // 'mesada-pago' y 'mesada-pend' NO se enfocan a propósito: abren con el monto ya
     // precargado (la cuota del mes / lo pendiente), que casi siempre es el correcto;
@@ -44,13 +49,13 @@
 })();
 
 // Hint de saldo/destino bajo los selectores de cuenta («fuente»/«destino»): visible solo si hay una cuenta elegida.
-function mostrarAlertaFuente(prefix){
+export function mostrarAlertaFuente(prefix){
   // Un módulo puede encargarse del aviso (Tarjetas de crédito con fuentes «tc:…»): su gancho devuelve true.
   if(Ui.emitir('fuente-alerta',prefix).includes(true))return;
   // visibility, no display: el hint siempre ocupa su espacio (mismo criterio
-  // que .field-hint/min-height en los demás hints, ver reglas-visuales.md#hints-vacíos)
+  // que .field-hint/min-height en los demás hints,)
   // para que elegir una cuenta no empuje de golpe los botones de más abajo.
-  // EXCEPCIÓN (2026-09-25): en "Registrar gasto" (prefix='gv') se prefirió lo
+  // EXCEPCIÓN: en "Registrar gasto" (prefix='gv') se prefirió lo
   // contrario — que #gv_fuente_hint/#gv_fuente_saldo no ocupen espacio estando
   // vacíos, aceptando el salto de layout al elegir cuenta. Resuelto solo con
   // CSS en styles.css (selector [style*="visibility: hidden"] por ID), sin
@@ -58,6 +63,6 @@ function mostrarAlertaFuente(prefix){
   // para mov_fuente_hint/mov_destino_hint (Préstamos), que no cambiaron.
   const fuenteEl=document.getElementById(prefix+'_fuente');
   if(fuenteEl){const val=fuenteEl.value;const hint=document.getElementById(prefix+'_fuente_hint');if(hint)hint.style.visibility=val?'visible':'hidden';}
-  const destEl=document.getElementById(prefix+'_destino');
-  if(destEl){const val=destEl.value;const hint=document.getElementById(prefix+'_destino_hint');if(hint)hint.style.visibility=val?'visible':'hidden';}
+  const destinoEl=document.getElementById(prefix+'_destino');
+  if(destinoEl){const val=destinoEl.value;const hint=document.getElementById(prefix+'_destino_hint');if(hint)hint.style.visibility=val?'visible':'hidden';}
 }

@@ -127,11 +127,11 @@ function gruposLazy() {
 }
 
 // import estáticos (`import … from './x.js'`) y dinámicos (`import('./x.js')`) entre archivos de js/: ruta → [quién la importa].
-// Sin esto, un módulo ES que solo carga otro archivo (pin-bio.js → wait-for-module.js; firebase-sync.js y
+// Sin esto, un módulo ES que solo carga otro archivo (pin-bio.js → wait-for.js; firebase-sync.js y
 // cierre.js → payload-codec.js) aparecía como «sin <script>» y parecía código muerto.
 function importadosPor() {
   const mapa = new Map();
-  for (const carpeta of CARPETAS) {
+  for (const carpeta of [...CARPETAS, 'js']) {   // 'js' = js/main.js, el punto de entrada que importa el núcleo
     if (!existe(carpeta)) continue;
     for (const nombre of fs.readdirSync(path.join(RAIZ, carpeta)).sort()) {
       if (!nombre.endsWith('.js')) continue;
@@ -156,7 +156,8 @@ function declaraciones(codigo) {
   const funciones = new Set();
   const globales = new Set();
   const enWindow = new Set();
-  for (const linea of sinComentarios(codigo).split('\n')) {
+  for (let linea of sinComentarios(codigo).split('\n')) {
+    linea = linea.replace(/^export\s+(?=(?:async\s+)?(?:function|const|let|var|class)\b)/, '');   // M6: los archivos son módulos ES
     let m;
     if ((m = /^(?:async\s+)?function\s*\*?\s*([A-Za-z_$][\w$]*)\s*\(/.exec(linea))) {
       funciones.add(m[1]);

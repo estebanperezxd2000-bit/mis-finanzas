@@ -1,0 +1,112 @@
+name: CI y despliegue
+
+# Qué hace:
+#   · En cada push y pull request corre `ci`: tests, los tres humos y el mapa de código al día (lo mismo que subir.sh).
+#   · En cada push a main, SI `ci` pasó, corre `deploy`: arma dist/ (solo lo desplegable, con sw.js sellado por scripts/preparar-despliegue.js)
+#     y lo publica en GitHub Pages. Con tests rojos no se publica nada.
+#
+# REQUISITO (una sola vez): Settings → Pages → Build and deployment → Source = «GitHub Actions».
+# Mientras Pages siga en «Deploy from a branch», este job de deploy fallará y la rama se seguirá publicando como antes.
+on:
+  push:
+  pull_request:
+  # Redespliegue manual: Actions → «CI y despliegue» → Run workflow (rama main). Crea una ejecución NUEVA. No uses «Re-run jobs» sobre un
+  # despliegue que falló al subir: la repetición queda en la MISMA ejecución y deja dos artefactos «github-pages», que deploy-pages rechaza.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Un solo despliegue a la vez; uno nuevo reemplaza al que esté esperando, pero no corta el que ya está publicando.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar el repo
+        uses: actions/checkout@v6
+
+      - name: Instalar Node
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+
+      # npm ci instala EXACTAMENTE lo que dice package-lock.json.
+      - name: Instalar dependencias
+        run: npm ci
+
+      # Incluye armar dist/ y comprobar que su sw.js queda sellado (tests/sesion-y-despliegue.test.js, tests/sw.test.js).
+      - name: Tests
+        run: npm test
+
+      - name: Humo - página completa (jsdom)
+        run: npm run smoke
+
+      - name: Humo - Wrapped
+        run: npm run smoke:wrapped
+
+      - name: Humo - huella y cierre
+        run: npm run smoke:cierre
+
+      # Navegador real (Chromium): accesibilidad con axe, foco y teclado, y presupuesto de rendimiento de la lista de movimientos.
+      - name: Instalar Chromium (Playwright)
+        run: npx playwright install --with-deps chromium
+
+      - name: Pruebas en navegador real (axe, foco, rendimiento)
+        run: npm run navegador
+
+      - name: mapa-codigo.md al día
+        run: node scripts/generar-mapa.js --check
+
+  deploy:
+    needs: ci
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write      # publicar en Pages
+      id-token: write   # verificar que el despliegue viene de este workflow
+    environment:
+      name: github-pages
+      url: ${{ steps.despliegue2.outputs.page_url || steps.despliegue.outputs.page_url }}
+    steps:
+      - name: Descargar el repo
+        uses: actions/checkout@v6
+
+      - name: Instalar Node
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+
+      # Copia solo index.html, manifest, css/, js/, icons/ y sw.js a dist/ y sella ahí el Service Worker (BUILD + PRECACHE).
+      - name: Armar dist/
+        run: node scripts/preparar-despliegue.js dist
+
+      - name: Configurar Pages
+        uses: actions/configure-pages@v6
+
+      - name: Subir dist/
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+
+      # GitHub a veces tarda en listar el artefacto recién subido y deploy-pages falla con «Found 0 artifact(s)». Se espera un poco y, si aun así
+      # falla, se reintenta UNA vez en este mismo job (sin volver a subir nada, así que no se duplica el artefacto «github-pages»).
+      - name: Esperar a que el artefacto esté listo
+        run: sleep 20
+
+      - name: Publicar
+        id: despliegue
+        continue-on-error: true
+        uses: actions/deploy-pages@v5
+
+      - name: Esperar antes de reintentar
+        if: steps.despliegue.outcome == 'failure'
+        run: sleep 45
+
+      - name: Publicar (segundo intento)
+        id: despliegue2
+        if: steps.despliegue.outcome == 'failure'
+        uses: actions/deploy-pages@v5

@@ -2,10 +2,10 @@
 // tests/support/datos-sinteticos.js — historia sintética de varios años para probar la huella y el cierre de períodos.
 //
 // La app nació limpia el 2026-10-18: aún no existen movimientos con 2 años de antigüedad, así que se simulan. Los saldos y el
-// libro se escriben con las funciones REALES de la app (sumarFuente/descontarFuente con Libro.conOrigen, registrarMovEspejo,
+// libro se escriben con las funciones REALES de la app (sumarFuente/descontarFuente con Libro.conOrigen, registrarMovimientoEspejo,
 // tcRecalcular), de modo que las invariantes (el libro cuadra, deuda de tarjeta calculada…) se prueban contra el comportamiento
 // real y no contra una copia. Lo que no tiene una función pura (bolsa de un encargo, movimientos de una deuda) se arma con la forma
-// que documentan docs/encargos.md y docs/prestamos.md.
+// que documentan docs/encargos.md y docs/prestado.md.
 //
 // Determinista: misma semilla → mismos datos. Los ids son 'x00001'… (el uid() real mezcla Date.now() y puede repetirse dentro de
 // un mismo milisegundo al generar miles de registros; un id repetido se leería como el mismo registro).
@@ -81,8 +81,8 @@ function generar(ctx, { desde = '2024-01-01', dias = 1000, semilla = 7 } = {}) {
     { // transferencia nequi → efectivo: una fila en S.transferencias, dos espejos y dos patas en el libro, todos ligados por el id
       const tid = ctx.uid(), monto = Math.round(20000 + azar() * 100000);
       S.transferencias.push({ id: tid, fecha: f, origen: 'cuenta:nequi', destino: 'cuenta:efectivo', monto });
-      ctx.registrarMovEspejo({ cuenta: 'cuenta:nequi', flujo: 'salida', monto, fecha: f, desc: 'Transferencia a Efectivo', origen: 'Cuentas', extra: { _transferenciaId: tid } });
-      ctx.registrarMovEspejo({ cuenta: 'cuenta:efectivo', flujo: 'entrada', monto, fecha: f, desc: 'Transferencia desde Nequi', origen: 'Cuentas', extra: { _transferenciaId: tid } });
+      ctx.registrarMovimientoEspejo({ cuenta: 'cuenta:nequi', flujo: 'salida', monto, fecha: f, desc: 'Transferencia a Efectivo', origen: 'Cuentas', extra: { _transferenciaId: tid } });
+      ctx.registrarMovimientoEspejo({ cuenta: 'cuenta:efectivo', flujo: 'entrada', monto, fecha: f, desc: 'Transferencia desde Nequi', origen: 'Cuentas', extra: { _transferenciaId: tid } });
       con({ modulo: 'cuentas', ref: tid }, () => { ctx.descontarFuente('cuenta:nequi', monto, { fecha: f }); ctx.sumarFuente('cuenta:efectivo', monto, { fecha: f }); });
     }
     if (dia === 15 && Number(mes.slice(5)) % 3 === 0) { // compra trimestral con tarjeta
@@ -97,19 +97,19 @@ function generar(ctx, { desde = '2024-01-01', dias = 1000, semilla = 7 } = {}) {
   const hoyIso = suma(desde, dias - 1);
   // Encargos: cada movimiento lleva `cuenta` (dónde está guardada esa plata) y el saldo se deriva, nunca se guarda.
   S.encargos.push(
-    { id: 'encCerrado', nombre: 'Mamá', personaId: 'pAna', saldoInicial: 0, cuentaInicial: '', partes: [], movimientos: [
+    { id: 'encCerrado', personaId: 'pAna', saldoInicial: 0, cuentaInicial: '', partes: [], movimientos: [
       { id: ctx.uid(), tipo: 'entrada', monto: 500000, fecha: '2024-02-10', cuenta: 'cuenta:efectivo', desc: 'Me dio' },
       { id: ctx.uid(), tipo: 'salida', monto: 500000, fecha: '2024-03-05', cuenta: 'cuenta:efectivo', desc: 'Pagué por ella' }] },
-    { id: 'encAbierto', nombre: 'Tío', personaId: 'pLuis', saldoInicial: 100000, cuentaInicial: 'cuenta:nequi', partes: [], movimientos: [
+    { id: 'encAbierto', personaId: 'pLuis', saldoInicial: 100000, cuentaInicial: 'cuenta:nequi', partes: [], movimientos: [
       { id: ctx.uid(), tipo: 'entrada', monto: 300000, fecha: '2024-06-01', cuenta: 'cuenta:nequi', desc: 'Me dio' },
       { id: ctx.uid(), tipo: 'salida', monto: 50000, fecha: hoyIso, cuenta: 'cuenta:nequi', desc: 'Mandado' }] });
   // Deudas: saldo = abre (prestamo/recibido) − el resto de los tipos.
   S.deudores.push(
-    { id: 'favorCerrada', personaId: 'pAna', nombre: 'Ana', grupos: [], movimientos: [
+    { id: 'favorCerrada', personaId: 'pAna', grupos: [], movimientos: [
       { id: ctx.uid(), tipo: 'prestamo', monto: 200000, fecha: '2024-04-02' }, { id: ctx.uid(), tipo: 'abono', monto: 200000, fecha: '2024-09-02' }] },
-    { id: 'favorAbierta', personaId: 'pLuis', nombre: 'Luis', grupos: [], movimientos: [
+    { id: 'favorAbierta', personaId: 'pLuis', grupos: [], movimientos: [
       { id: ctx.uid(), tipo: 'prestamo', monto: 150000, fecha: '2025-01-10' }, { id: ctx.uid(), tipo: 'abono', monto: 50000, fecha: '2025-03-10' }] });
-  S.misDeudas.push({ id: 'contraAbierta', personaId: 'pAna', nombre: 'Ana', grupos: [], movimientos: [{ id: ctx.uid(), tipo: 'recibido', monto: 80000, fecha: '2025-05-05' }] });
+  S.misDeudas.push({ id: 'contraAbierta', personaId: 'pAna', grupos: [], movimientos: [{ id: ctx.uid(), tipo: 'recibido', monto: 80000, fecha: '2025-05-05' }] });
   // Alcancía: un ciclo destapado (con la copia de sus depósitos dentro del historial) y uno activo.
   const dep1 = { id: ctx.uid(), monto: 100000, fecha: '2024-05-01' }, dep2 = { id: ctx.uid(), monto: 50000, fecha: '2024-06-01' }, dep3 = { id: ctx.uid(), monto: 70000, fecha: '2026-09-01' };
   S.alcancia = { saldoRegistrado: 70000, depositos: 70000, fechaInicio: '2026-09-01', movimientos: [dep3],

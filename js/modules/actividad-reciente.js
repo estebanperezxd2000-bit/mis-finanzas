@@ -64,6 +64,16 @@
    mesada.js. Sin verificar en navegador real.
    ═══════════════════════════════════════════════════════════════ */
 
+import { exponerGlobales, exponerVariables } from '../core/puente.js';
+import { Deudas } from '../core/calc-helpers.js';
+import { fuenteLabel } from '../core/cuentas-fuentes.js';
+import { Personas } from '../core/personas-core.js';
+import { hoy } from '../core/estado.js';
+import { Fecha } from '../core/fecha.js';
+import { emptyInline } from '../core/utilidades-ui.js';
+import { html, raw } from '../core/html-tag.js';
+import { Refresh } from '../core/refresh.js';
+
 (function(){
   'use strict';
 
@@ -111,7 +121,7 @@
 
   // ── NORMALIZAR FUENTES ─────────────────────────────────────────────
 
-  function _normCP(S) {
+  function _normPlataComprometida(S) {
     // Muestra los registros de plata comprometida en el feed (solo los recibidos y los pendientes)
     // Los movimientos individuales (Reposición, Ingreso libre) ya aparecen en _normMovimientos.
     // Aquí mostramos el evento de alto nivel: "Llegó plata comprometida" o "Plata comprometida pendiente".
@@ -152,24 +162,24 @@
   }
 
   // Ids de movimientos espejo que un abono de "Me deben" señala explícitamente
-  // (_abonoDestinoMovId / destinos[]._movId): ese abono ya sale como "Abono de X" en
+  // (_abonoDestinoMovimientoId / destinos[]._movimientoId): ese abono ya sale como "Abono de X" en
   // _normDeudores. Solo se ocultan los referenciados; un espejo sin referencia (p.ej. el
   // extra/propina) sigue visible. Lo usa _normMovimientos.
   function _espejosDeudores(S) {
     var ids = {};
     Deudas.lista('favor').forEach(function(d){
       (d.movimientos || []).forEach(function(m){
-        if (m._abonoDestinoMovId) ids[m._abonoDestinoMovId] = true;
-        (m.destinos || []).forEach(function(r){ if (r && r._movId) ids[r._movId] = true; });
+        if (m._abonoDestinoMovimientoId) ids[m._abonoDestinoMovimientoId] = true;
+        (m.destinos || []).forEach(function(r){ if (r && r._movimientoId) ids[r._movimientoId] = true; });
       });
     });
     // "Yo debo": cada movimiento ya sale como una fila propia en _normMisDeudas, así que se ocultan sus
-    // espejos en las cuentas (de una cuenta: _movSecId; repartido: destinos[]/fuentes[]._movId).
+    // espejos en las cuentas (de una cuenta: _movimientoSecId; repartido: destinos[]/fuentes[]._movimientoId).
     Deudas.lista('contra').forEach(function(d){
       (d.movimientos || []).forEach(function(m){
-        if (m._movSecId) ids[m._movSecId] = true;
-        (m.destinos || []).forEach(function(r){ if (r && r._movId) ids[r._movId] = true; });
-        (m.fuentes || []).forEach(function(r){ if (r && r._movId) ids[r._movId] = true; });
+        if (m._movimientoSecId) ids[m._movimientoSecId] = true;
+        (m.destinos || []).forEach(function(r){ if (r && r._movimientoId) ids[r._movimientoId] = true; });
+        (m.fuentes || []).forEach(function(r){ if (r && r._movimientoId) ids[r._movimientoId] = true; });
       });
     });
     return ids;
@@ -178,9 +188,9 @@
   function _normMovimientos(S) {
     // S.movimientos unifica Nequi, Efectivo, Cajitas Nu y cuentas custom via campo fuente
     // Tipos: 'entrada' | 'salida_manual' | 'salida' | 'apertura' (apertura excluida)
-    // Excluimos movimientos internos generados automáticamente por encargos (_encMovId,
+    // Excluimos movimientos internos generados automáticamente por encargos (_encargoMovimientoId,
     // "Margen de encargo", "Margen encargo") para evitar duplicados con _normEncargos.
-    // EXCEPCIÓN (2026-09-29): las entradas que son ingreso REAL para Análisis/Salud sí se muestran
+    // EXCEPCIÓN: las entradas que son ingreso REAL para Análisis/Salud sí se muestran
     // (mismo criterio que _esEntradaEspejoNoIngreso en js/core/ingresos.js): margen/regalo de un encargo
     // (_esExtraIngreso / _esDiferencialEncargo) y el "Dinero extra encontrado en alcancía" del
     // destape. Antes el saldo subía sin ninguna fila en Actividad reciente. Ojo: _normEncargos
@@ -191,16 +201,16 @@
       .filter(function(m){
         if (m.tipo === 'apertura') return false;
         if (m.tipo === 'transferencia') return false; // intercambios contables, no son ingresos ni gastos
-        // Ingresos reales que se quedan el usuario: pasan aunque lleven _encMovId o desc "Margen…".
+        // Ingresos reales que se quedan el usuario: pasan aunque lleven _encargoMovimientoId o desc "Margen…".
         // Se decide por bandera, no por descripción: los márgenes viejos sin bandera siguen ocultos
         // (igual que en Análisis, que tampoco los cuenta).
         var esIngresoReal = m.tipo === 'entrada' && (m.clase ? m.clase === 'ingreso' : (m._esExtraIngreso || m._esDiferencialEncargo));
         // Sobrante del destape de la alcancía: plata que nunca estuvo en ninguna cuenta.
         var esExtraAlcancia = m.tipo === 'entrada' && m._esAlcancia && !m._esAlcanciaIngreso;
-        if (m._encMovId && !esIngresoReal) return false; // generado como efecto secundario de un encargo
+        if (m._encargoMovimientoId && !esIngresoReal) return false; // generado como efecto secundario de un encargo
         if (espejoDeudores[m.id]) return false; // espejo de un abono de "Me deben"
         if (m._esAlcancia && !esExtraAlcancia) return false; // movimientos internos de alcancía oculta (destape)
-        // Ingresos neto-cero de depósitos sin cuenta de origen (yo-directo/regalo/mandado/split): antes se
+        // Ingresos neto-cero de depósitos sin cuenta de origen (yo_directo/regalo/mandado/split): antes se
         // colaban acá como "+ $X Ingreso" con el monto a la vista — mismo criterio que los gastos
         // `_esAlcancia` de _normGastos(), que ya se excluían.
         if (m._esAlcanciaIngreso) return false;
@@ -266,7 +276,7 @@
           tipo:      esPrestamo ? 'prestamo' : 'abono',
           signo:     esPrestamo ? '-' : '+',
           monto:     m.monto || 0,
-          titulo:    esPrestamo ? 'Préstamo a ' + d.nombre : 'Abono de ' + d.nombre,
+          titulo:    esPrestamo ? 'Préstamo a ' + Personas.nombre(d.personaId) : 'Abono de ' + Personas.nombre(d.personaId),
           subtitulo: m.nota || '',
           fuente:    'deudores',
         });
@@ -291,7 +301,7 @@
           tipo:      recibido ? 'abono' : 'prestamo',
           signo:     recibido ? '+' : '-',
           monto:     m.monto || 0,
-          titulo:    recibido ? 'Me prestó ' + d.nombre : 'Pago a ' + d.nombre,
+          titulo:    recibido ? 'Me prestó ' + Personas.nombre(d.personaId) : 'Pago a ' + Personas.nombre(d.personaId),
           subtitulo: m.nota || '',
           fuente:    'misDeudas',
         });
@@ -326,8 +336,8 @@
     //   - reubicaciones internas entre cuentas (_parteId sin desc real, nota 'Movimiento interno...')
     //   - movimientos de abono a deudor (_esAbonoDeudor) — ya aparecen en _normDeudores
     var items = [];
-    (S.encargos || []).forEach(function(enc){
-      (enc.movimientos || []).forEach(function(m){
+    (S.encargos || []).forEach(function(encargo){
+      (encargo.movimientos || []).forEach(function(m){
         // Saltar movimientos internos de reubicación
         if (m._esAbonoDeudor) return;
         var nota = (m.nota || '').toLowerCase();
@@ -336,13 +346,13 @@
 
         var esEntrada = m.tipo === 'entrada';
         items.push({
-          id:        'enc_' + enc.id + '_' + m.id,
+          id:        'enc_' + encargo.id + '_' + m.id,
           fecha:     m.fecha || '0000-00-00',
           ts:        m.ts || 0,
           tipo:      'encargo',
           signo:     esEntrada ? '+' : '-',
           monto:     m.monto || 0,
-          titulo:    (esEntrada ? 'Entrada encargo' : 'Salida encargo') + ' · ' + (enc.nombre || ''),
+          titulo:    (esEntrada ? 'Entrada encargo' : 'Salida encargo') + ' · ' + (Personas.nombre(encargo.personaId) || ''),
           subtitulo: m.desc || m.nota || '',
           fuente:    'encargos',
         });
@@ -416,7 +426,7 @@
       _normSpotify(Sx),
       _normEncargos(Sx),
       _normTC(Sx),
-      _normCP(Sx)
+      _normPlataComprometida(Sx)
     );
 
     // Ordenar: fecha desc, ts como desempate
@@ -524,7 +534,7 @@
   // que disparó la carga. Sin esto, la pantalla se queda pegada en
   // "Cargando..." para siempre la primera vez. Se agrega un cuarto
   // trigger sin condición de evento — mismo criterio que usa
-  // _cpInit() en plata-comprometida.js ("Render inicial si hay
+  // _plataComprometidaInit() en plata-comprometida.js ("Render inicial si hay
   // datos"). renderFeedActividad() ya lee `S` con fallback si no
   // existe todavía (ver comentario del encabezado), así que llamarla
   // acá es seguro incluso si por algún motivo se cargara antes de
@@ -534,4 +544,3 @@
   renderFeedActividad();
 
 })();
-

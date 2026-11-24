@@ -15,16 +15,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Descargar el repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Instalar Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version-file: .nvmrc
 
       - name: Instalar dependencias
         working-directory: scripts/notificaciones
-        run: npm install
+        run: npm ci   # exactamente lo de scripts/notificaciones/package-lock.json (maneja la clave de servicio: sin versiones sorpresa)
 
       - name: Correr el chequeo de notificaciones
         working-directory: scripts/notificaciones

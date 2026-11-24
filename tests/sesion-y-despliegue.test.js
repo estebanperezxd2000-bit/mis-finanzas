@@ -67,8 +67,8 @@ function entorno({ pin = '1234', sesion = true } = {}) {
   const oyentes = {};
   const document = { hidden: false, readyState: 'complete', getElementById: id => els[id] || (els[id] = nuevo(id)), addEventListener: (t, fn) => { (oyentes[t] = oyentes[t] || []).push(fn); } };
   const lanzados = [], toasts = [];
-  const window = { _fbLoadData: () => lanzados.push('app'), toast: (m, t) => toasts.push([m, t]), dialogo: async () => true };
-  if (sesion) window._fbUser = { uid: 'u1' };
+  const window = { _firebaseLoadData: () => lanzados.push('app'), toast: (m, t) => toasts.push([m, t]), dialogo: async () => true };
+  if (sesion) window._firebaseUser = { uid: 'u1' };
   const reloj = { t: 1_700_000_000_000 };
   const ctx = vm.createContext({ window, document, localStorage, toast: window.toast, dialogo: window.dialogo, navigator: { userAgent: '' }, crypto: crypto.webcrypto, console,
     Date: { now: () => reloj.t }, setTimeout, clearTimeout,
@@ -202,10 +202,11 @@ describe('firebase-sync', () => {
   const respaldosSrc = leer('respaldos.js').replace(/^export\s+/gm, ''); // firebase-sync.js importa sus funciones (respaldos automáticos)
   const syncSrc = leer('firebase-sync.js').replace(/^import .*$/gm, '');
   const CODEC = escribir('codec.js', codecSrc);
+  const FUSION = escribir('fusion.js', leer('fusion.js').replace(/^export\s+/gm, '') + '\n' + leer('validar-estado.js').replace(/^export\s+/gm, ''));
   const RESPALDOS = escribir('respaldos.js', respaldosSrc);
   const SYNC = escribir('sync.js', 'const waitFor = () => {};\n' + syncSrc);
   const plano = x => JSON.parse(JSON.stringify(x));
-  const guardar = app => { const p = app._fbSaveToCloud(); app._fbFlushSave(); return p; }; // encola y fuerza el guardado sin esperar el debounce
+  const guardar = app => { const p = app._firebaseSaveToCloud(); app._firebaseFlushSave(); return p; }; // encola y fuerza el guardado sin esperar el debounce
   const esperar = ms => new Promise(r => setTimeout(r, ms));
   // Espera a una condición en vez de dormir un tiempo fijo: en una máquina lenta (OneDrive, antivirus) 50 ms no alcanzan para descomprimir y el test fallaba sin que la app tuviera un error.
   const hasta = async (cond, ms = 5000) => { const t0 = Date.now(); while (!cond()) { if (Date.now() - t0 > ms) throw new Error('timeout esperando la condición'); await esperar(5); } };
@@ -214,20 +215,20 @@ describe('firebase-sync', () => {
   const gz = txt => 'gz1:' + zlib.gzipSync(txt).toString('base64');
 
   function entorno(estado) {
-    const app = loadApp([CODEC, RESPALDOS, SYNC], { permissive: true });
+    const app = loadApp([CODEC, RESPALDOS, FUSION, SYNC], { permissive: true });
     const dom = createFakeDom();
     app.document = dom.document;
     Object.assign(app.globalThis.document || {}, {});
     app.CompressionStream = CompressionStream; app.DecompressionStream = DecompressionStream;
     app.Blob = Blob; app.Response = Response; app.btoa = btoa; app.atob = atob; app.TextEncoder = TextEncoder; app.Uint8Array = Uint8Array;
     const escritos = []; const listeners = {};
-    app._fb = {
+    app._firebase = {
       db: {}, doc: (...a) => ({ ruta: a.slice(1).join('/') }),
       setDoc: async (ref, datos) => { escritos.push(datos); },
       onSnapshot: (ref, opts, onNext, onError) => { listeners.next = onNext; listeners.error = onError; return () => {}; },
       runTransaction: async () => { throw new Error('no usado'); },
     };
-    app._fbUser = { uid: 'u1' };
+    app._firebaseUser = { uid: 'u1' };
     app.S = estado || { cuentas: [{ id: 'nequi', saldo: 5 }], libro: [] };
     return { app, escritos, listeners };
   }
@@ -295,9 +296,22 @@ describe('firebase-sync', () => {
     assert.equal(r && r.reason, 'too-large');
   });
 
+  test('guardado — un saldo NaN (se guardaría como null sin avisar) NO se escribe y se avisa', async () => {
+    const { app, escritos } = entorno();
+    app._dataLoaded = true;
+    const avisos = []; app.toast = m => avisos.push(m);
+    app.S.cuentas[0].saldo = NaN;
+    const r = await guardar(app);
+    assert.equal(r && r.reason, 'invalid');
+    assert.equal(escritos.length, 0, 'la nube conserva el último estado bueno');
+    assert.ok(avisos.some(m => /datos inválidos/i.test(m)));
+    app.S.cuentas[0].saldo = 5;                         // al corregirlo vuelve a guardar
+    assert.equal((await guardar(app)).ok, true);
+  });
+
   test('listener — carga inicial con payload comprimido aplica los datos y habilita el guardado', async () => {
     const { app, listeners } = entorno({ cuentas: [], libro: [] });
-    app._fbLoadData();
+    app._firebaseLoadData();
     listeners.next(snap(gz(JSON.stringify({ cuentas: [{ id: 'nequi', saldo: 123 }], libro: [{ id: 'l1' }] }))));
     await hasta(() => app._dataLoaded);
     assert.equal(app.S.cuentas[0].saldo, 123);
@@ -306,7 +320,7 @@ describe('firebase-sync', () => {
 
   test('listener — payload en JSON plano (formato anterior) también se lee', async () => {
     const { app, listeners } = entorno({ cuentas: [], libro: [] });
-    app._fbLoadData();
+    app._firebaseLoadData();
     listeners.next(snap(JSON.stringify({ cuentas: [{ id: 'efectivo', saldo: 7 }] })));
     await hasta(() => app._dataLoaded);
     assert.equal(app.S.cuentas[0].saldo, 7);
@@ -316,7 +330,7 @@ describe('firebase-sync', () => {
   test('listener — un payload comprimido ilegible NO habilita el guardado (nunca se pisa la nube)', async () => {
     const { app, listeners, escritos } = entorno({ cuentas: [], libro: [] });
     const terminadas = espiar(app);
-    app._fbLoadData();
+    app._firebaseLoadData();
     listeners.next(snap('gz1:basura-no-gzip'));
     await terminadas(); await esperar(30); // la descompresión ya falló; margen para que el listener reaccione
     assert.ok(!app._dataLoaded, 'sigue en modo lectura');
@@ -325,7 +339,7 @@ describe('firebase-sync', () => {
 
   test('listener — los snapshots se procesan en el orden en que llegaron', async () => {
     const { app, listeners } = entorno({ cuentas: [], libro: [] });
-    app._fbLoadData();
+    app._firebaseLoadData();
     const grande = JSON.stringify({ cuentas: [{ id: 'nequi', saldo: 1 }], relleno: Array.from({ length: 4000 }, (_, i) => 'x' + i) });
     const terminadas = espiar(app);
     listeners.next(snap(gz(grande)));                                              // tarda más en descomprimir
@@ -339,7 +353,7 @@ describe('firebase-sync', () => {
     const avisos = [];
     app.toast = (m) => avisos.push(m); app.window = app.window || app; app.window.toast = app.toast;
     app.load = () => {}; app.refresh = () => {}; app.applyModulos = () => {};
-    app._fbLoadData();
+    app._firebaseLoadData();
     const payload = JSON.stringify({ cuentas: [{ id: 'nequi', saldo: 9 }] });
     // updatedAt muy posterior a lo guardado localmente (mf_lastSavedAt vacío en un dispositivo recién abierto)
     const ts = Date.now() - 600000; // el mismo updatedAt en los tres: es el mismo documento de la nube
@@ -359,7 +373,7 @@ describe('firebase-sync', () => {
     const avisos = [];
     app.toast = (m) => avisos.push(m); app.window = app.window || app; app.window.toast = app.toast; app.window.dispatchEvent = () => {};
     app.load = () => {}; app.refresh = () => {}; app.applyModulos = () => {};
-    app._fbLoadData();
+    app._firebaseLoadData();
     const base = Date.now() - 600000;
     const s = (saldo, ts) => ({ exists: () => true, data: () => ({ payload: JSON.stringify({ cuentas: [{ id: 'nequi', saldo }] }), updatedAt: ts }), metadata: { fromCache: false, hasPendingWrites: false } });
     listeners.next(s(1, base)); await hasta(() => app._dataLoaded); await esperar(40);
@@ -374,11 +388,11 @@ describe('firebase-sync', () => {
     const almacen = { doc: nube }; // lo que hay en «Firestore»: { payload, updatedAt, rev } o null
     const store = {};
     e.app.localStorage = { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: k => { delete store[k]; } };
-    e.app._fb.setDoc = async (ref, datos) => { almacen.doc = datos; e.escritos.push(datos); };
+    e.app._firebase.setDoc = async (ref, datos) => { almacen.doc = datos; e.escritos.push(datos); };
     // El «Firestore» distingue los documentos por ruta: `finanzas` es el principal; los demás (respaldos automáticos, su índice) van aparte.
     almacen.otros = new Map();
     const esPrincipal = ref => /\/data\/finanzas$/.test(ref.ruta);
-    e.app._fb.runTransaction = async (db, fn) => {
+    e.app._firebase.runTransaction = async (db, fn) => {
       const pend = [];
       const tx = {
         get: async (ref) => {
@@ -400,7 +414,7 @@ describe('firebase-sync', () => {
     return e;
   }
   const nubeDoc = (saldo, rev, updatedAt = Date.now() - 600000) => ({ payload: JSON.stringify({ cuentas: [{ id: 'nequi', saldo }], libro: [] }), updatedAt, ...(rev == null ? {} : { rev }) });
-  const cargar = async (e) => { e.app._fbLoadData(); e.listeners.next({ exists: () => e.almacen.doc != null, data: () => e.almacen.doc, metadata: { fromCache: false, hasPendingWrites: false } }); await hasta(() => e.app._dataLoaded); };
+  const cargar = async (e) => { e.app._firebaseLoadData(); e.listeners.next({ exists: () => e.almacen.doc != null, data: () => e.almacen.doc, metadata: { fromCache: false, hasPendingWrites: false } }); await hasta(() => e.app._dataLoaded); };
 
   test('rev — un guardado normal escribe rev+1 con una transacción y recuerda la revisión', async () => {
     const e = entornoRev(nubeDoc(1, 3));
@@ -422,10 +436,11 @@ describe('firebase-sync', () => {
     assert.equal(e.almacen.doc.rev, 1);
   });
 
-  test('rev — si otro dispositivo guardó en medio NO se pisa: se carga su versión y la copia local queda en mf_conflicto', async () => {
+  test('rev — si otro dispositivo guardó en medio NO se pisa: se carga su versión y la copia local descartada se conserva', async () => {
     const e = entornoRev(nubeDoc(1, 3));
     await cargar(e);
     e.almacen.doc = nubeDoc(500, 4, Date.now()); // el otro dispositivo guardó la revisión 4
+    e.app.fusionarEstados = () => { throw new Error('sin fusión'); }; // camino sin fusión (con fusión: pruebas «fusión —» más abajo)
     const avisos = []; e.app.toast = m => avisos.push(m);
     e.app.S.cuentas[0].saldo = 99; // cambio local sobre la revisión 3
     const r = await guardar(e.app);
@@ -435,7 +450,7 @@ describe('firebase-sync', () => {
     assert.equal(e.almacen.doc.rev, 4, 'la nube sigue intacta');
     assert.equal(e.app.S.cuentas[0].saldo, 500, 'se cargó la versión de la nube');
     assert.equal(e.app._revNube, 4);
-    const copia = JSON.parse(e.store.mf_conflicto);
+    const copia = await e.app._firebaseConflictoGuardado();   // sin almacén de respaldos en este entorno: va al último recurso (localStorage, comprimido)
     assert.equal(JSON.parse(copia.payload).cuentas[0].saldo, 99, 'lo local descartado quedó guardado');
     assert.ok(avisos.some(m => /otro dispositivo/i.test(m)));
     // y con la versión nueva ya cargada, el siguiente guardado pasa
@@ -444,12 +459,187 @@ describe('firebase-sync', () => {
     assert.equal(e.almacen.doc.rev, 5);
   });
 
+  // ── Dos pestañas a la vez (caso real: la pestaña secundaria dice «sin conexión» en la transacción) ─────────────────────
+  function dosPestanas(conServidor) {
+    const a = entornoRev(nubeDoc(1, 3));
+    const b = entornoRev(nubeDoc(1, 3));
+    b.almacen.doc = null; // B comparte la «nube» de A
+    Object.defineProperty(b, 'almacen', { value: a.almacen });
+    const compartido = a.almacen;
+    for (const e of [a, b]) {
+      e.app._firebase.setDoc = async (ref, datos) => { compartido.doc = datos; e.escritos.push(datos); };
+    }
+    // B: la transacción siempre responde «sin conexión» (como una pestaña secundaria); A: normal.
+    b.app._firebase.runTransaction = async () => { const err = new Error('Failed to get document because the client is offline.'); err.code = 'unavailable'; throw err; };
+    if (conServidor) b.app._firebase.getDocFromServer = async () => ({ exists: () => compartido.doc != null, data: () => compartido.doc });
+    return { a, b, nube: compartido };
+  }
+  const entregar = (e, doc) => e.listeners.next({ exists: () => true, data: () => doc, metadata: { fromCache: false, hasPendingWrites: false } });
+
+  test('dos pestañas — la secundaria sin transacción NO pisa a ciegas: con lectura del servidor detecta el conflicto y no escribe', async () => {
+    const { a, b, nube } = dosPestanas(true);
+    await cargar(a); await cargar(b);
+    for (const x of [a, b]) x.app.fusionarEstados = () => { throw new Error('sin fusión'); };
+    a.app.S.cuentas[0].saldo = 500; await guardar(a.app);              // A guarda la revisión 4
+    b.app.S.cuentas[0].saldo = 7;
+    const r = await guardar(b.app);                                     // B (base 3) ve que la nube ya está en 4
+    assert.equal(r.ok, false); assert.equal(r.reason, 'conflict');
+    assert.equal(nube.doc.rev, 4);
+    assert.equal(JSON.parse(await a.app.decodificarPayload(nube.doc.payload)).cuentas[0].saldo, 500, 'lo de A sigue en la nube');
+    assert.equal(b.app.S.cuentas[0].saldo, 500, 'B cargó la versión de la nube');
+  });
+
+  test('dos pestañas — si otra borra TODO ({}), esta bloquea el guardado y recarga en vez de resucitar los datos', async () => {
+    const e = entornoRev(nubeDoc(1, 3));
+    const recargas = [], avisos = [];
+    e.app.location = { reload: () => recargas.push(1) };
+    e.app.toast = m => avisos.push(m); e.app.window = e.app.window || e.app; e.app.window.toast = e.app.toast; e.app.window.dispatchEvent = () => {};
+    await cargar(e); await esperar(30);
+    assert.equal(e.app._dataLoaded, true);
+    entregar(e, { payload: '{}', updatedAt: Date.now(), rev: 4 });
+    await hasta(() => e.app._dataLoaded === false);
+    assert.ok(avisos.some(m => /borraron todos los datos/i.test(m)));
+    e.app.S.cuentas[0].saldo = 123; // lo que la persona hiciera ahora en esta pestaña vieja…
+    const r = await guardar(e.app);
+    assert.equal(r.ok, false, '…no puede subirse y resucitar lo borrado');
+    assert.equal(e.escritos.length, 0);
+    await hasta(() => recargas.length === 1, 3000);
+    assert.equal(recargas.length, 1);
+  });
+  test('dos pestañas — el borrado también limpia los respaldos de este equipo, y varias entregas del mismo borrado recargan una sola vez', async () => {
+    const e = entornoRev(nubeDoc(1, 3));
+    const recargas = []; let limpiezas = 0;
+    e.app.location = { reload: () => recargas.push(1) };
+    e.app.window = e.app.window || e.app; e.app.window.toast = () => {}; e.app.window.dispatchEvent = () => {};
+    await cargar(e); await esperar(30);
+    e.app._firebaseRespaldos = { borrarTodos: async () => { limpiezas++; } };
+    const borrado = { payload: '{}', updatedAt: Date.now(), rev: 4 };
+    entregar(e, borrado); entregar(e, borrado); entregar(e, borrado);
+    await hasta(() => recargas.length >= 1, 4000); await esperar(300);
+    assert.equal(recargas.length, 1);
+    assert.equal(limpiezas, 1);
+  });
+  test('dos pestañas — el borrado llega justo cuando esta pestaña escribía esa misma revisión: también gana el borrado', async () => {
+    const e = entornoRev(nubeDoc(1, 3));
+    const recargas = [];
+    e.app.location = { reload: () => recargas.push(1) };
+    e.app.window = e.app.window || e.app; e.app.window.toast = () => {}; e.app.window.dispatchEvent = () => {};
+    await cargar(e); await esperar(30);
+    e.app.S.cuentas[0].saldo = 55; await guardar(e.app);            // esta pestaña escribe la revisión 4…
+    const mia = e.almacen.doc.rev;
+    entregar(e, { payload: '{}', updatedAt: Date.now() + 7, rev: mia }); // …y el borrado de otra también es la 4, con otra hora
+    await hasta(() => e.app._dataLoaded === false);
+    assert.equal(e.app._dataLoaded, false);
+    await hasta(() => recargas.length === 1, 4000);
+  });
+  test('dos pestañas — el eco del propio borrado (_borrandoTodo) no se toma como borrado de otro', async () => {
+    const e = entornoRev(nubeDoc(1, 3));
+    e.app.location = { reload: () => { throw new Error('no debe recargar por el eco'); } };
+    e.app.window = e.app.window || e.app; e.app.window.toast = () => {}; e.app.window.dispatchEvent = () => {};
+    await cargar(e); await esperar(30);
+    e.app._borrandoTodo = true;
+    entregar(e, { payload: '{}', updatedAt: Date.now(), rev: 4 });
+    await esperar(1500);
+    assert.equal(e.app._dataLoaded, true);
+  });
+
+  test('dos pestañas — si las dos escriben la MISMA revisión sin verse, cada una lo detecta y conserva copia de lo suyo', async () => {
+    const { a, b, nube } = dosPestanas(false); // sin lectura del servidor: la escritura a ciegas sigue siendo posible (de verdad sin red)
+    const avisosA = [], avisosB = [];
+    a.app.toast = m => avisosA.push(m); b.app.toast = m => avisosB.push(m);
+    a.app.window = a.app.window || a.app; a.app.window.toast = a.app.toast; a.app.window.dispatchEvent = () => {};
+    b.app.window = b.app.window || b.app; b.app.window.toast = b.app.toast; b.app.window.dispatchEvent = () => {};
+    for (const x of [a, b]) x.app.fusionarEstados = () => { throw new Error('sin fusión'); };
+    await cargar(a); await cargar(b); await esperar(30); // la primera carga ya terminó: lo que llegue después es «tiempo real»
+    a.app.S.cuentas[0].saldo = 500; await guardar(a.app); const docA = nube.doc;   // A: revisión 4
+    await esperar(5);
+    b.app.S.cuentas[0].saldo = 7; await guardar(b.app); const docB = nube.doc;      // B: también revisión 4, otra hora
+    assert.equal(docA.rev, 4); assert.equal(docB.rev, 4);
+    // Firestore entrega a cada pestaña el documento que dejó el otro:
+    entregar(a, docB);
+    await hasta(() => a.app.S.cuentas[0].saldo === 7);
+    // Ojo: «Datos actualizados desde otro dispositivo» sale al instante, ANTES de que termine de guardarse la copia (asíncrona).
+    // El aviso que dice «copia» sale cuando ya está guardada: se espera ese (en una máquina lenta el otro llega primero).
+    await hasta(() => avisosA.some(m => /copia/i.test(m)));
+    assert.ok(avisosA.some(m => /otro dispositivo/i.test(m)), 'A avisa (antes divergían en silencio)');
+    const copia = await a.app._firebaseConflictoGuardado();
+    assert.equal(JSON.parse(copia.payload).cuentas[0].saldo, 500, 'lo que A había escrito queda como copia');
+  });
+
+  // ── Fusión: cambios en cosas distintas hechos a la vez en dos pestañas se UNEN (js/core/fusion.js) ─────────────────────
+  const estadoNube = async (e, nube) => JSON.parse(await e.app.decodificarPayload(nube.doc.payload));
+
+  test('fusión — al guardar con la nube más nueva: los cambios de las dos pestañas (cosas distintas) quedan en la nube', async () => {
+    const { a, b, nube } = dosPestanas(true);
+    await cargar(a); await cargar(b);
+    const avisos = []; b.app.toast = m => avisos.push(m);
+    a.app.S.notaA = 'de A'; await guardar(a.app);                 // A guarda la revisión 4
+    b.app.S.notaB = 'de B';                                       // B (todavía en la revisión 3) cambia OTRA cosa
+    const r = await guardar(b.app);
+    assert.equal(r.reason, 'conflict');
+    assert.equal(b.app.S.notaA, 'de A', 'B recibió lo de A');
+    assert.equal(b.app.S.notaB, 'de B', 'y conserva lo suyo (antes se descartaba)');
+    assert.ok(avisos.some(m => /combinaron/i.test(m)), JSON.stringify(avisos));
+    b.app._firebaseFlushSave();                                   // sube lo combinado
+    await hasta(() => nube.doc.rev === 5);
+    const final = await estadoNube(b, nube);
+    assert.equal(final.notaA, 'de A'); assert.equal(final.notaB, 'de B');
+  });
+
+  test('fusión — en tiempo real: llega lo de otro dispositivo mientras editas otra cosa; se combinan y se sube', async () => {
+    const { a, b, nube } = dosPestanas(true);
+    for (const x of [a, b]) { x.app.window = x.app.window || x.app; x.app.window.toast = () => {}; x.app.window.dispatchEvent = () => {}; }
+    await cargar(a); await cargar(b); await esperar(30);
+    a.app.S.notaA = 'de A'; await guardar(a.app);
+    b.app.S.notaB = 'de B';                                       // edición de B sin guardar todavía
+    entregar(b, nube.doc);                                        // Firestore le entrega a B lo que guardó A
+    await hasta(() => b.app.S.notaA === 'de A');
+    assert.equal(b.app.S.notaB, 'de B', 'lo que B estaba editando no se pierde');
+    b.app._firebaseFlushSave();
+    await hasta(() => nube.doc.rev === 5);
+    const final = await estadoNube(b, nube);
+    assert.equal(final.notaA, 'de A'); assert.equal(final.notaB, 'de B');
+  });
+
+  test('fusión — las dos pestañas escribieron la MISMA revisión sin verse: se combinan en vez de quedar divergentes', async () => {
+    const { a, b, nube } = dosPestanas(false);                    // sin lectura del servidor: la escritura a ciegas es posible
+    for (const x of [a, b]) { x.app.window = x.app.window || x.app; x.app.window.toast = () => {}; x.app.window.dispatchEvent = () => {}; }
+    await cargar(a); await cargar(b); await esperar(30);
+    a.app.S.notaA = 'de A'; await guardar(a.app);
+    await esperar(5);
+    b.app.S.notaB = 'de B'; await guardar(b.app); const docB = nube.doc;
+    entregar(a, docB);                                            // A se entera de lo que escribió B
+    await hasta(() => a.app.S.notaB === 'de B');
+    assert.equal(a.app.S.notaA, 'de A');
+    a.app._firebaseFlushSave();
+    await hasta(() => nube.doc.rev === 5);
+    const final = await estadoNube(a, nube);
+    assert.equal(final.notaA, 'de A'); assert.equal(final.notaB, 'de B');
+  });
+
+  test('guardado — si llega una versión nueva mientras se prepara el guardado, el payload viejo NO se escribe encima', async () => {
+    const e = entornoRev(nubeDoc(1, 3));
+    await cargar(e);
+    e.app.S.cuentas[0].saldo = 99;                      // cambio local sobre la revisión 3
+    const original = e.app.codificarPayload;
+    e.app.codificarPayload = async t => { const r = await original(t); await esperar(30); return r; };
+    const p = guardar(e.app);
+    await esperar(5);
+    // mientras se comprime llega la revisión 4 de otro dispositivo y se aplica (el listener sube _revNube)
+    e.almacen.doc = nubeDoc(500, 4, Date.now());
+    e.listeners.next({ exists: () => true, data: () => e.almacen.doc, metadata: { fromCache: false, hasPendingWrites: false } });
+    const r = await p;
+    assert.equal(r.ok, false);
+    assert.equal(e.almacen.doc.rev, 4);
+    assert.equal(JSON.parse(e.almacen.doc.payload).cuentas[0].saldo, 500, 'la nube conserva lo del otro dispositivo');
+  });
+
   test('rev — forzar (importar un backup) pisa la nube aunque haya cambiado y sube la revisión', async () => {
     const e = entornoRev(nubeDoc(1, 3));
     await cargar(e);
     e.almacen.doc = nubeDoc(500, 8, Date.now());
     e.app.S.cuentas[0].saldo = 77;
-    const p = e.app._fbSaveToCloud({ forzar: true }); e.app._fbFlushSave();
+    const p = e.app._firebaseSaveToCloud({ forzar: true }); e.app._firebaseFlushSave();
     const r = await p;
     assert.equal(r.ok, true);
     assert.equal(e.almacen.doc.rev, 9, 'sube sobre la revisión que había en la nube');
@@ -459,7 +649,7 @@ describe('firebase-sync', () => {
   test('rev — sin conexión la transacción falla y el guardado se encola con setDoc (no se pierde)', async () => {
     const e = entornoRev(nubeDoc(1, 3));
     await cargar(e);
-    e.app._fb.runTransaction = async () => { const err = new Error('Failed to get document because the client is offline.'); err.code = 'unavailable'; throw err; };
+    e.app._firebase.runTransaction = async () => { const err = new Error('Failed to get document because the client is offline.'); err.code = 'unavailable'; throw err; };
     e.app.S.cuentas[0].saldo = 12;
     const r = await guardar(e.app);
     assert.equal(r.ok, true);
@@ -504,17 +694,32 @@ const { huella } = require('../scripts/sellar-sw.js');
 
 const RAIZ = path.join(__dirname, '..');
 
-test('sw.js está sellado: BUILD coincide con la huella actual de los archivos desplegables', () => {
+test('el sw.js del repo NO lleva sello (BUILD \'dev\', PRECACHE vacío): el sello se escribe en el despliegue, nunca queda viejo', () => {
   const sw = fs.readFileSync(path.join(RAIZ, 'sw.js'), 'utf8');
-  const m = /^const BUILD = '([^']*)';/m.exec(sw);
-  assert.ok(m, 'sw.js debe declarar const BUILD');
-  assert.equal(m[1], huella(RAIZ).build, 'sw.js desactualizado: corre `node scripts/sellar-sw.js` antes de desplegar');
+  assert.match(sw, /^const BUILD = 'dev';/m, 'no commitees un BUILD sellado: lo escribe `npm run build` en dist/');
+  assert.match(sw, /const PRECACHE = \[\];/);
 });
 
-test('la caché se nombra con VERSION y BUILD, y se limpia con ese mismo nombre', () => {
+test('npm run build: dist/ contiene SOLO lo desplegable, su sw.js está sellado con la huella de dist/ y el repo no se toca', () => {
+  const swAntes = fs.readFileSync(path.join(RAIZ, 'sw.js'), 'utf8');
+  const dist = fs.mkdtempSync(path.join(os.tmpdir(), 'dist-'));
+  const r = require('node:child_process').spawnSync(process.execPath, [path.join(RAIZ, 'scripts', 'preparar-despliegue.js'), dist], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  const sw = fs.readFileSync(path.join(dist, 'sw.js'), 'utf8');
+  const m = /^const BUILD = '([0-9a-f]{12})';/m.exec(sw);
+  assert.ok(m, 'dist/sw.js debe quedar sellado');
+  assert.equal(m[1], huella(dist).build);
+  const raizDist = fs.readdirSync(dist).filter(f => f !== '.gitignore').sort();
+  for (const f of raizDist) assert.ok(['css', 'icons', 'index.html', 'js', 'manifest.webmanifest', 'sw.js'].includes(f), 'no debe publicarse: ' + f);
+  assert.equal(fs.readFileSync(path.join(dist, '.gitignore'), 'utf8'), '*\n', 'dist/ se ignora a sí misma en git');
+  assert.equal(fs.readFileSync(path.join(RAIZ, 'sw.js'), 'utf8'), swAntes, 'el repo no se modifica');
+});
+
+test('la caché se nombra con el prefijo y BUILD, y se limpia con ese mismo nombre', () => {
   const sw = fs.readFileSync(path.join(RAIZ, 'sw.js'), 'utf8');
-  assert.match(sw, /const CACHE = VERSION \+ '-' \+ BUILD;/);
-  assert.doesNotMatch(sw.replace(/\/\/.*$/gm, ''), /caches\.open\(VERSION\)|k !== VERSION/, 'nadie debe seguir usando VERSION a secas como nombre de caché');
+  assert.match(sw, /const CACHE = PREFIJO_CACHE \+ '-' \+ BUILD;/);
+  assert.match(sw, /k\.startsWith\(PREFIJO_CACHE\) && k !== CACHE/);
+  assert.doesNotMatch(sw.replace(/\/\/.*$/gm, ''), /\bVERSION\b/, 'ya no hay número de versión a mano');
 });
 
 test('la huella cambia con cualquier archivo desplegable, es estable y no depende de CRLF ni de sw.js', () => {
@@ -548,8 +753,8 @@ test('el script sella solo la línea BUILD; con --check falla (código 1) si est
   fs.writeFileSync(path.join(dir, 'index.html'), 'x'); fs.writeFileSync(path.join(dir, 'js', 'a.js'), 'a');
   const original = "const VERSION = 'v1';\nconst BUILD = 'sin-sellar';\nconst otra = 2;\n";
   fs.writeFileSync(path.join(dir, 'sw.js'), original);
-  const chk = spawnSync(process.execPath, [script, '--check', dir], { encoding: 'utf8' });
-  assert.equal(chk.status, 1, 'vieja → código 1');
+  const checkbox = spawnSync(process.execPath, [script, '--check', dir], { encoding: 'utf8' });
+  assert.equal(checkbox.status, 1, 'vieja → código 1');
   assert.equal(fs.readFileSync(path.join(dir, 'sw.js'), 'utf8'), original, '--check no escribe');
   const run = spawnSync(process.execPath, [script, dir], { encoding: 'utf8' });
   assert.equal(run.status, 0);

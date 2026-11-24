@@ -16,19 +16,25 @@
    en paralelo a propósito, sin compartir estado entre sí.
 
    Requiere:
-     - Que window._fb (firebase-init.js) exponga también `arrayUnion`
+     - Que window._firebase (firebase-init.js) exponga también `arrayUnion`
        de 'firebase/firestore' (hoy solo expone db/doc/setDoc/etc. —
        hay que agregar esa línea ahí).
      - Reusa el Service Worker que YA registra la app (sw.js) para
        recibir el token, en vez de que Firebase registre uno propio
-       (firebase-messaging-sw.js) — por eso sw.js también necesita el
-       bloque de Firebase Messaging agregado (ver ese archivo).
+       (firebase-messaging-sw.js). sw.js recibe los avisos con el evento
+       `push` nativo, sin el SDK de Firebase (ver ese archivo).
 
    Disparo: cualquier elemento con data-action="notificaciones:activar"
    (ej. un botón en Configuración) llama a activarNotificaciones().
    ================================================================ */
 
-const _FCM_CONFIG = {
+import { exponerGlobales, exponerVariables } from './puente.js';
+import { toast } from './dialogos.js';
+import { Events } from './events.js';
+// Puente global (js/core/puente.js): las funciones se hoistean, así que quedan en window desde el principio.
+exponerGlobales({ _estadoPush, _pushYaActivo, _refrescarEstadoPush, _mensajePushError, _obtenerTokenPush, activarNotificaciones });
+
+export const _FCM_CONFIG = {
   apiKey: 'AIzaSyBNGhKxrd6nuUXamRytHEgrv3ggrafr4HU',
   authDomain: 'mis-finanzas-z.firebaseapp.com',
   projectId: 'mis-finanzas-z',
@@ -37,13 +43,13 @@ const _FCM_CONFIG = {
   appId: '1:469399538471:web:adaf95bc43b3355b087702',
 };
 
-const _FCM_VAPID_KEY = 'BHg62p-K530SMQ0Vx7EsZVpkG8NnXv_eD25AQz-w6gOL5MBdGGjCchPKnbuX2XFJXjoigwPWpxK39PtlvHRvsWw';
+export const _FCM_VAPID_KEY = 'BHg62p-K530SMQ0Vx7EsZVpkG8NnXv_eD25AQz-w6gOL5MBdGGjCchPKnbuX2XFJXjoigwPWpxK39PtlvHRvsWw';
 
 // ── Estado visible en la fila de Configuración (#cfg-notificaciones-sub) ────────────────────────────────────────────────────
 // El texto original de la fila se recuerda la primera vez para poder volver a él si falla. `mf_push_ok` (localStorage) = este
 // dispositivo ya dejó su token guardado; si el permiso se revoca en el navegador la marca se ignora y se limpia.
-let _textoOriginalPush = null;
-function _estadoPush(texto) {
+export let _textoOriginalPush = null;
+export function _estadoPush(texto) {
   const el = document.getElementById('cfg-notificaciones-sub');
   if (!el) return;
   if (_textoOriginalPush === null) _textoOriginalPush = el.textContent;
@@ -51,18 +57,18 @@ function _estadoPush(texto) {
 }
 // `uid`: si se pasa, solo cuenta como activo cuando la marca es de ESA cuenta (el token se guarda por cuenta, así que otra cuenta en
 // el mismo navegador sí debe registrarse). Sin `uid` (al abrir la app, aún sin sesión) basta con que haya marca.
-function _pushYaActivo(uid) {
+export function _pushYaActivo(uid) {
   try {
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') { localStorage.removeItem('mf_push_ok'); return false; }
     const marca = localStorage.getItem('mf_push_ok');
     return !!marca && (uid == null || marca === uid);
   } catch (_) { return false; }
 }
-function _refrescarEstadoPush() { if (_pushYaActivo()) _estadoPush('Activadas en este dispositivo'); }
+export function _refrescarEstadoPush() { if (_pushYaActivo()) _estadoPush('Activadas en este dispositivo'); }
 
 // Mensaje claro según la causa. «Registration failed - push service error» NO es un fallo de Firebase ni de la app: lo devuelve el
 // navegador cuando no logra suscribirse a SU servicio de notificaciones (Google en Chrome/Edge/Brave, Mozilla en Firefox).
-function _mensajePushError(e, ent) {
+export function _mensajePushError(e, ent) {
   ent = ent || {};
   const msg = String((e && e.message) || e || '');
   const cod = String((e && (e.code || e.name)) || '');
@@ -83,30 +89,30 @@ function _mensajePushError(e, ent) {
 
 // getToken con un reintento: un «push service error» muchas veces viene de una suscripción vieja del navegador (hecha con otra
 // clave o ya caducada). Se borra esa suscripción y el token anterior y se vuelve a pedir una sola vez.
-async function _obtenerTokenPush(messaging, swReg) {
-  const pedir = () => messaging.getToken({ vapidKey: _FCM_VAPID_KEY, serviceWorkerRegistration: swReg });
+export async function _obtenerTokenPush(messaging, swRegistration) {
+  const pedir = () => messaging.getToken({ vapidKey: _FCM_VAPID_KEY, serviceWorkerRegistration: swRegistration });
   try {
     return await pedir();
   } catch (e) {
     if (!/push service error|AbortError/i.test(String((e && (e.code || e.name)) || '') + ' ' + String((e && e.message) || e))) throw e;
     try { await messaging.deleteToken(); } catch (_) { /* no había token */ }
-    try { const sub = await swReg.pushManager.getSubscription(); if (sub) await sub.unsubscribe(); } catch (_) { /* nada que borrar */ }
+    try { const sub = await swRegistration.pushManager.getSubscription(); if (sub) await sub.unsubscribe(); } catch (_) { /* nada que borrar */ }
     return await pedir();
   }
 }
 
-let _activandoPush = false;
-async function activarNotificaciones() {
+export let _activandoPush = false;
+export async function activarNotificaciones() {
   if (!('Notification' in window) || !('serviceWorker' in navigator)) {
     if (typeof toast === 'function') toast('Este navegador no soporta notificaciones', 'err');
     return;
   }
-  if (!window._fbUser) {
+  if (!window._firebaseUser) {
     if (typeof toast === 'function') toast('Inicia sesión primero', 'err');
     return;
   }
   // Ya activadas en este dispositivo: no se vuelve a registrar ni a mostrar «Activando…»; solo se avisa.
-  if (_pushYaActivo(window._fbUser.uid)) {
+  if (_pushYaActivo(window._firebaseUser.uid)) {
     if (typeof toast === 'function') toast('Las notificaciones ya están activadas en este dispositivo', 'info');
     return;
   }
@@ -131,13 +137,13 @@ async function activarNotificaciones() {
     const messaging = firebase.messaging(app);
 
     // Reusa el SW que sw.js ya registra al arrancar la app, en vez de que Firebase registre uno nuevo aparte.
-    const swReg = await navigator.serviceWorker.ready;
-    const token = await _obtenerTokenPush(messaging, swReg);
+    const swRegistration = await navigator.serviceWorker.ready;
+    const token = await _obtenerTokenPush(messaging, swRegistration);
     if (!token) throw new Error('No se pudo generar el token de notificaciones');
 
-    const { db, doc, setDoc, arrayUnion } = window._fb;
+    const { db, doc, setDoc, arrayUnion } = window._firebase;
     const guardado = setDoc(
-      doc(db, 'usuarios', window._fbUser.uid, 'data', 'notificaciones'),
+      doc(db, 'usuarios', window._firebaseUser.uid, 'data', 'notificaciones'),
       { fcmTokens: arrayUnion(token) },
       { merge: true }
     );
@@ -147,7 +153,7 @@ async function activarNotificaciones() {
     const r = await Promise.race([guardado.then(() => 'ok'), new Promise((res) => setTimeout(() => res(pendiente), 3000))]);
     if (r === pendiente) guardado.catch((e) => { console.error('Guardado tardío del token falló:', e); if (typeof toast === 'function') toast('No se pudo guardar el aviso en la nube: ' + (e.message || e), 'err'); });
 
-    try { localStorage.setItem('mf_push_ok', window._fbUser.uid); } catch (_) {}
+    try { localStorage.setItem('mf_push_ok', window._firebaseUser.uid); } catch (_) {}
     _estadoPush('Activadas en este dispositivo');
     if (typeof toast === 'function') toast('Notificaciones activadas', 'ok');
   } catch (e) {
@@ -170,3 +176,6 @@ _refrescarEstadoPush();
 if (typeof Events !== 'undefined' && typeof Events.registerAll === 'function') {
   Events.registerAll('notificaciones', { activar: activarNotificaciones });
 }
+
+// Puente global (js/core/puente.js): constantes y clases ya inicializadas, y variables que otros archivos leen por nombre.
+exponerGlobales({ _FCM_CONFIG, _FCM_VAPID_KEY });

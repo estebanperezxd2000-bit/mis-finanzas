@@ -3,7 +3,7 @@
 
    Helper mínimo compartido para los selectores de color (círculos)
    que aparecen en Cuentas, Tarjetas de crédito y Prestado. Antes
-   cada módulo tenía su propia función de 5 líneas (selColorNC,
+   cada módulo tenía su propia función de 5 líneas (selColorNuevaCuenta,
    tcSelColor, selColor) haciendo exactamente lo mismo: marcar con
    borde el círculo cuyo dataset.color coincide con el elegido.
    Ahora hay una sola función; cada módulo la llama pasándole su
@@ -11,7 +11,11 @@
    acá alcanza con esto, montar un widget parametrizado sería
    sobre-ingeniería para algo de una línea.
    ═══════════════════════════════════════════════════════════════ */
-function marcarColorSeleccionado(claseCirculos, color){
+import { exponerGlobales, exponerVariables } from './puente.js';
+// Puente global (js/core/puente.js): las funciones se hoistean, así que quedan en window desde el principio.
+exponerGlobales({ marcarColorSeleccionado });
+
+export function marcarColorSeleccionado(claseCirculos, color){
   document.querySelectorAll(claseCirculos).forEach(el=>{
     el.style.border = (color && el.dataset.color === color) ? '2px solid var(--accent)' : '2px solid transparent';
   });

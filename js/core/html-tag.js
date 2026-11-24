@@ -7,7 +7,7 @@
 // conocidos, revisar función por función). Eso nunca cierra el hallazgo de
 // raíz — solo lo reduce hasta la próxima vez que se agregue un campo de
 // texto libre nuevo o se lo envuelva en una función auxiliar nueva
-// (spNombreDe, fuenteLabel... ya pasó con las dos; por eso hoy hay fuenteTexto/fuenteHtml explícitas).
+// (spotifyNombreDe, fuenteLabel... ya pasó con las dos; por eso hoy hay fuenteTexto/fuenteHtml explícitas).
 //
 // Este archivo no reemplaza escHtml() (sigue existiendo en js/core/estado.js,
 // se sigue usando igual en sitios que arman un string suelto, no un
@@ -36,13 +36,14 @@
 // reescribir todo"). No hace falta convertir nada que no se esté tocando
 // ya por otro motivo.
 //
-// Carga como <script> clásico (no type="module"), mismo criterio que
-// el núcleo/navegacion.js: sus globales (html, raw) deben quedar
-// disponibles como variables léxicas para el resto de los <script>
-// clásicos del documento. Depende de escHtml(), definida en js/core/estado.js
-// — debe cargar después de ese archivo.
+// Módulo ES (js/main.js): los demás archivos importan `html` y `raw` de aquí. Depende de escHtml(), de js/core/estado.js, que carga antes.
 
-function raw(value) {
+import { exponerGlobales, exponerVariables } from './puente.js';
+import { escHtml } from './estado.js';
+// Puente global (js/core/puente.js): las funciones se hoistean, así que quedan en window desde el principio.
+exponerGlobales({ raw, _htmlEscapeValue, html });
+
+export function raw(value) {
   return {
     __raw: true,
     value: value == null ? '' : String(value),
@@ -50,14 +51,14 @@ function raw(value) {
   };
 }
 
-function _htmlEscapeValue(v) {
+export function _htmlEscapeValue(v) {
   if (v == null) return '';
   if (v && v.__raw === true) return v.value;
   if (Array.isArray(v)) return v.map(_htmlEscapeValue).join('');
   return escHtml(String(v));
 }
 
-function html(strings, ...values) {
+export function html(strings, ...values) {
   let out = strings[0];
   for (let i = 0; i < values.length; i++) {
     out += _htmlEscapeValue(values[i]);

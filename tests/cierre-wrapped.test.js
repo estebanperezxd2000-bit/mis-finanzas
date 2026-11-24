@@ -154,9 +154,9 @@ describe('huella', () => {
       assert.equal(ctx.window.S, real);
       assert.equal(ctx.window._estadoAislado, undefined);
     });
-    test('save() y _fbSaveToCloud no escriben nada mientras dura: un estado de prueba nunca llega a la nube', () => {
+    test('save() y _firebaseSaveToCloud no escriben nada mientras dura: un estado de prueba nunca llega a la nube', () => {
       let guardados = 0;
-      ctx.window._fbSaveToCloud = () => { guardados++; return Promise.resolve({ ok: true }); };
+      ctx.window._firebaseSaveToCloud = () => { guardados++; return Promise.resolve({ ok: true }); };
       ctx.window._dataLoaded = true;
       const copia = plano(ctx.S);
       ctx.conEstadoAislado(copia, () => { ctx.save(); });
@@ -216,7 +216,7 @@ describe('huella', () => {
 
   test('un backup restaurado (JSON → estado nuevo en otra instancia de la app) tiene la MISMA huella: la huella es comparable entre sesiones', () => {
     const otra = cargarApp();
-    Object.assign(otra.S, JSON.parse(snapshot)); // lo que hace importar un backup
+    Object.assign(otra.S, JSON.parse(snapshot)); otra.Libro.hidratar(otra.S); // lo que hace importar un backup (el saldo se deriva del libro)
     const h2 = otra.Huella.calcular(otra.S, { requeridas: BASE });
     const r = ctx.Huella.comparar(huella, plano(h2));
     assert.equal(r.ok, true, JSON.stringify(r.diferencias.slice(0, 3)));
@@ -391,8 +391,8 @@ describe('cierre — vista previa (analizar)', () => {
 
   test('una entidad con historia posterior al corte no se cierra aunque su saldo sea 0 («registros-posteriores»)', () => {
     const v = cargarApp(); generar(v, { dias: 900 });
-    const enc = v.S.encargos.find(x => x.id === 'encCerrado');
-    enc.movimientos.push({ id: 'z00001', tipo: 'entrada', monto: 10, fecha: '2026-05-05', cuenta: 'efectivo' }, { id: 'z00002', tipo: 'salida', monto: 10, fecha: '2026-05-06', cuenta: 'efectivo' });
+    const encargo = v.S.encargos.find(x => x.id === 'encCerrado');
+    encargo.movimientos.push({ id: 'z00001', tipo: 'entrada', monto: 10, fecha: '2026-05-05', cuenta: 'efectivo' }, { id: 'z00002', tipo: 'salida', monto: 10, fecha: '2026-05-06', cuenta: 'efectivo' });
     const r = v.Cierre.analizar(CORTE, v.S, { mesActual: MES_ACTUAL });
     assert.equal(r.entidades.find(x => x.id === 'encCerrado').motivo, 'registros-posteriores');
     assert.equal(r.porFuente.encargos.archivables.registros, informe.porFuente.encargos.archivables.registros - 2);
@@ -656,7 +656,7 @@ describe('cierre — medidor en Configuración (renderTamanoDatos)', () => {
     const h = String(el.innerHTML);
     assert.match(h, /Tamaño de tus datos/);
     assert.match(h, /<progress class="cfg-tamano-barra"/);
-    assert.match(h, /KB de 1\.000 KB/);
+    assert.match(h, /KB de 940 KB/);
     assert.match(h, /llegarías al aviso de tamaño hacia/);
     assert.doesNotMatch(h, /style=/);
     assert.doesNotMatch(h, /conviene empezar a archivar/, 'con 2,7 años a este ritmo aún no toca archivar');
@@ -772,8 +772,8 @@ describe('wrapped — «no alcanzó el tiempo»: banco de frases y diapositivas'
     // y a través del armado real, con cada frase forzada: nunca queda una llave
     for (let anio = 2026; anio < 2060; anio++) {
       ['nada', 'poco'].forEach(tier => {
-        const sl = I._wrappedSlidesInsuficiente({ tier, registros: 1234, dias: 21, primera: '2026-10-18' }, String(anio));
-        sl.forEach(s => assert.doesNotMatch(s.html, /\{\w+\}/, 'marcador sin resolver en ' + anio + '/' + tier));
+        const slide = I._wrappedSlidesInsuficiente({ tier, registros: 1234, dias: 21, primera: '2026-10-18' }, String(anio));
+        slide.forEach(s => assert.doesNotMatch(s.html, /\{\w+\}/, 'marcador sin resolver en ' + anio + '/' + tier));
       });
     }
   });
@@ -792,9 +792,9 @@ describe('wrapped — «no alcanzó el tiempo»: banco de frases y diapositivas'
   });
 
   test('singular correcto: 1 día y 1 movimiento', () => {
-    const sl = I._wrappedSlidesInsuficiente({ tier: 'poco', registros: 1, dias: 1, primera: '2026-12-31' }, '2026');
-    assert.match(sl[1].html, /1 día con registros/);
-    assert.match(sl[1].html, /1 movimiento</);
+    const slide = I._wrappedSlidesInsuficiente({ tier: 'poco', registros: 1, dias: 1, primera: '2026-12-31' }, '2026');
+    assert.match(slide[1].html, /1 día con registros/);
+    assert.match(slide[1].html, /1 movimiento</);
   });
 
   test('determinista: el mismo año y nivel dan SIEMPRE las mismas frases; años distintos varían (el banco se aprovecha)', () => {
@@ -896,7 +896,7 @@ describe('wrapped — contrato de CSS del HTML guardado', () => {
   const fuentes = ['css/styles.css', 'js/modules/wrapped.js', 'index.html'].map(f => fs.readFileSync(path.join(RAIZ, !fs.existsSync(path.join(RAIZ, f)) && f === 'css/styles.css' ? 'styles.css' : f), 'utf8')).join('\n');
   const definida = cls => cls.startsWith('fa-') || new RegExp('\\.' + cls.replace(/[-]/g, '\\-') + '(?![\\w-])').test(fuentes); // fa-*: FontAwesome (externo)
   const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'wrapped-clases.json'), 'utf8'));
-  const clasesDe = sl => { const s = new Set(); sl.forEach(x => { for (const m of x.html.matchAll(/class="([^"]+)"/g)) m[1].split(/\s+/).forEach(k => s.add(k)); }); return s; };
+  const clasesDe = slide => { const s = new Set(); slide.forEach(x => { for (const m of x.html.matchAll(/class="([^"]+)"/g)) m[1].split(/\s+/).forEach(k => s.add(k)); }); return s; };
 
   test('cada clase que usa un Wrapped guardado (instantánea de referencia) sigue definida: renombrar o borrar una rompería los recuerdos viejos en silencio', () => {
     const rotas = fixture.filter(k => !definida(k));

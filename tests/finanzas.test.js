@@ -1,12 +1,12 @@
 'use strict';
-// tests/finanzas.test.js — Finanzas: puntaje de salud, reglas de alerta, plan de deudas, cobros de ingresos y escenarios de punta a punta.
+// tests/finanzas.test.js — Finanzas: puntaje de salud, reglas de alerta, costo de la deuda, cobros de ingresos y escenarios de punta a punta.
 // Un archivo por sección de la app. Cada bloque `describe` es lo que antes era un archivo suelto (escenarios-financieros.test.js, salud.test.js, reglas.test.js, plan-deudas.test.js, cobros.test.js).
 // Corre con:  node --test tests/finanzas.test.js   (o todo: npm test)
 const { describe: _describe } = require('node:test');
 
 _describe('escenarios-financieros', () => {
 // tests/escenarios-financieros.test.js — Escenarios NEGATIVOS y de borde de Salud, Proyección, Hero, Wrapped, Análisis y push.
-// Un estado sintético por escenario de mejoras-mis-finanzas.md (ya resueltas; ver CHANGELOG.md): la app estaba pensada para quien tiene
+// Un estado sintético por escenario de la revisión de mejoras del 2026-11-03 (ya resueltas; ver docs/changelog/cronologico-2026-11.md): la app estaba pensada para quien tiene
 // plata y crece, y en deuda, con patrimonio negativo o con una caída sostenida a veces mostraba algo engañoso o se quedaba callada.
 // Corre con:  node --test tests/escenarios-financieros.test.js   (o todo: npm test)
 'use strict';
@@ -28,7 +28,7 @@ function app(sObj = {}, extra = []) {
 const mesHace = n => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
 const mesAct = mesHace(0);
 const cuentas = (nequi = 0) => [{ id: 'nequi', tipo: 'billetera', nombre: 'Nequi', saldo: nequi }, { id: 'efectivo', tipo: 'efectivo', nombre: 'Efectivo', saldo: 0 }, { id: 'nu', tipo: 'ahorro', nombre: 'Nu', tasaEA: null }];
-const yoDebo = monto => [{ id: 'd1', nombre: 'Fulano', movimientos: [{ tipo: 'recibido', monto }] }];
+const yoDebo = monto => [{ id: 'd1', personaId: 'pF', movimientos: [{ tipo: 'recibido', monto }] }];
 const ingresosEn = (monto, meses) => [{ id: 'ip', nombre: 'Sueldo', monto, desde: '2020-01', cobros: meses.map((m, i) => ({ id: 'c' + i, mesCubre: m, monto, fecha: m + '-15' })) }];
 const ultimosN = (n, desde = 1) => Array.from({ length: n }, (_, i) => mesHace(i + desde));
 const gastosEn = (monto, meses) => ({ gastosFijos: [{ id: 'g1', monto }], pagosGastosFijos: Object.fromEntries(meses.map(m => ['g1_' + m, { monto, fecha: m + '-02' }])) });
@@ -59,9 +59,9 @@ test('mes parcial: un mes que apenas empieza no regala puntos por «gastar poco�
 });
 
 test('el ratio gasto/ingreso usa los meses completos: gastar más de lo que ingresas casi siempre penaliza; gastar poco suma', () => {
-  const ing = ingresosEn(1000000, ultimosN(3));
-  const sano = score({ cuentas: cuentas(3000000), ingresosFijos: ing, ...gastosEn(500000, ultimosN(3)) });
-  const mal = score({ cuentas: cuentas(3000000), ingresosFijos: ing, ...gastosEn(1500000, ultimosN(3)) });
+  const ingreso = ingresosEn(1000000, ultimosN(3));
+  const sano = score({ cuentas: cuentas(3000000), ingresosFijos: ingreso, ...gastosEn(500000, ultimosN(3)) });
+  const mal = score({ cuentas: cuentas(3000000), ingresosFijos: ingreso, ...gastosEn(1500000, ultimosN(3)) });
   assert.ok(sano.score > mal.score);
   assert.ok(mal.tips.some(t => t.includes('gastando más de lo que ingresas')));
 });
@@ -175,9 +175,9 @@ test('runway: «cubres X meses» = liquidez ÷ gasto típico; 0 si no hay liquid
   assert.equal(score({ cuentas: cuentas(0), misDeudas: yoDebo(100000), ...gastosEn(1000000, ultimosN(3)) }).mesesCubiertos, 0);
   assert.equal(score({ cuentas: cuentas(3000000) }).mesesCubiertos, null);
   const ctx = app();
-  assert.equal(ctx._textoRunway(3.44), 'Cubres 3,4 meses de gastos');
-  assert.equal(ctx._textoRunway(0.5), 'Cubres menos de 1 mes de gastos');
-  assert.equal(ctx._textoRunway(0), 'Tu plata disponible no cubre tus gastos');
+  assert.equal(ctx.Reglas.textoRunway(3.44), 'Cubres 3,4 meses de gastos');
+  assert.equal(ctx.Reglas.textoRunway(0.5), 'Cubres menos de 1 mes de gastos');
+  assert.equal(ctx.Reglas.textoRunway(0), 'Tu plata disponible no cubre tus gastos');
   assert.equal(ctx._nivelRunway(0.5), 'critico');
   assert.equal(ctx._nivelRunway(2), 'atencion');
   assert.equal(ctx._nivelRunway(5), 'ok');
@@ -257,9 +257,9 @@ test('patrimonio exactamente 0 con cuentas y deudas es un dato real, no «sin da
 });
 
 test('una fecha sin padding en el historial («2026-9-26») no produce NaN en la Proyección', () => {
-  const hist = historial(60, 1000000, 1000);
-  hist[10].fecha = '2026-9-26';
-  const h = proyeccion({ cuentas: cuentas(1000000), patrimonioHistorial: hist });
+  const historialPrueba = historial(60, 1000000, 1000);
+  historialPrueba[10].fecha = '2026-9-26';
+  const h = proyeccion({ cuentas: cuentas(1000000), patrimonioHistorial: historialPrueba });
   assert.ok(!h.includes('NaN'));
 });
 
@@ -269,9 +269,9 @@ test('«ESTABLE» exige 90 días y un ritmo consistente en los tres tercios; una
   const corto = proyeccion({ cuentas: cuentas(2000000), patrimonioHistorial: historial(70, 2000000, 10000) });
   assert.ok(!corto.includes('ESTABLE') && corto.includes('estimación'), 'antes bastaban 60 días');
   // una caída de −3 M en el primer tercio y subidas después
-  const hist = historial(100, 2000000, 10000);
-  hist.forEach((p, i) => { if (i >= 10) { p.valor -= 3000000; p.valorVisible -= 3000000; } });
-  const irregular = proyeccion({ cuentas: cuentas(2000000), patrimonioHistorial: hist });
+  const historialPrueba = historial(100, 2000000, 10000);
+  historialPrueba.forEach((p, i) => { if (i >= 10) { p.valor -= 3000000; p.valorVisible -= 3000000; } });
+  const irregular = proyeccion({ cuentas: cuentas(2000000), patrimonioHistorial: historialPrueba });
   assert.ok(!irregular.includes('ESTABLE'));
   assert.ok(irregular.includes('Tu ritmo cambió mucho'));
 });
@@ -290,7 +290,7 @@ test('con tendencia negativa y plata disponible, la Proyección dice cuánto agu
 
 /* ================= Atención ================= */
 test('Atención avisa liquidez negativa, «Yo debo», déficit sostenido y tarjetas no activas con deuda', () => {
-  const ctx = app({ cuentas: cuentas(100000), misDeudas: yoDebo(500000), tarjetasCredito: [{ id: 't', nombre: 'Vieja', estado: 'cerrada', deuda: 80000, cupo: 1000000 }], ...racha(3) });
+  const ctx = app({ cuentas: cuentas(100000), misDeudas: yoDebo(500000), personas: [{ id: 'pF', nombre: 'Fulano' }], tarjetasCredito: [{ id: 't', nombre: 'Vieja', estado: 'cerrada', deuda: 80000, cupo: 1000000 }], ...racha(3) });
   const { html, raw } = (() => { const l = createHtmlTag(ctx.escHtml); return l; })();
   ctx.html = html; ctx.raw = raw;
   const dom = createFakeDom();
@@ -317,8 +317,8 @@ function wrapped() {
   const { cargarApp } = require('./support/datos-sinteticos');
   return cargarApp(['core/wrapped-gate.js']).window._wrappedInternals;
 }
-const anioHist = (inicio, fin) => ({ patrimonioHistorial: [{ fecha: '2025-01-05', valor: inicio, valorVisible: inicio, montoBase: 0 }, { fecha: '2025-12-20', valor: fin, valorVisible: fin, montoBase: 0 }] });
-const frase = (ctx, inicio, fin, extra) => { const p = ctx._wrappedPatrimonioAnio(anioHist(inicio, fin), '2025'); return { p, f: ctx._wrappedCopyPatrimonio(p, extra) }; };
+const anioHistorial = (inicio, fin) => ({ patrimonioHistorial: [{ fecha: '2025-01-05', valor: inicio, valorVisible: inicio, montoBase: 0 }, { fecha: '2025-12-20', valor: fin, valorVisible: fin, montoBase: 0 }] });
+const frase = (ctx, inicio, fin, extra) => { const p = ctx._wrappedPatrimonioAnio(anioHistorial(inicio, fin), '2025'); return { p, f: ctx._wrappedCopyPatrimonio(p, extra) }; };
 
 test('F5. Wrapped: sobre una base mínima o negativa no hay porcentaje (+39.900 %, −800 %, «casi se duplicó» siguiendo en deuda)', () => {
   const ctx = wrapped();
@@ -391,19 +391,19 @@ test('presupuestos: un límite en 0 no produce NaN en la barra', () => {
 });
 
 /* ================= Push ================= */
-test('F6. el chequeo de Spotify vencido lee S.spotify.personas (esquema 9) y avisa', () => {
+test('F6. el chequeo de Spotify vencido lee S.spotify.integrantes (esquema 9) y avisa', () => {
   const { ejecutarChecks } = require('../scripts/notificaciones/checks.js');
-  const S = { modulos: { spotify: true }, personas: [], spotify: { personas: [{ nombre: 'Ana', proximoPago: '2026-10-01' }] } };
+  const S = { modulos: { spotify: true }, personas: [{ id: 'p1', nombre: 'Ana' }], spotify: { integrantes: [{ personaId: 'p1', proximoPago: '2026-10-01' }] } };
   const items = ejecutarChecks(S, '2026-10-20');
   assert.ok(items.some(i => i.texto.includes('Cobro Spotify de Ana vencido')));
 });
 
 /* ================= Service Worker ================= */
-test('A10. la línea de VERSION de sw.js es corta: el historial de versiones vive en CHANGELOG.md, no en un comentario de 12 KB', () => {
+test('A10. la línea de BUILD y el prefijo de caché de sw.js son cortos: el historial de versiones vive en CHANGELOG.md, no en un comentario de 12 KB', () => {
   const sw = require('node:fs').readFileSync(path.join(RAIZ, 'sw.js'), 'utf8');
-  const linea = sw.split('\n').find(l => l.startsWith('const VERSION'));
-  assert.ok(linea && linea.length < 200, 'la línea de VERSION mide ' + (linea || '').length);
-  assert.match(linea, /mis-finanzas-v\d+/);
+  const linea = sw.split('\n').find(l => l.startsWith('const BUILD'));
+  assert.ok(linea && linea.length < 200, 'la línea de BUILD mide ' + (linea || '').length);
+  assert.match(sw, /^const PREFIJO_CACHE = 'mis-finanzas-v';/m);
 });
 
 /* ================= P7: gastos fijos con día de vencimiento ================= */
@@ -614,20 +614,20 @@ test('Impacto antes de comprar: qué parte de lo disponible es y cuántos meses 
 });
 
 test('Impacto antes de comprar: sin gasto típico solo dice el porcentaje; pagar con tarjeta pesa igual que pagar de una cuenta', () => {
-  const sinHist = app({ cuentas: cuentas(10000000) }).calcImpactoCompra(6000000);
-  assert.equal(sinHist.despues, null);
-  assert.match(sinHist.texto, /Es el 60 % de tu plata disponible/);
-  assert.ok(!sinHist.texto.includes('cubrirías'));
+  const sinHistorial = app({ cuentas: cuentas(10000000) }).calcImpactoCompra(6000000);
+  assert.equal(sinHistorial.despues, null);
+  assert.match(sinHistorial.texto, /Es el 60 % de tu plata disponible/);
+  assert.ok(!sinHistorial.texto.includes('cubrirías'));
   const conTarjeta = app({ cuentas: cuentas(10000000), tarjetasCredito: [{ id: 't', nombre: 'TC', deuda: 4000000, cupo: 20000000 }] }).calcImpactoCompra(6000000);
   assert.equal(conTarjeta.netaDespues, 10000000 - 4000000 - 6000000, 'la deuda propia ya resta de la liquidez, igual que la salida de una cuenta');
 });
 
 test('Proyección: una compra grande marcada no se extrapola como ritmo, y se dice con claridad', () => {
   const dias = 100;
-  const hist = historial(dias, 3000000, 10000);              // sube 10.000/día
-  hist.forEach((p, i) => { if (i >= 50) { p.valor -= 5000000; p.valorVisible -= 5000000; } }); // la moto cae el día 50
-  const fechaMoto = hist[50].fecha;
-  const base = { cuentas: cuentas(3000000), patrimonioHistorial: hist };
+  const historialPrueba = historial(dias, 3000000, 10000);              // sube 10.000/día
+  historialPrueba.forEach((p, i) => { if (i >= 50) { p.valor -= 5000000; p.valorVisible -= 5000000; } }); // la moto cae el día 50
+  const fechaMoto = historialPrueba[50].fecha;
+  const base = { cuentas: cuentas(3000000), patrimonioHistorial: historialPrueba };
   const marcada = proyeccion({ ...base, gastosVar: [{ id: 'm', desc: 'Moto <x>', monto: 5000000, fecha: fechaMoto, cat: 'Transporte', fuente: 'cuenta:nequi', clase: 'gasto', grande: true }] });
   assert.ok(marcada.includes('ESTABLE'), 'sin la moto el ritmo fue consistente en los tres tercios');
   assert.match(marcada, /Sin contar tu compra grande \(Moto &lt;x&gt;: \$?5\.000\.000\)/, 'escapa el nombre');
@@ -640,14 +640,14 @@ test('Proyección: una compra grande marcada no se extrapola como ritmo, y se di
 
 test('Gastos: la casilla «compra grande» sigue a la sugerencia del monto hasta que el usuario decide', () => {
   const { ctx, el } = gastosApp({ cuentas: cuentas(20000000), ingresosFijos: ingresosEn(3000000, ultimosN(6)), ...gastosEn(1000000, ultimosN(3)) });
-  const chk = el('gv_grande');
+  const checkbox = el('gv_grande');
   el('gv_monto').value = '15.000.000,00';
   ctx.actualizarGastoVariableImpacto();
-  assert.equal(chk.checked, true, 'sugerida: es el 75 % de lo disponible');
+  assert.equal(checkbox.checked, true, 'sugerida: es el 75 % de lo disponible');
   assert.match(el('gv-impacto').textContent, /Es el 75 %/);
   el('gv_monto').value = '60.000,00';
   ctx.actualizarGastoVariableImpacto();
-  assert.equal(chk.checked, false);
+  assert.equal(checkbox.checked, false);
   assert.equal(el('gv-impacto').textContent, '');
 });
 
@@ -693,9 +693,9 @@ test('Compra grande automática: lo que decide el usuario manda, en los dos sent
 });
 
 test('Compra grande automática: no se detecta sola sin historia suficiente, bajo el mínimo, ni en retiros manuales', () => {
-  const sinHist = app({ gastosVar: [moto(15000000, mesHace(1))] });
-  assert.equal(sinHist.Periodo.umbralCompraGrande(), Infinity, 'con menos de 2 meses completos no hay con qué juzgar');
-  assert.equal(sinHist.Periodo.compraGrandeEstado(sinHist.S.gastosVar[0], sinHist.Periodo.umbralCompraGrande()), 'no');
+  const sinHistorial = app({ gastosVar: [moto(15000000, mesHace(1))] });
+  assert.equal(sinHistorial.Periodo.umbralCompraGrande(), Infinity, 'con menos de 2 meses completos no hay con qué juzgar');
+  assert.equal(sinHistorial.Periodo.compraGrandeEstado(sinHistorial.S.gastosVar[0], sinHistorial.Periodo.umbralCompraGrande()), 'no');
   const ctx = app({ ...historia6() });
   assert.equal(ctx.Periodo.umbralCompraGrande(), 1000000);
   assert.equal(ctx.Periodo.compraGrandeEstado({ monto: 400000 }, 100), 'no', 'bajo el mínimo de 500.000 nunca');
@@ -962,9 +962,9 @@ test('P6. Periodo.conciliar: lo que no explican ingresos y gastos queda «sin ex
 
 test('P6. la tarjeta de Análisis avisa lo sin explicar y, si todo cuadra, lo dice', () => {
   const m = mesHace(1), p = mesHace(2);
-  const pintar = hist => {
+  const pintar = historialPrueba => {
     const ctx = loadApp([CORE('core-state.js'), CORE('periodo.js'), CORE('nu-calc.js'), CORE('calc-helpers.js'), CORE('html-tag.js'), CORE('umbrales.js'), CORE('cobros.js'), MOD('analisis.js')], { permissive: true });
-    Object.assign(ctx.S, { patrimonioHistorial: hist, gastosVar: [{ id: 'g', fecha: m + '-12', monto: 180000, cat: 'Otro', desc: 'x' }] });
+    Object.assign(ctx.S, { patrimonioHistorial: historialPrueba, gastosVar: [{ id: 'g', fecha: m + '-12', monto: 180000, cat: 'Otro', desc: 'x' }] });
     const l = createHtmlTag(ctx.escHtml); ctx.html = l.html; ctx.raw = l.raw;
     const dom = createFakeDom(); ctx.document = dom.document; dom.el('an-conciliacion');
     ctx.renderConciliacion();
@@ -975,31 +975,6 @@ test('P6. la tarjeta de Análisis avisa lo sin explicar y, si todo cuadra, lo di
   const ok = pintar([hp(p + '-28', 1000000), hp(m + '-28', 1000000 - 180000)]);
   assert.match(ok, /Todo cuadra/); assert.doesNotMatch(ok, /sin explicar/);
   assert.equal(pintar([hp(m + '-28', 5)]), '', 'sin historial previo no pinta nada');
-});
-
-/* ================= P2/P3: plan de salida de deudas en Inicio ================= */
-test('P3. el plan de deudas lista tus deudas propias (no las ajenas), con tasa opcional y el ritmo de pago', () => {
-  const m1 = mesHace(1), m2 = mesHace(2), m3 = mesHace(3);
-  const ctx = app({
-    cuentas: cuentas(0),
-    ingresosFijos: ingresosEn(2000000, [m1, m2, m3]), ...gastosEn(1500000, [m1, m2, m3]),
-    misDeudas: yoDebo(600000),
-    tarjetasCredito: [{ id: 't', nombre: 'Visa', deuda: 1000000, cupo: 5000000, tasaEA: 28 }],
-  });
-  const d = ctx.planDeudasDatos();
-  assert.deepEqual(Array.from(d.plan.orden, x => x.nombre), ['Visa', 'Fulano'], 'avalancha por defecto con una tasa: la tarjeta primero');
-  assert.equal(d.plan.saldoTotal, 1600000);
-  assert.equal(Math.round(d.balance), 500000, 'te sobran 500.000 al mes');
-  assert.equal(d.plan.baja, true);
-  assert.ok(d.plan.mesesLibre >= 4 && d.plan.mesesLibre <= 5);
-  assert.ok(Math.abs(d.plan.costoMensualTotal - 20785) < 2, '28 % E.A. sobre 1.000.000');
-});
-
-test('P3. con balance negativo la deuda «no baja» y se dice cuánto liberar; sin deudas propias no hay plan', () => {
-  const m1 = mesHace(1);
-  const c = app({ ingresosFijos: ingresosEn(1000000, [m1]), ...gastosEn(1500000, [m1]), misDeudas: yoDebo(600000) }).planDeudasDatos();
-  assert.equal(c.plan.baja, false); assert.ok(c.plan.necesitasLiberar > 0);
-  assert.equal(app({ cuentas: cuentas(1000) }).planDeudasDatos(), null);
 });
 
 test('B1. calcLiquidez expone neta (lo ajeno de la tarjeta lo pagan) y netaPeorCaso (toda la deuda de tarjeta es tuya) + saldo a favor aparte', () => {
@@ -1024,7 +999,7 @@ test('B3. con saldos pero sin historial la tarjeta de Salud es un solo bloque (�
 });
 
 test('Saldo inicial gastado sin ingresos registrados: estado neutro, no «Estable», y ninguna conclusión de déficit', () => {
-  // Escenario de mejoras.md §3: 2.000.000 de saldo inicial (apertura) y 2.000.000 gastados en dos días, sin ingresos anotados.
+  // Escenario de la revisión de mejoras §3: 2.000.000 de saldo inicial (apertura) y 2.000.000 gastados en dos días, sin ingresos anotados.
   const hoyStr = new Date().toISOString().slice(0, 10);
   const ctx = app({
     cuentas: cuentas(0),
@@ -1045,11 +1020,10 @@ test('Saldo inicial gastado sin ingresos registrados: estado neutro, no «Establ
   assert.ok(r.tips.some(t => t.includes('Registra tus ingresos y gastos')));
 });
 
-test('Un mes con gastos y sin ingresos anotados no es «déficit»: ni racha, ni flujo, ni plan de deudas', () => {
+test('Un mes con gastos y sin ingresos anotados no es «déficit»: ni racha, ni flujo', () => {
   const ctx = app({ cuentas: cuentas(1000000), ...gastosEn(1500000, ultimosN(3)) });
   assert.equal(ctx.Periodo.rachaDeficit(mesAct, 6).meses, 0);
   assert.deepEqual(Array.from(ctx._situacion().balances), []);
-  assert.equal(ctx._balancePromedioReciente(), null);
   const f = ctx.Periodo.resumenFlujo(6, mesAct);
   assert.equal(f.deficit, 0); assert.equal(f.conDatos, 0);
 });
@@ -1106,9 +1080,9 @@ test('irConsejo: «pantalla/detalle» abre la pantalla y el sitio exacto (cuenta
 });
 
 test('Historial de patrimonio: el saldo inicial es el punto de partida (la línea termina en el patrimonio real, no bajo cero) y el selector aparece solo si cambia algo', () => {
-  const pintar = hist => {
+  const pintar = historialPrueba => {
     const ctx = loadApp([CORE('core-state.js'), CORE('periodo.js'), CORE('nu-calc.js'), CORE('calc-helpers.js'), CORE('html-tag.js'), CORE('umbrales.js'), CORE('cobros.js'), CORE('reglas.js'), CORE('salud.js'), CORE('plan-deudas.js'), MOD('inicio.js'), MOD('analisis.js')], { permissive: true });
-    Object.assign(ctx.S, { patrimonioHistorial: hist });
+    Object.assign(ctx.S, { patrimonioHistorial: historialPrueba });
     const l = createHtmlTag(ctx.escHtml); ctx.html = l.html; ctx.raw = l.raw;
     const dom = createFakeDom(); ctx.document = dom.document;
     ['analisis-balance-hero', 'an-patrimonio-chart'].forEach(id => dom.el(id));
@@ -1147,11 +1121,11 @@ test('B5. fraseTendencia: causa principal según el signo del flujo', () => {
 
 test('B7. Wrapped mide el año completo con el cierre de diciembre anterior aunque la serie diaria ya no tenga enero', () => {
   const ctx = wrapped();
-  const st = {
+  const estadoActual = {
     patrimonioHistorial: [{ fecha: '2026-01-20', valor: 900, valorVisible: 900 }, { fecha: '2026-06-01', valor: 1200, valorVisible: 1200 }],
     patrimonioCierres: { '2025-12': { valor: 1000, valorVisible: 1000, base: 0 }, '2026-01': { valor: 900, valorVisible: 900, base: 0 }, '2026-06': { valor: 1200, valorVisible: 1200, base: 100 } },
   };
-  const p = ctx._wrappedPatrimonioAnio(st, '2026');
+  const p = ctx._wrappedPatrimonioAnio(estadoActual, '2026');
   assert.equal(p.inicio, 1000);
   assert.equal(p.fin, 1200);
   assert.equal(p.diff, 100, 'sube 200 pero 100 fueron aperturas, no crecimiento');
@@ -1215,14 +1189,6 @@ test('P-presup. ritmoPresupuesto avisa solo si vas ≥15 puntos adelantado, desd
   assert.equal(Periodo.ritmoPresupuesto(1200000, 1000000, '2026-11-10').adelantado, false, 'ya se pasó: lo dice el presupuesto');
 });
 
-test('P3. el plan de deudas compara la tasa de la tarjeta con lo que rinde la cajita', () => {
-  const ctx = app({ cuentas: cuentas(100000).map(c => c.id === 'nu' ? { ...c, tasaEA: 9 } : c), tarjetasCredito: [{ id: 't', nombre: 'Visa', deuda: 500000, cupo: 1000000, tasaEA: 28 }] });
-  const el = { innerHTML: '' };
-  ctx.document.getElementById = id => id === 'plan-deudas-card' ? el : null;
-  ctx.renderPlanDeudas();
-  assert.match(el.innerHTML, /Tu cajita rinde 9 % y «Visa» cuesta 28 %/);
-});
-
 test('B5. un ingreso marcado extraordinario cuenta en el balance real pero no en el balanceRecurrente', () => {
   const mes = mesAct;
   const ctx = app({ cuentas: cuentas(0), movimientos: [
@@ -1235,7 +1201,7 @@ test('B5. un ingreso marcado extraordinario cuenta en el balance real pero no en
 });
 
 test('B6-2. Salud.mesesCayendo cuenta los meses completos seguidos con el patrimonio bajando, sin depósitos y sin ruido', () => {
-  const Salud = require('../js/core/salud.js');
+  const { Salud } = require('../js/core/salud.js');
   const cierres = { '2026-06': { valor: 1000000, base: 0 }, '2026-07': { valor: 900000, base: 0 }, '2026-08': { valor: 800000, base: 0 }, '2026-09': { valor: 700000, base: 0 }, '2026-10': { valor: 600000, base: 0 } };
   const r = Salud.mesesCayendo(cierres, '2026-11', { gastoTipico: 500000 });
   assert.deepEqual({ n: r.n, total: r.total, desde: r.desde }, { n: 4, total: -400000, desde: '2026-07' });
@@ -1305,12 +1271,11 @@ test('presupuestos: gastoPromedioPorCategoria promedia meses previos con gasto y
   assert.equal(r.cats.Moto, undefined, 'una compra grande no es lo que sueles gastar');
 });
 
-test('P2. la tasa E.A. de una deuda «Yo debo» entra al costo de la deuda y al plan', () => {
+test('P2. la tasa E.A. de una deuda «Yo debo» entra al costo de la deuda', () => {
   const ctx = app({ cuentas: cuentas(0), misDeudas: [{ id: 'd1', nombre: 'Fulano', tasaEA: 24, movimientos: [{ tipo: 'recibido', monto: 1000000 }] }] });
   const d = ctx._deudasPropias();
   assert.equal(d.length, 1);
   assert.equal(d[0].tasaEA, 24);
-  assert.ok(ctx.planDeudasDatos().plan.costoMensualTotal > 0);
 });
 
 test('A2. opcionesCuenta: una sola función para «¿de qué cuenta?» con la configuración declarativa de cada pantalla', () => {
@@ -1321,9 +1286,9 @@ test('A2. opcionesCuenta: una sola función para «¿de qué cuenta?» con la co
   const sale = val(ctx.opcionesCuenta({ sentido: 'sale' }));
   assert.ok(sale.includes('cuenta:nequi') && !sale.includes('cuenta:efectivo'), 'plata que sale: no se ofrece una cuenta vacía');
   assert.deepEqual(val(ctx.opcionesCuenta({ soloDe: [] })), [], 'soloDe vacío = ninguna cuenta (encargo sin plata)');
-  const delEnc = ctx.opcionesCuenta({ soloDe: [{ cuenta: 'cuenta:nequi', label: 'Nequi', saldo: 1000 }], mostrarSaldo: true });
-  assert.deepEqual(val(delEnc), ['cuenta:nequi']);
-  assert.match(delEnc, /Nequi \(\$\s?1\.000\)/);
+  const delEncargo = ctx.opcionesCuenta({ soloDe: [{ cuenta: 'cuenta:nequi', label: 'Nequi', saldo: 1000 }], mostrarSaldo: true });
+  assert.deepEqual(val(delEncargo), ['cuenta:nequi']);
+  assert.match(delEncargo, /Nequi \(\$\s?1\.000\)/);
   assert.match(ctx.opcionesCuenta({ placeholder: 'Selecciona…', placeholderDeshabilitado: true }), /<option value="" disabled selected>Selecciona…/);
   assert.match(ctx.opcionesCuenta({ selectedVal: 'cuenta:nequi', placeholder: 'X', placeholderDeshabilitado: true }), /<option value="" disabled>X/);
   assert.match(ctx.opcionesCuenta({ extra: sel => `<option value="g"${sel === 'g' ? ' selected' : ''}>G</option>`, selectedVal: 'g' }), /<option value="g" selected>G<\/option>$/);
@@ -1344,7 +1309,7 @@ test('A3-2. Reversibles: un tipo nuevo se protege por antigüedad sin tocar los 
   ctx.dialogo = () => { dlg++; return Promise.resolve(true); };
   const hoy = new Date().toISOString().slice(0, 10);
   const viejo = new Date(Date.now() - 400 * 86400000).toISOString().slice(0, 10);
-  ctx.Reversibles.registrar({ tipo: ['x1', 'x2'], proteccion: r => r && { fecha: r.fecha, ops: 0, modulo: 'cuentas', nombre: 'Nequi', monto: 5, direccion: 'sube' } });
+  ctx.Reversibles.registrar({ tipo: ['x1', 'x2'], proteccion: r => r && { fecha: r.fecha, operaciones: 0, modulo: 'cuentas', nombre: 'Nequi', monto: 5, direccion: 'sube' } });
   assert.equal(ctx.Reversibles.tiene('x2'), true);
   assert.equal(ctx.Reversibles.tiene('zzz'), false);
   assert.deepEqual({ ...await ctx.Reversibles.proteger('x1', { fecha: hoy }) }, { ok: true, confirmado: false });
@@ -1355,29 +1320,14 @@ test('A3-2. Reversibles: un tipo nuevo se protege por antigüedad sin tocar los 
   assert.equal(dlg, 1, 'solo el aviso de bloqueo');
 });
 
-test('Apartar $X: el plan sugiere pagar ya lo que sobra sobre la reserva, solo con tasa y gasto típico; sin ellos no aparece', () => {
-  const mk = (extra = {}) => {
-    const ctx = app({ cuentas: cuentas(5000000), tarjetasCredito: [{ id: 't', nombre: 'Visa', deuda: 2000000, cupo: 9000000, tasaEA: 28 }],
-      ...gastosEn(500000, ultimosN(3)), ...extra });
-    const el = { innerHTML: '' };
-    ctx.document.getElementById = id => id === 'plan-deudas-card' ? el : null;
-    ctx.renderPlanDeudas();
-    return el.innerHTML;
-  };
-  assert.match(mk(), /podrías (saldar|pagar ya) .*«Visa»/);
-  assert.match(mk(), /3 meses de gastos de reserva/);
-  assert.doesNotMatch(mk({ cuentas: cuentas(1000000) }), /podrías/, 'todo es reserva: no se sugiere');
-  assert.doesNotMatch(mk({ tarjetasCredito: [{ id: 't', nombre: 'Visa', deuda: 2000000, cupo: 9000000 }] }), /podrías/, 'sin tasa');
-  assert.doesNotMatch(mk({ gastosFijos: [], pagosGastosFijos: {} }), /podrías/, 'sin gasto típico no hay reserva medible');
-});
 });
 
 _describe('salud', () => {
 // tests/salud.test.js — js/core/salud.js: pilares con semáforo, estado de situación (5 niveles) y tendencia del patrimonio. Node puro.
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const Salud = require('../js/core/salud.js');
-const U = require('../js/core/umbrales.js');
+const { Salud } = require('../js/core/salud.js');
+const { UMBRALES: U } = require('../js/core/umbrales.js');
 
 const base = (o = {}) => ({
   patrimonio: 10e6, liquidezNeta: 6e6, activosLiquidos: 6e6, tcPropia: 0, deudaPropia: 0, meDeben: 0, ingresoTipico: 3e6, ingresoRef: 3e6, gastoTipico: 2e6,
@@ -1385,7 +1335,7 @@ const base = (o = {}) => ({
   tendencia: { dias: 90, delta: 1e6, pct: 10, inicio: 9e6, fin: 10e6 }, sinDatos: false, ...o,
 });
 const niv = (m, id) => Salud.pilares(m).find(p => p.id === id).nivel;
-const hist = (puntos) => puntos.map(([fecha, v, montoBase]) => ({ fecha, valorVisible: v, montoBase: montoBase || 0 }));
+const historialPrueba = (puntos) => puntos.map(([fecha, v, montoBase]) => ({ fecha, valorVisible: v, montoBase: montoBase || 0 }));
 
 test('pilar Liquidez: < 1 mes rojo, 1–3 ámbar, ≥ 3 verde, sin gasto típico «sin datos», liquidez negativa rojo', () => {
   assert.equal(niv(base({ mesesCubiertos: 0.5 }), 'liquidez'), 'rojo');
@@ -1435,17 +1385,17 @@ test('cada pilar lleva la pantalla donde se actúa (`ir`) y siempre son cuatro, 
 
 test('tendenciaPatrimonio: variación a 90 días SIN contar depósitos/retiros (montoBase) y con mínimo de 30 días de historial', () => {
   assert.equal(Salud.tendenciaPatrimonio([], '2026-11-05'), null);
-  assert.equal(Salud.tendenciaPatrimonio(hist([['2026-10-20', 100]]), '2026-11-05'), null, 'un solo punto');
-  assert.equal(Salud.tendenciaPatrimonio(hist([['2026-10-20', 100], ['2026-11-05', 200]]), '2026-11-05'), null, 'solo 16 días');
-  const t = Salud.tendenciaPatrimonio(hist([['2026-08-10', 1000], ['2026-09-10', 1100, 50], ['2026-11-05', 1400, 200]]), '2026-11-05');
+  assert.equal(Salud.tendenciaPatrimonio(historialPrueba([['2026-10-20', 100]]), '2026-11-05'), null, 'un solo punto');
+  assert.equal(Salud.tendenciaPatrimonio(historialPrueba([['2026-10-20', 100], ['2026-11-05', 200]]), '2026-11-05'), null, 'solo 16 días');
+  const t = Salud.tendenciaPatrimonio(historialPrueba([['2026-08-10', 1000], ['2026-09-10', 1100, 50], ['2026-11-05', 1400, 200]]), '2026-11-05');
   assert.equal(t.dias, 87);
   assert.equal(t.delta, (1400 - 1000) - (50 + 200), 'los 250 que entraron como depósito no son crecimiento');
   assert.equal(t.pct, 15);
-  const sinPct = Salud.tendenciaPatrimonio(hist([['2026-08-10', -500], ['2026-11-05', -100]]), '2026-11-05');
+  const sinPct = Salud.tendenciaPatrimonio(historialPrueba([['2026-08-10', -500], ['2026-11-05', -100]]), '2026-11-05');
   assert.equal(sinPct.pct, null); assert.equal(sinPct.delta, 400);
-  const corte = Salud.tendenciaPatrimonio(hist([['2026-01-01', 1], ['2026-08-10', 1000], ['2026-11-05', 1200]]), '2026-11-05');
+  const corte = Salud.tendenciaPatrimonio(historialPrueba([['2026-01-01', 1], ['2026-08-10', 1000], ['2026-11-05', 1200]]), '2026-11-05');
   assert.equal(corte.inicio, 1000, 'solo mira los últimos 90 días');
-  assert.equal(Salud.tendenciaPatrimonio(hist([['2026-8-10', 1000], ['2026-11-05', 1200]]), '2026-11-05').delta, 200, 'fechas sin ceros');
+  assert.equal(Salud.tendenciaPatrimonio(historialPrueba([['2026-8-10', 1000], ['2026-11-05', 1200]]), '2026-11-05').delta, 200, 'fechas sin ceros');
 });
 
 test('estado: las cinco situaciones, con su prioridad (crisis > presión > atención > creciendo > estable)', () => {
@@ -1507,16 +1457,16 @@ test('tieneBase: dos meses completos, o un mes con 30 días de uso; un «mes» d
 
 /* ================= Salud.puntaje: puro, corre en Node sin S ni DOM ================= */
 test('puntaje: sin S ni navegador; fondo sólido y sin deudas suma, deuda de TC alta resta', () => {
-  const liq = (o = {}) => ({ neta: 6000000, conCDTs: 6000000, cdts: 0, meDeben: 0, yoDebo: 0, ajeno: 0, libre: 6000000, tcPropia: 0, ...o });
-  const base = { patrimonio: 6000000, gastoVariableMes: 0, gastosMes: 0, deudaTC: 0, ingresoRef: 3000000, liq: liq(), gastoRef: 1000000, ingresoTipico: 3000000, racha: { meses: 0 }, cdtsActivos: 0, catsCount: 3, comprasGrandes: [], fmt: n => '$' + n };
+  const liquidez = (o = {}) => ({ neta: 6000000, conCDTs: 6000000, cdts: 0, meDeben: 0, yoDebo: 0, ajeno: 0, libre: 6000000, tcPropia: 0, ...o });
+  const base = { patrimonio: 6000000, gastoVariableMes: 0, gastosMes: 0, deudaTC: 0, ingresoRef: 3000000, liquidez: liquidez(), gastoRef: 1000000, ingresoTipico: 3000000, racha: { meses: 0 }, cdtsActivos: 0, catsCount: 3, comprasGrandes: [], fmt: n => '$' + n };
   const sano = Salud.puntaje(base);
   assert.ok(sano.score >= 80, 'fondo ≥ 6 meses, gasto sano y sin deudas: Excelente');
   assert.equal(sano.sinDatos, false);
-  const deuda = Salud.puntaje({ ...base, deudaTC: 9000000, liq: liq({ neta: -3000000, conCDTs: -3000000, tcPropia: 9000000 }) });
+  const deuda = Salud.puntaje({ ...base, deudaTC: 9000000, liquidez: liquidez({ neta: -3000000, conCDTs: -3000000, tcPropia: 9000000 }) });
   assert.ok(deuda.score < sano.score - 30);
   assert.ok(deuda.consejos.some(c => c.tipo === 'alerta'));
   assert.equal(deuda.consejos[0].tipo, 'alerta', 'lo urgente primero');
-  const vacio = Salud.puntaje({ ...base, patrimonio: 0, gastoRef: 0, ingresoTipico: 0, ingresoRef: 0, liq: liq({ neta: 0, conCDTs: 0, libre: 0 }) });
+  const vacio = Salud.puntaje({ ...base, patrimonio: 0, gastoRef: 0, ingresoTipico: 0, ingresoRef: 0, liquidez: liquidez({ neta: 0, conCDTs: 0, libre: 0 }) });
   assert.equal(vacio.sinDatos, true);
 });
 });
@@ -1526,8 +1476,8 @@ _describe('reglas', () => {
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const Reglas = require('../js/core/reglas.js');
-const UMBRALES = require('../js/core/umbrales.js');
+const { Reglas } = require('../js/core/reglas.js');
+const { UMBRALES } = require('../js/core/umbrales.js');
 
 const ev = (canal, ctx) => Reglas.evaluar(canal, { umbrales: UMBRALES, ...ctx });
 const textos = (canal, ctx) => ev(canal, ctx).map(i => i.texto);
@@ -1566,9 +1516,9 @@ test('PARIDAD: Atención y push dicen exactamente lo mismo para las reglas compa
   const S = {
     modulos: { spotify: true },
     personas: [{ id: 'p1', nombre: 'Ana Pérez' }],
-    spotify: { personas: [{ personaId: 'p1', nombre: 'x', proximoPago: '2026-11-01', pagado: false }] },
+    spotify: { integrantes: [{ personaId: 'p1', proximoPago: '2026-11-01', pagado: false }] },
     cajitas: [{ nombre: 'Nu', cdts: [{ vence: '2026-11-08' }, { vence: '2026-11-01' }] }],
-    encargos: [{ nombre: 'Viaje', partes: [{ desc: 'Hotel', monto: 300000, fecha: '2026-11-05' }, { desc: 'Vuelo', monto: 500000, fecha: '2026-11-01' }] }],
+    encargos: [{ personaId: 'p1', partes: [{ desc: 'Hotel', monto: 300000, fecha: '2026-11-05' }, { desc: 'Vuelo', monto: 500000, fecha: '2026-11-01' }] }],
   };
   const comp = ['spotify-vencido', 'cdt', 'encargos-comprometidos'];
   const sol = canal => ev(canal, { hoy: HOY, S }).filter(i => comp.includes(i.regla)).map(i => i.regla + '|' + i.tipo + '|' + i.texto);
@@ -1577,11 +1527,11 @@ test('PARIDAD: Atención y push dicen exactamente lo mismo para las reglas compa
 });
 
 test('Spotify: usa el nombre de la ficha de Personas, y un «Pagó» deja de estar vigente cuando llega el próximo pago', () => {
-  const S = { modulos: { spotify: true }, personas: [{ id: 'p1', nombre: 'Ana' }], spotify: { personas: [
+  const S = { modulos: { spotify: true }, personas: [{ id: 'p1', nombre: 'Ana' }, { id: 'p2', nombre: 'Luis' }, { id: 'p3', nombre: 'Eva' }, { id: 'p4', nombre: 'Sol' }], spotify: { integrantes: [
     { personaId: 'p1', proximoPago: '2026-11-01', pagado: false },
-    { nombre: 'Luis', proximoPago: '2026-11-01', pagado: true },        // pagó, pero su próximo pago (1 nov) ya pasó → pendiente otra vez
-    { nombre: 'Eva', proximoPago: '2026-11-20', pagado: true },         // pagó y aún no le toca → no avisa
-    { nombre: 'Sol', proximoPago: '2026-11-10', pagado: false },        // pendiente pero no vencido → no avisa
+    { personaId: 'p2', proximoPago: '2026-11-01', pagado: true },        // pagó, pero su próximo pago (1 nov) ya pasó → pendiente otra vez
+    { personaId: 'p3', proximoPago: '2026-11-20', pagado: true },         // pagó y aún no le toca → no avisa
+    { personaId: 'p4', proximoPago: '2026-11-10', pagado: false },        // pendiente pero no vencido → no avisa
   ] } };
   assert.deepEqual(textos('push', { hoy: HOY, S }), ['Cobro Spotify de Ana vencido', 'Cobro Spotify de Luis vencido']);
   assert.deepEqual(textos('push', { hoy: HOY, S: { ...S, modulos: {} } }), [], 'sin el módulo Spotify activo no avisa');
@@ -1597,7 +1547,7 @@ test('CDT: avisa 7 días antes (ámbar, con «0d» el mismo día) y en rojo cuan
 });
 
 test('Encargos: «es hoy/mañana» en ámbar, vencida en rojo; usadas y sin fecha no cuentan', () => {
-  const S = { encargos: [{ nombre: 'Viaje', partes: [
+  const S = { personas: [{ id: 'p1', nombre: 'Viaje' }], encargos: [{ personaId: 'p1', partes: [
     { desc: 'a', monto: 1000, fecha: '2026-11-05' }, { desc: 'b', monto: 2000, fecha: '2026-11-06' }, { desc: 'c', monto: 3000, fecha: '2026-11-07' },
     { desc: 'd', monto: 4000, fecha: '2026-11-03' }, { desc: 'e', monto: 5000, fecha: '2026-11-03', usada: true }, { desc: 'f', monto: 6000 },
   ] }] };
@@ -1681,7 +1631,7 @@ test('el push sigue funcionando a través de checks.js (ruta real del script) y 
   assert.deepEqual(ejecutarChecks({}, HOY), []);
 });
 
-test('guarda: checks.js ya no copia reglas (no define spPersonaPagadaVigente ni checkCDT propios)', () => {
+test('guarda: checks.js ya no copia reglas (no define spotifyPersonaPagadaVigente ni checkCDT propios)', () => {
   const src = require('node:fs').readFileSync(path.join(__dirname, '..', 'scripts', 'notificaciones', 'checks.js'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
   assert.doesNotMatch(src, /function (spPersonaPagadaVigente|checkCDT|checkEncargos|checkSpotifyVencido|checkWrapped)/);
 });
@@ -1707,84 +1657,16 @@ test('PUSH de gastos fijos: calcula desde S (sin api), ignora los pagados y los 
 });
 
 _describe('plan-deudas', () => {
-// tests/plan-deudas.test.js — js/core/plan-deudas.js (P2 costo de la deuda, P3 plan de salida). Node puro.
+// tests/plan-deudas.test.js — js/core/plan-deudas.js (P2 costo de la deuda: tasa mensual y costo). Node puro.
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const P = require('../js/core/plan-deudas.js');
-
-const tc = (nombre, saldo, tasaEA) => ({ id: nombre, nombre, tipo: 'tarjeta', saldo, tasaEA });
-const per = (nombre, saldo) => ({ id: nombre, nombre, tipo: 'persona', saldo });
+const { PlanDeudas: P } = require('../js/core/plan-deudas.js');
 
 test('tasaMensual: E.A. → mensual con (1+ea)^(1/12) − 1; sin tasa no hay costo', () => {
   assert.ok(Math.abs(P.tasaMensual(28) - 0.02078) < 0.00005, '28 % E.A. ≈ 2,08 % mensual');
   assert.equal(P.tasaMensual(0), 0); assert.equal(P.tasaMensual(null), 0); assert.equal(P.tasaMensual(undefined), 0);
   assert.equal(Math.round(P.costoMensual(1000000, 28)), 20785);
   assert.equal(P.costoMensual(1000000, null), 0); assert.equal(P.costoMensual(-5, 28), 0);
-});
-
-test('ordenar: avalancha = la más cara primero (sin tasa al final); bola de nieve = la más pequeña primero; ignora saldos 0', () => {
-  const d = [tc('A', 500000, 20), tc('B', 2000000, 30), per('Luis', 100000), tc('C', 0, 40), tc('D', 300000, 20)];
-  assert.deepEqual(P.ordenar(d, 'avalancha').map(x => x.nombre), ['B', 'D', 'A', 'Luis']);
-  assert.deepEqual(P.ordenar(d, 'bola').map(x => x.nombre), ['Luis', 'D', 'A', 'B']);
-  assert.deepEqual(P.ordenar(d).map(x => x.nombre), ['B', 'D', 'A', 'Luis'], 'por defecto avalancha');
-  assert.deepEqual(P.ordenar([], 'bola'), []);
-});
-
-test('construir: sin deudas → libre ya; con balance positivo → meses hasta quedar libre; el orden afecta el costo, no el sentido', () => {
-  const vacio = P.construir({ deudas: [], balancePromedio: 100 });
-  assert.equal(vacio.mesesLibre, 0); assert.equal(vacio.baja, true);
-  const r = P.construir({ deudas: [per('Luis', 1000000)], balancePromedio: 250000 });
-  assert.equal(r.mesesLibre, 4); assert.equal(r.baja, true); assert.equal(r.costoMensualTotal, 0);
-  const c = P.construir({ deudas: [tc('T', 1000000, 28)], balancePromedio: 250000 });
-  assert.equal(c.mesesLibre, 5, 'con intereses del 2,08 % mensual cuesta un mes más');
-  assert.equal(Math.round(c.costoMensualTotal), 20785);
-});
-
-test('construir: el sobrante que libera una deuda pasa a la siguiente (cascada)', () => {
-  const r = P.construir({ deudas: [per('A', 300000), per('B', 700000)], balancePromedio: 400000, estrategia: 'bola' });
-  assert.deepEqual(r.orden.map(d => d.nombre), ['A', 'B']);
-  assert.equal(r.mesesLibre, 3, '1.000.000 con 400.000 al mes = 2,5 → 3 meses (el sobrante del mes 1 ya ataca la deuda B)');
-});
-
-test('construir: balance ≤ 0 o menor que los intereses → «no baja» y cuánto habría que liberar al mes', () => {
-  const a = P.construir({ deudas: [tc('T', 2000000, 30)], balancePromedio: -50000 });
-  assert.equal(a.baja, false); assert.equal(a.mesesLibre, null); assert.equal(a.pagoMensual, 0);
-  assert.ok(a.necesitasLiberar > a.costoMensualTotal, 'la cuota cubre al menos los intereses');
-  assert.equal(a.necesitasLiberar % 1000, 0, 'redondeado a $1.000');
-  const b = P.construir({ deudas: [tc('T', 10000000, 30)], balancePromedio: 10000 }); // paga menos de lo que le cobran de interés
-  assert.equal(b.baja, false);
-  const c = P.construir({ deudas: [per('P', 1200000)], balancePromedio: 0, metaMeses: 12 });
-  assert.equal(c.necesitasLiberar, 100000, 'sin tasa: saldo ÷ meta');
-});
-
-test('avalancha cuesta menos que bola de nieve cuando hay tasas distintas (el motivo de ofrecer los dos criterios)', () => {
-  const deudas = [tc('Barata', 500000, 10), tc('Cara', 3000000, 35)];
-  const av = P.construir({ deudas, balancePromedio: 400000, estrategia: 'avalancha' });
-  const bo = P.construir({ deudas, balancePromedio: 400000, estrategia: 'bola' });
-  assert.equal(av.orden[0].nombre, 'Cara'); assert.equal(bo.orden[0].nombre, 'Barata');
-  assert.ok(av.mesesLibre <= bo.mesesLibre);
-});
-
-test('pagarConviene: «tu cajita rinde 9 % y tu tarjeta cuesta 28 %»', () => {
-  assert.deepEqual(P.pagarConviene(28, 9), { conviene: true, diferenciaPts: 19 });
-  assert.equal(P.pagarConviene(8, 10).conviene, false);
-  assert.equal(P.pagarConviene(null, 10), null); assert.equal(P.pagarConviene(28, undefined), null);
-});
-
-test('pagoPosible («Apartar $X»): respeta la reserva, exige tasa y que la deuda cueste más de lo que rinde la plata', () => {
-  const P = require('../js/core/plan-deudas.js');
-  const base = { deuda: { saldo: 2000000, tasaEA: 28 }, disponible: 3000000, gastoTipico: 500000, mesesReserva: 3 };
-  const r = P.pagoPosible(base);
-  assert.equal(r.monto, 1500000, 'disponible 3 M − reserva 1,5 M');
-  assert.equal(r.total, false);
-  assert.ok(r.ahorroMensual > 0);
-  assert.equal(P.pagoPosible({ ...base, disponible: 9000000 }).monto, 2000000, 'no pasa del saldo');
-  assert.equal(P.pagoPosible({ ...base, disponible: 9000000 }).total, true);
-  assert.equal(P.pagoPosible({ ...base, disponible: 1500000 }), null, 'todo es reserva');
-  assert.equal(P.pagoPosible({ ...base, gastoTipico: 0 }), null, 'sin gasto típico no hay reserva medible');
-  assert.equal(P.pagoPosible({ ...base, deuda: { saldo: 2000000 } }), null, 'sin tasa no se sugiere');
-  assert.equal(P.pagoPosible({ ...base, rendimientoEA: 30 }), null, 'la plata rinde más de lo que cuesta la deuda');
-  assert.ok(P.pagoPosible({ ...base, rendimientoEA: 10 }).ahorroMensual < r.ahorroMensual, 'descuenta lo que dejaría de rendir');
 });
 });
 
@@ -1830,13 +1712,13 @@ test('cobrar a una cuenta: sube el saldo, deja un espejo neutro y el ingreso se 
   const ctx = fresh({ nequi: 1000 });
   const { cobro } = cobrar(ctx, { destino: 'cuenta:nequi', monto: 2000 });
   assert.equal(saldo(ctx, 'nequi'), 3000);
-  const esp = ctx.S.movimientos.find(m => m.id === cobro._movSecId);
+  const esp = ctx.S.movimientos.find(m => m.id === cobro._movimientoSecId);
   assert.ok(esp && esp._secundario && esp._origenSeccion === 'Ingreso fijo' && esp.clase === 'neutro');
   assert.equal(esp.desc, 'Sueldo — cobro de Sep 2026');
-  const ing = ingresosDelMes(ctx, '2026-09');
-  assert.equal(ing.fijos, 2000);
-  assert.equal(ing.entradas, 0, 'el espejo no se cuenta otra vez como entrada real');
-  assert.equal(ing.total, 2000);
+  const ingreso = ingresosDelMes(ctx, '2026-09');
+  assert.equal(ingreso.fijos, 2000);
+  assert.equal(ingreso.entradas, 0, 'el espejo no se cuenta otra vez como entrada real');
+  assert.equal(ingreso.total, 2000);
 });
 
 test('el mes que cubre es solo una etiqueta: el ingreso cuenta en el mes de la FECHA', () => {
@@ -1878,24 +1760,13 @@ test('borrar un cobro revierte la cuenta exacta, quita el espejo y deja de conta
   assert.equal(ctx.cobroBorrar('if1', cobro.id), false, 'ya no existe');
 });
 
-test('cobroRevertirTodos (antes de eliminar un ingreso fijo) devuelve toda la plata que había entrado', () => {
-  const ctx = fresh({ nequi: 0, efectivo: 0 });
-  cobrar(ctx, { destino: 'cuenta:nequi', monto: 50 });
-  cobrar(ctx, { mesCubre: '2026-10', fecha: '2026-10-30', destino: 'cuenta:efectivo', monto: 70 });
-  cobrar(ctx, { mesCubre: '2026-11', fecha: '2026-11-30', monto: 99 });
-  ctx.cobroRevertirTodos(ctx.S.ingresosFijos[0]);
-  assert.deepEqual([saldo(ctx, 'nequi'), saldo(ctx, 'efectivo')], [0, 0]);
-  assert.equal(ctx.S.movimientos.length, 0);
-  assert.equal(ctx.cobrosDeIngresoFijo(ctx.S.ingresosFijos[0]).length, 0);
-});
-
 test('ingresoFijoEstadoMes: esperado según «desde» y cobrado según los cobros que cubren ese mes', () => {
   const ctx = fresh({ ingresosFijos: [{ id: 'if1', nombre: 'Sueldo', monto: 10, desde: '2026-10' }] });
-  const ing = ctx.S.ingresosFijos[0];
-  assert.deepEqual([ctx.ingresoFijoEstadoMes(ing, '2026-09').esperado, ctx.ingresoFijoEstadoMes(ing, '2026-10').esperado], [false, true]);
+  const ingreso = ctx.S.ingresosFijos[0];
+  assert.deepEqual([ctx.ingresoFijoEstadoMes(ingreso, '2026-09').esperado, ctx.ingresoFijoEstadoMes(ingreso, '2026-10').esperado], [false, true]);
   cobrar(ctx, { mesCubre: '2026-10', fecha: '2026-10-05', monto: 4 });
   cobrar(ctx, { mesCubre: '2026-10', fecha: '2026-10-20', monto: 6 });
-  assert.equal(ctx.ingresoFijoEstadoMes(ing, '2026-10').cobrado, 10);
+  assert.equal(ctx.ingresoFijoEstadoMes(ingreso, '2026-10').cobrado, 10);
 });
 
 test('cobroAvisoMes: avisa solo cuando la fecha cae en otro mes que el que cubre', () => {
