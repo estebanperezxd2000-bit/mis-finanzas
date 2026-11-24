@@ -1,6 +1,6 @@
 'use strict';
 // M9 — lo que está repetido a propósito se vigila con una máquina, no con un comentario «recuerda actualizar…».
-//   1) La configuración de Firebase vive en DOS archivos (firebase-init.js, notificaciones-push.js): tienen que ser idénticas.
+//   1) La configuración de Firebase es única (js/config/firebase-config.js) y ambos consumidores la importan.
 //   2) payload-codec.js (navegador, ES) y scripts/notificaciones/payload-codec.js (Node, CommonJS) sirven al mismo formato 'gz1:':
 //      lo que escribe uno lo tiene que leer el otro, en los dos sentidos.
 const { describe, test } = require('node:test');
@@ -23,12 +23,18 @@ function objeto(rel, nombre) {
   return JSON.parse(JSON.stringify(vm.runInNewContext('(' + src.slice(ini, fin + 1) + ')')));
 }
 describe('paridad-config-firebase', () => {
-  const init = objeto('js/core/firebase-init.js', 'firebaseConfig');
-  const push = objeto('js/core/notificaciones-push.js', '_FCM_CONFIG');
+  const init = objeto('js/config/firebase-config.js', 'firebaseConfig');
   test('la config tiene los 6 campos esperados', () => {
     for (const k of ['apiKey', 'authDomain', 'projectId', 'storageBucket', 'messagingSenderId', 'appId']) assert.ok(init[k], k);
   });
-  test('notificaciones-push.js repite exactamente la config de firebase-init.js', () => assert.deepEqual(push, init));
+  test('Auth y notificaciones importan la misma configuración sin duplicarla', () => {
+    const auth = leer('js/core/firebase-init.js'), push = leer('js/core/notificaciones-push.js');
+    assert.match(auth, /import\s*\{\s*firebaseConfig\s*\}\s*from\s*'\.\.\/config\/firebase-config\.js'/);
+    assert.match(push, /import\s*\{\s*firebaseConfig,\s*firebaseVapidKey\s*\}\s*from\s*'\.\.\/config\/firebase-config\.js'/);
+    assert.match(auth, /initializeApp\(firebaseConfig\)/);
+    assert.match(push, /_FCM_CONFIG\s*=\s*firebaseConfig/);
+    assert.doesNotMatch(auth + push, /\bapiKey\s*:/);
+  });
   test('sw.js ya no carga el SDK de Firebase ni repite su config', () => {
     const sw = leer('sw.js');
     assert.ok(!/importScripts\s*\(/.test(sw), 'sin importScripts');

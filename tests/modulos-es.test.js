@@ -85,7 +85,7 @@ describe('módulos ES: los imports', () => {
 
 describe('módulos ES: el puente global', () => {
   test('cada módulo deja en window todas sus funciones (al principio) y constantes/clases (al final)', () => {
-    for (const f of modulosApp.filter(x => x !== 'js/core/puente.js' && !LOGICA.includes(x))) {
+    for (const f of modulosApp.filter(x => x !== 'js/core/puente.js' && x !== 'js/config/firebase-config.js' && !LOGICA.includes(x))) {
       const t = leer(f);
       const funciones = [...t.matchAll(/^export\s+(?:async\s+)?function\s*\*?\s*([A-Za-z_$][\w$]*)/gm)].map(m => m[1]);
       const consts = [...t.matchAll(/^export\s+(?:const|class)\s+([A-Za-z_$][\w$]*)/gm)].map(m => m[1]);
