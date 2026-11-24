@@ -8,11 +8,12 @@ const { loadApp } = require('./support/load-app');
 const { createFakeDom } = require('./support/fake-dom');
 
 const FILE = path.join(__dirname, '..', 'js', 'core', 'notificaciones-push.js');
+const CONFIG = path.join(__dirname, '..', 'js', 'config', 'firebase-config.js');
 const esperar = ms => new Promise(r => setTimeout(r, ms));
 const PUSH_ERR = () => Object.assign(new Error('Registration failed - push service error'), { name: 'AbortError', code: 'messaging/token-subscribe-failed' });
 
 function entorno({ getToken, permiso = 'granted', online = true, setDoc, ua = 'Chrome', brave = false } = {}) {
-  const ctx = loadApp([FILE], { permissive: true });
+  const ctx = loadApp([CONFIG, FILE], { permissive: true });
   const dom = createFakeDom({ 'cfg-notificaciones-sub': { textContent: 'Avisos de Spotify, CDT y encargos por vencer' }, 'cfg-notificaciones-row': {} });
   ctx.document = dom.document;
   dom.document.getElementById('cfg-notificaciones-row').removeAttribute = () => {}; // el DOM simulado no lo trae
