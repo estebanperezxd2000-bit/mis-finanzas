@@ -59,5 +59,6 @@ import './core/arranque-ui.js';
 import './core/formularios-ui.js';
 import './core/busqueda-global.js';
 import './core/personas-init.js';
+import './config/firebase-config.js';
 import './core/notificaciones-push.js';
 import './modules/inicio.js';

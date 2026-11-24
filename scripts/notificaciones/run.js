@@ -29,9 +29,13 @@ const { ejecutarChecks } = require('./checks');
 const { decodificarPayload } = require('./payload-codec');
 
 // Dónde vive la app (con la barra final). Se cambia con la variable de entorno APP_BASE_URL del workflow si el repo o el dominio cambian.
-const APP_BASE_URL = (process.env.APP_BASE_URL || 'https://drlight09.github.io/mis-finanzas/').replace(/\/?$/, '/');
+const APP_BASE_URL = (process.env.APP_BASE_URL || 'https://estebanperezxd2000-bit.github.io/mis-finanzas/').replace(/\/?$/, '/');
 
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+// No leer datos ni enviar avisos desde el Firebase del proyecto original por accidente.
+if (serviceAccount.project_id !== 'mis-finanzas-d5887') {
+  throw new Error('FIREBASE_SERVICE_ACCOUNT_KEY debe pertenecer a mis-finanzas-d5887.');
+}
 admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
 const db = admin.firestore();
 

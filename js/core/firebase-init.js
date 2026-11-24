@@ -14,14 +14,7 @@
       //    → Application restrictions: HTTP referrers (solo tu dominio)
       //    → API restrictions: solo Firebase APIs necesarias
       // 2. Las reglas de seguridad de Firestore son la barrera real de acceso.
-      const firebaseConfig = {
-        apiKey: "AIzaSyBNGhKxrd6nuUXamRytHEgrv3ggrafr4HU",
-        authDomain: "mis-finanzas-z.firebaseapp.com",
-        projectId: "mis-finanzas-z",
-        storageBucket: "mis-finanzas-z.firebasestorage.app",
-        messagingSenderId: "469399538471",
-        appId: "1:469399538471:web:adaf95bc43b3355b087702"
-      };
+      import { firebaseConfig } from '../config/firebase-config.js';
 
       const app = initializeApp(firebaseConfig);
 

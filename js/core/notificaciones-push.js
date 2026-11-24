@@ -31,19 +31,12 @@
 import { exponerGlobales, exponerVariables } from './puente.js';
 import { toast } from './dialogos.js';
 import { Events } from './events.js';
+import { firebaseConfig, firebaseVapidKey } from '../config/firebase-config.js';
 // Puente global (js/core/puente.js): las funciones se hoistean, así que quedan en window desde el principio.
 exponerGlobales({ _estadoPush, _pushYaActivo, _refrescarEstadoPush, _mensajePushError, _obtenerTokenPush, activarNotificaciones });
 
-export const _FCM_CONFIG = {
-  apiKey: 'AIzaSyBNGhKxrd6nuUXamRytHEgrv3ggrafr4HU',
-  authDomain: 'mis-finanzas-z.firebaseapp.com',
-  projectId: 'mis-finanzas-z',
-  storageBucket: 'mis-finanzas-z.firebasestorage.app',
-  messagingSenderId: '469399538471',
-  appId: '1:469399538471:web:adaf95bc43b3355b087702',
-};
-
-export const _FCM_VAPID_KEY = 'BHg62p-K530SMQ0Vx7EsZVpkG8NnXv_eD25AQz-w6gOL5MBdGGjCchPKnbuX2XFJXjoigwPWpxK39PtlvHRvsWw';
+export const _FCM_CONFIG = firebaseConfig;
+export const _FCM_VAPID_KEY = firebaseVapidKey;
 
 // ── Estado visible en la fila de Configuración (#cfg-notificaciones-sub) ────────────────────────────────────────────────────
 // El texto original de la fila se recuerda la primera vez para poder volver a él si falla. `mf_push_ok` (localStorage) = este
@@ -90,7 +83,7 @@ export function _mensajePushError(e, ent) {
 // getToken con un reintento: un «push service error» muchas veces viene de una suscripción vieja del navegador (hecha con otra
 // clave o ya caducada). Se borra esa suscripción y el token anterior y se vuelve a pedir una sola vez.
 export async function _obtenerTokenPush(messaging, swRegistration) {
-  const pedir = () => messaging.getToken({ vapidKey: _FCM_VAPID_KEY, serviceWorkerRegistration: swRegistration });
+  const pedir = () => messaging.getToken({ ...(_FCM_VAPID_KEY ? { vapidKey: _FCM_VAPID_KEY } : {}), serviceWorkerRegistration: swRegistration });
   try {
     return await pedir();
   } catch (e) {
